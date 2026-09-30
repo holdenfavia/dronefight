@@ -66,6 +66,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Specials (ADR-0016): 3D smoke screen with concealment; Freestyle TOW-style guided missile; particles; sounds
 - [x] Training ground (ADR-0017): map, stationary/path/random/evasive bots, local practice hits, stats HUD
 - [x] Pressure test: fixed missile exploding on launch (client impact check), silent server rejections, ghost launches, departed pilots' missiles; fuzz + real-socket missile test
+- [x] Guided missile is a one-shot kill (ADR-0018)
 - [ ] Play-test with real hands on the sticks
 - [ ] Play all three against each other and tune
 
@@ -77,7 +78,9 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 ## Phase 4 — Polish
 
-- [ ] Art pass on arena per ADR-0007
+- [x] Structure polish: flush joints (cube frames, tower tops, decks, crane), exact Yard ramp, flush overpass rails, container rows, post footings; guarded by `shared/maps/joints.test.ts`
+- [x] Texture pass: painted steel (streaks, chips, scratches), concrete walls (formwork seams, tie holes, rain streaks)
+- [ ] Art pass on arena per ADR-0007 (more)
 - [ ] Additional maps
 - [x] Sound (motors, hits, UI): procedural, ADR-0010
 - [ ] Sound tuning pass after real matches

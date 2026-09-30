@@ -17,6 +17,19 @@ const SPAWNS: readonly SpawnPoint[] = [
   spawnFacingCenter(-100, 30),
 ];
 
+/**
+ * A ramp whose top surface runs exactly from a platform's edge (at z = topZ, height topY) down to the
+ * ground `run` metres further along +Z: no step at either end.
+ */
+function ramp(x: number, topZ: number, topY: number, run: number, width: number, thickness = 0.5): ArenaBox {
+  const length = Math.hypot(run, topY);
+  const angle = Math.atan2(topY, run);
+  // Center of the top surface, then pushed down along the surface normal by half the thickness.
+  const cz = topZ + run / 2 - (thickness / 2) * Math.sin(angle);
+  const cy = topY / 2 - (thickness / 2) * Math.cos(angle);
+  return { pos: [x, cy, cz], size: [width, thickness, length], rot: [(angle * 180) / Math.PI, 0, 0], mat: 'concrete' };
+}
+
 function build(): ArenaBox[] {
   const out: ArenaBox[] = [];
   const rand = mulberry32(7);
@@ -34,12 +47,13 @@ function build(): ArenaBox[] {
   for (let x = -36; x <= 36; x += 12) {
     out.push({ pos: [x, 6, deckZ], size: [1.6, 12, 1.6], mat: 'concrete' });
   }
-  out.push({ pos: [0, 13.2, deckZ - 4.6], size: [80, 1.2, 0.3], mat: 'orange' });
-  out.push({ pos: [0, 13.2, deckZ + 4.6], size: [80, 1.2, 0.3], mat: 'orange' });
+  // Rails flush with the deck's outer edges and ends.
+  out.push({ pos: [0, 13.2, deckZ - 4.85], size: [80, 1.2, 0.3], mat: 'orange' });
+  out.push({ pos: [0, 13.2, deckZ + 4.85], size: [80, 1.2, 0.3], mat: 'orange' });
 
   // Raised platform with a ramp.
   out.push({ pos: [55, 3, 25], size: [24, 6, 24], mat: 'concrete' });
-  out.push({ pos: [55, 3, 44.5], size: [8, 0.5, 16], rot: [21, 0, 0], mat: 'concrete' });
+  out.push(ramp(55, 37, 6, 16, 8));
   tower(out, 82, 5, 4, 14, 5);
 
   // Tall stacks: the big vertical dive spots.
@@ -64,16 +78,16 @@ function build(): ArenaBox[] {
   out.push({ pos: [-70, 5, 10], size: [2, 10, 16], mat: 'concrete' });
   out.push({ pos: [-70, 5, -8.5], size: [2, 10, 16], mat: 'concrete' });
 
-  // Shipping-container yard, deterministic scatter.
+  // Shipping-container yard: neat rows with aisles to fly down, some slots empty, some stacked two high.
   const containerMats: ArenaMaterial[] = ['orange', 'white', 'steel'];
-  for (let i = 0; i < 14; i++) {
-    const x = -95 + rand() * 50;
-    const z = 55 + rand() * 50;
-    const yaw = rand() < 0.5 ? 0 : 90;
-    const stack = rand() < 0.3 ? 2 : 1;
-    const mat = containerMats[Math.floor(rand() * containerMats.length)] ?? 'orange';
-    for (let level = 0; level < stack; level++) {
-      out.push({ pos: [x, 1.3 + level * 2.6, z], size: [6, 2.6, 2.4], rot: [0, yaw, 0], mat });
+  for (const x of [-88, -76, -64]) {
+    for (const z of [60, 70, 80, 90, 100]) {
+      if (rand() < 0.2) continue;
+      const stack = rand() < 0.35 ? 2 : 1;
+      for (let level = 0; level < stack; level++) {
+        const mat = containerMats[Math.floor(rand() * containerMats.length)] ?? 'orange';
+        out.push({ pos: [x, 1.3 + level * 2.6, z], size: [6, 2.6, 2.4], mat });
+      }
     }
   }
 

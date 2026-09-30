@@ -146,15 +146,18 @@ function constructionSite(out: ArenaBox[], cx: number, cz: number): void {
   const mz = cz + 16;
   const mast = 62;
   tower(out, mx, mz, 2.4, mast, 3, 0, false);
-  const jibY = mast + 1;
+  // Jib resting on the top of the mast (mast top = mast + BEAM / 2).
+  const jibY = mast + BEAM / 2 + 0.6;
   out.push({ pos: [mx - 22, jibY, mz], size: [48, 1.2, 1.4], mat: 'orange' });
   out.push({ pos: [mx + 9, jibY, mz], size: [16, 1.2, 1.4], mat: 'orange' });
   out.push({ pos: [mx + 15, jibY - 1.6, mz], size: [3, 2.4, 2.4], mat: 'concrete' });
   out.push({ pos: [mx, jibY + 1.6, mz], size: [2.6, 2.2, 2.6], mat: 'white' });
   out.push({ pos: [mx, jibY + 4.5, mz], size: [0.4, 4, 0.4], mat: 'orange' });
   const hookX = mx - 34;
-  out.push({ pos: [hookX, jibY - 15, mz], size: [0.12, 28, 0.12], mat: 'steel' });
-  out.push({ pos: [hookX, jibY - 29.5, mz], size: [1.2, 1.4, 1.2], mat: 'orange' });
+  // Cable from the underside of the jib down to the top of the hook block.
+  const hookTop = jibY - 28.8;
+  out.push({ pos: [hookX, (jibY - 0.6 + hookTop) / 2, mz], size: [0.12, jibY - 0.6 - hookTop, 0.12], mat: 'steel' });
+  out.push({ pos: [hookX, hookTop - 0.7, mz], size: [1.2, 1.4, 1.2], mat: 'orange' });
 }
 
 /** The central plaza: open air for dogfighting, a fountain, trees and an orange arch. */

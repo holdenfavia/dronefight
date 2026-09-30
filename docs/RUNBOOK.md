@@ -88,7 +88,7 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 |---|---|
 | FPV wing | **Hold** for a Cobra: physics-based, stronger the faster you enter, costs speed |
 | 3D quad | **Tap** for a smoke screen: hides you (glow, trail, marker, lead) for 6 s; 10 s cooldown |
-| Freestyle 5" | **Tap** to switch Guns / **guided missile**. Fire launches it; keep your crosshair on the target to steer (TOW-style). 2.5 s burn, self-destructs at 5 s, one in flight (firing again replaces it), pod of 3 |
+| Freestyle 5" | **Tap** to switch Guns / **guided missile**. Fire launches it; keep your crosshair on the target to steer (TOW-style). 2.5 s burn, self-destructs at 5 s, one in flight (firing again replaces it), pod of 3. **One-shot kill** if it detonates within 3 m (ADR-0018) |
 
 Numbers: `shared/abilities.ts` (smoke), `shared/missile.ts` (missile physics, shared by server and client), `COBRA` in `client/src/sim/wingModel.ts`.
 

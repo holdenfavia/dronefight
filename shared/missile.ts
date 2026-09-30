@@ -19,10 +19,16 @@ export const MISSILE = {
   gravity: 9.81,
   /** Guidance aims this far past the missile along your line of sight (m), so it flies onto the crosshair smoothly. */
   aimLead: 12,
-  /** Proximity fuse radius (m) and splash: `damage` at the center, 0 at `splashRadius`. */
+  /** Proximity fuse radius (m). */
   proximity: 2.5,
-  damage: 45,
-  splashRadius: 5,
+  /**
+   * One-shot kill (ADR-0018): anyone within `lethalRadius` of the blast dies, whatever their class.
+   * It's larger than the fuse radius, so a missile that fuses on you always kills.
+   * Beyond it, splash falls from `damage` to 0 at `splashRadius` (e.g. a wall hit next to you).
+   */
+  lethalRadius: 3,
+  damage: 50,
+  splashRadius: 6,
   /** Pod size, time to regenerate one (ms), and how many can fly at once (a TOW operator guides one). */
   pod: 3,
   regenMs: 4000,
@@ -112,10 +118,15 @@ export function stepMissile(m: MissileState, aim: AimRay | null, dt: number): bo
   return m.age < MISSILE.lifetimeSeconds;
 }
 
-/** Splash damage at `distance` metres from the blast. */
+/** Enough to destroy any drone class outright. */
+export const LETHAL_DAMAGE = 10_000;
+
+/** Splash damage at `distance` metres from the blast: lethal up close, then falling off (ADR-0018). */
 export function splashDamage(distance: number): number {
+  if (distance <= MISSILE.lethalRadius) return LETHAL_DAMAGE;
   if (distance >= MISSILE.splashRadius) return 0;
-  return Math.round(MISSILE.damage * (1 - distance / MISSILE.splashRadius));
+  const t = (distance - MISSILE.lethalRadius) / (MISSILE.splashRadius - MISSILE.lethalRadius);
+  return Math.round(MISSILE.damage * (1 - t));
 }
 
 /** Pod regeneration shared by server (authoritative) and client (HUD mirror). */

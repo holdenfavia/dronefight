@@ -78,35 +78,99 @@ export function concreteGroundTexture(anisotropy: number): THREE.CanvasTexture {
 export const CONCRETE_TILE_M = 4;
 
 export function concreteWallTexture(anisotropy: number): THREE.CanvasTexture {
-  const size = 256;
+  const size = 512;
   const [c, ctx] = canvas(size);
   const rand = seeded(23);
   ctx.fillStyle = '#c4c0b8';
   ctx.fillRect(0, 0, size, size);
-  speckle(ctx, size, 4000, rand, 0.2);
-  // Formwork tie holes and panel lines.
-  ctx.fillStyle = 'rgba(80,76,70,0.25)';
-  ctx.fillRect(0, 0, size, 1.5);
-  ctx.fillRect(0, 0, 1.5, size);
-  ctx.fillStyle = 'rgba(70,66,60,0.45)';
-  for (const [x, y] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]] as const) {
-    ctx.beginPath();
-    ctx.arc(x * size, y * size, 2.5, 0, Math.PI * 2);
-    ctx.fill();
+  // Soft tonal blotches, then aggregate speckle.
+  for (let i = 0; i < 26; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    const r = 30 + rand() * 90;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const shade = rand() < 0.55 ? '95,90,82' : '225,220,210';
+    g.addColorStop(0, `rgba(${shade},0.09)`);
+    g.addColorStop(1, `rgba(${shade},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  speckle(ctx, size, 14000, rand, 0.2);
+  // Faint rain streaks running the full tile height, so they continue across repeats.
+  for (let i = 0; i < 14; i++) {
+    const x = rand() * size;
+    const w = 2 + rand() * 6;
+    ctx.fillStyle = `rgba(90,86,78,${0.04 + rand() * 0.05})`;
+    ctx.fillRect(x, 0, w, size);
+  }
+  // Formwork: panel seams on the tile edges (the tile is 4 m: two 2 m panels each way) and tie holes.
+  for (const p of [0, size / 2]) {
+    ctx.fillStyle = 'rgba(70,66,60,0.35)';
+    ctx.fillRect(p, 0, 2, size);
+    ctx.fillRect(0, p, size, 2);
+    ctx.fillStyle = 'rgba(235,230,220,0.25)';
+    ctx.fillRect(p + 2, 0, 1, size);
+    ctx.fillRect(0, p + 2, size, 1);
+  }
+  for (const fx of [0.125, 0.375, 0.625, 0.875]) {
+    for (const fy of [0.125, 0.375, 0.625, 0.875]) {
+      ctx.fillStyle = 'rgba(60,56,50,0.5)';
+      ctx.beginPath();
+      ctx.arc(fx * size, fy * size, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(240,235,225,0.3)';
+      ctx.beginPath();
+      ctx.arc(fx * size + 1, fy * size + 1, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   return finish(c, anisotropy);
 }
-
-/** Painted metal: flat colour with subtle wear. Applied at PAINT_TILE_M metres per repeat. */
 export const PAINT_TILE_M = 2;
 
+/**
+ * Painted steel: base color with fine brushed streaks, a few chips showing darker metal, and light
+ * scratches. Everything spans or wraps the tile, so repeats don't show seams.
+ */
 export function paintedMetalTexture(anisotropy: number, base: string, seed: number): THREE.CanvasTexture {
-  const size = 128;
+  const size = 256;
   const [c, ctx] = canvas(size);
   const rand = seeded(seed);
   ctx.fillStyle = base;
   ctx.fillRect(0, 0, size, size);
-  speckle(ctx, size, 700, rand, 0.12);
+  // Brushed streaks along the beam (horizontal on the texture), very subtle.
+  for (let i = 0; i < 90; i++) {
+    const y = rand() * size;
+    ctx.fillStyle = rand() < 0.5 ? `rgba(0,0,0,${0.02 + rand() * 0.035})` : `rgba(255,255,255,${0.02 + rand() * 0.03})`;
+    ctx.fillRect(0, y, size, 1 + rand() * 1.5);
+  }
+  speckle(ctx, size, 1800, rand, 0.1);
+  // Paint chips: small irregular darker spots with a lighter rim.
+  for (let i = 0; i < 16; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    const r = 1.5 + rand() * 3.5;
+    ctx.fillStyle = 'rgba(45,42,40,0.55)';
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * (1 + rand()), r, rand() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  // Light scratches.
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < 10; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    const len = 10 + rand() * 30;
+    const a = rand() * Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+    ctx.stroke();
+  }
   return finish(c, anisotropy);
 }
 

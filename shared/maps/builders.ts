@@ -47,19 +47,34 @@ export function boundary(out: ArenaBox[], half: number, visibleHeight = 0, mat: 
   }
 }
 
-/** A scaffolding tower: four corner posts with horizontal rings every `levelHeight`. */
+/**
+ * A scaffolding tower: four corner posts with horizontal rings. Joints close flush: posts rise to the
+ * top of the top ring, ring beams end on the posts' outer faces, and there is always a ring at the top.
+ */
 export function tower(out: ArenaBox[], x: number, z: number, width: number, height: number, levelHeight = 4, y0 = 0, deck = true): void {
   const h = width / 2 - BEAM / 2;
+  const postTop = height + BEAM / 2;
   for (const [dx, dz] of [[-h, -h], [h, -h], [-h, h], [h, h]] as const) {
-    out.push({ pos: [x + dx, y0 + height / 2, z + dz], size: [BEAM, height, BEAM], mat: 'orange' });
+    out.push({ pos: [x + dx, y0 + postTop / 2, z + dz], size: [BEAM, postTop, BEAM], mat: 'orange' });
   }
-  for (let y = levelHeight; y <= height + 0.01; y += levelHeight) {
+  const levels: number[] = [];
+  for (let y = levelHeight; y < height - levelHeight * 0.4; y += levelHeight) levels.push(y);
+  levels.push(height);
+  for (const y of levels) {
     out.push({ pos: [x, y0 + y, z - h], size: [width, BEAM, BEAM], mat: 'orange' });
     out.push({ pos: [x, y0 + y, z + h], size: [width, BEAM, BEAM], mat: 'orange' });
     out.push({ pos: [x - h, y0 + y, z], size: [BEAM, BEAM, width], mat: 'orange' });
     out.push({ pos: [x + h, y0 + y, z], size: [BEAM, BEAM, width], mat: 'orange' });
   }
-  if (deck) out.push({ pos: [x, y0 + height + BEAM, z], size: [width, 0.3, width], mat: 'steel' });
+  // Deck resting exactly on the posts.
+  if (deck) out.push({ pos: [x, y0 + postTop + 0.15, z], size: [width, 0.3, width], mat: 'steel' });
+  // Concrete footings under ground-standing posts, so the tower is anchored rather than stuck on.
+  if (y0 === 0) footings(out, [[x - h, z - h], [x + h, z - h], [x - h, z + h], [x + h, z + h]], BEAM * 2.4);
+}
+
+/** Small concrete pads under posts that stand on the ground. */
+function footings(out: ArenaBox[], at: readonly (readonly [number, number])[], size: number, yawDeg = 0): void {
+  for (const [fx, fz] of at) out.push({ pos: [fx, 0.12, fz], size: [size, 0.24, size], rot: yawDeg ? [0, yawDeg, 0] : undefined, mat: 'concrete' });
 }
 
 /** A freestanding gate: two posts and a crossbar, rotated by yaw. */
@@ -70,16 +85,27 @@ export function gate(out: ArenaBox[], x: number, z: number, width: number, heigh
     out.push({ pos: [x + ox, y0 + height / 2, z + oz], size: [post, height, post], rot: [0, yawDeg, 0], mat: 'orange' });
   }
   out.push({ pos: [x, y0 + height + post / 2, z], size: [width + post * 2, post, post], rot: [0, yawDeg, 0], mat: 'orange' });
+  if (y0 === 0) {
+    const feet = [-1, 1].map((side) => {
+      const [ox, oz] = yawOffset((side * (width + post)) / 2, 0, yawDeg);
+      return [x + ox, z + oz] as const;
+    });
+    footings(out, feet, post * 2, yawDeg);
+  }
 }
 
-/** An open cube frame you can fly through from any side. */
+/**
+ * An open cube frame you can fly through from any side. Every edge spans the full outer size
+ * (size + BEAM), so the three beams meeting at each corner fill it completely.
+ */
 export function cubeFrame(out: ArenaBox[], x: number, y: number, z: number, size: number): void {
   const h = size / 2;
+  const full = size + BEAM;
   for (const a of [-h, h]) {
     for (const b of [-h, h]) {
-      out.push({ pos: [x + a, y, z + b], size: [BEAM, size, BEAM], mat: 'orange' });
-      out.push({ pos: [x, y + a, z + b], size: [size, BEAM, BEAM], mat: 'orange' });
-      out.push({ pos: [x + a, y + b, z], size: [BEAM, BEAM, size], mat: 'orange' });
+      out.push({ pos: [x + a, y, z + b], size: [BEAM, full, BEAM], mat: 'orange' });
+      out.push({ pos: [x, y + a, z + b], size: [full, BEAM, BEAM], mat: 'orange' });
+      out.push({ pos: [x + a, y + b, z], size: [BEAM, BEAM, full], mat: 'orange' });
     }
   }
 }

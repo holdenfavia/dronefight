@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SMOKE } from '../../shared/abilities.js';
-import { MISSILE, splashDamage } from '../../shared/missile.js';
+import { MISSILE } from '../../shared/missile.js';
 import { COMBAT } from '../../shared/combat.js';
 import { DRONE_CLASSES } from '../../shared/drones.js';
 import type { DroneState, ServerMessage, Vec3 } from '../../shared/protocol.js';
@@ -277,14 +277,29 @@ describe('guided missiles and smoke (ADR-0016)', () => {
     t.match.onShot('A', { ts: t.getNow(), p: t.posA, d: [dir[0] / len, dir[1] / len, dir[2] / len], w: 'rocket', rid }, t.getNow());
   }
 
-  it('a missile guided onto the target explodes by proximity and does splash damage', () => {
+  it('a missile guided onto the target is a one-shot kill (ADR-0018)', () => {
     const t = setup();
     t.advance(afterProtection);
     t.aimAt(t.posB());
     launch(t, [0, 0, -1], 1);
     t.advance(800);
     expect(t.log.some((m) => m.t === 'boom' && m.rid === 1)).toBe(true);
-    expect(FS.maxHp - (t.hp('B') ?? 0)).toBeGreaterThanOrEqual(splashDamage(MISSILE.proximity));
+    expect(t.log.some((m) => m.t === 'death' && m.id === 'B' && m.killer === 'A')).toBe(true);
+    expect(t.score('A')).toBe(1);
+  });
+
+  it('one missile also kills the toughest class (130 HP wing)', () => {
+    const t = setup();
+    t.match.onLoadout('B', 'wing', t.getNow());
+    t.match.onState('B', droneAt(t.posB(), [0, 0, 0], true), t.getNow());
+    t.advance(COMBAT.respawnMs + 100);
+    t.setB([-100, 30, -20]);
+    t.advance(afterProtection);
+    expect(t.match.state().players.find((p) => p.id === 'B')?.drone).toBe('wing');
+    t.aimAt(t.posB());
+    launch(t, [0, 0, -1], 7);
+    t.advance(800);
+    expect(t.log.some((m) => m.t === 'death' && m.id === 'B' && m.cause === 'shot' && m.killer === 'A')).toBe(true);
   });
 
   it('steers: launched 90° off, the shooter looks at the target and the missile comes onto it', () => {

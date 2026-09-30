@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildColliders } from './raycast.js';
-import { launchMissile, MISSILE, missileImpact, stepMissile, type AimRay } from './missile.js';
+import { DRONE_CLASSES } from './drones.js';
+import { launchMissile, MISSILE, missileImpact, splashDamage, stepMissile, type AimRay } from './missile.js';
 
 const dt = 1 / 120;
 
@@ -75,5 +76,25 @@ describe('missileImpact (shared by server and prediction)', () => {
   it('never fuses on a drone that is not in the target list (the shooter)', () => {
     // The shooter sits right on the launch point but is never passed as a target.
     expect(missileImpact([0, 5, 0], [0, 5, -1], [], [])).toBeNull();
+  });
+});
+
+describe('one-shot kill (ADR-0018)', () => {
+  it('the proximity fuse trips inside the lethal radius, so a fused missile always kills', () => {
+    expect(MISSILE.proximity).toBeLessThan(MISSILE.lethalRadius);
+  });
+
+  it('is lethal to every class within the lethal radius', () => {
+    for (const cls of Object.values(DRONE_CLASSES)) {
+      expect(splashDamage(0)).toBeGreaterThanOrEqual(cls.maxHp);
+      expect(splashDamage(MISSILE.lethalRadius)).toBeGreaterThanOrEqual(cls.maxHp);
+    }
+  });
+
+  it('falls off to nothing past the lethal radius', () => {
+    const edge = splashDamage(MISSILE.lethalRadius + 0.01);
+    expect(edge).toBeLessThanOrEqual(MISSILE.damage);
+    expect(splashDamage((MISSILE.lethalRadius + MISSILE.splashRadius) / 2)).toBeLessThan(edge);
+    expect(splashDamage(MISSILE.splashRadius)).toBe(0);
   });
 });
