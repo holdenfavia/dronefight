@@ -10,6 +10,7 @@ import { Missiles, SmokeClouds } from './combat/effects';
 import { buildColliders } from '../../shared/raycast';
 import { Particles } from './render/particles';
 import { TrainingGround } from './training/trainingGround';
+import { MovingProps } from './world/movers';
 import { interceptTime } from '../../shared/lead';
 import type { DroneState } from '../../shared/protocol';
 import { InputManager } from './input/inputManager';
@@ -53,6 +54,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   let currentMap: MapDef = getMap(settings.map);
   world.setMap(currentMap);
   arenaColliders.set(currentMap.boxes);
+  // Traffic, coaster, tractor (ADR-0020): posed from the shared clock.
+  const movingProps = new MovingProps(world.scene, physics);
+  movingProps.setMap(currentMap);
   const randomSpawn = (map: MapDef) => map.spawns[Math.floor(Math.random() * map.spawns.length)] ?? map.spawns[0]!;
   const drone = new Drone(physics, randomSpawn(currentMap), settings.drone);
   // Your own model (chase view), drawn at the size others see you at (ADR-0011, ADR-0013).
@@ -199,6 +203,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     currentMap = getMap(id);
     world.setMap(currentMap);
     arenaColliders.set(currentMap.boxes);
+    movingProps.setMap(currentMap);
     combat.setMap(currentMap);
   combat.onLocalRound = (o, d, speed, damage, maxDist) => training.addRound(o, d, speed, damage, maxDist);
     mapColliders = buildColliders(currentMap.boxes);
@@ -209,6 +214,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
   function applySettings(): void {
     world.setShadows(settings.graphics.shadows);
+    world.setGridStyle(settings.graphics.gridTextures);
     audio.setVolume(settings.audio.volume);
     audio.setMuted(settings.audio.muted);
     audio.setMix(settings.audio.own, settings.audio.others);
@@ -386,6 +392,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     if (net.map && net.map !== currentMap.id) switchMap(net.map);
     menu.tick();
     hudRoot.hidden = menu.visible;
+
+    // Moving props keep moving while the menu is open. In a room everyone uses server time, so both
+    // pilots see them in the same place (ADR-0020).
+    movingProps.update((net.inRoom ? net.serverNow() : performance.now()) / 1000);
 
     if (!paused) {
       drone.updateArming(control);

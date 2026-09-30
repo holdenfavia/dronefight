@@ -23,3 +23,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0017](0017-training-ground.md) | Training map with practice bots (stationary, fixed-path, random, evasive); solo only, client-side hit checks, hits/kills/accuracy HUD | Accepted |
 | [0018](0018-missile-one-shot.md) | Guided missile is a one-shot kill: anyone within 3 m of the blast dies (fuse is 2.5 m); 50→0 splash out to 6 m | Accepted |
 | [0019](0019-playground-map.md) | Playground map: giant park (playhouse, slides, swings, monkey bars, lattice, seesaw…) in solid colors with baked grids; exception to ADR-0007 for this map | Accepted |
+| [0020](0020-movers-and-grid-option.md) | Moving props from the shared clock (Downtown traffic, Playground roller coaster, Yard tractor): solid to fly into, not to rounds; Settings option for grid textures on every map | Accepted |

@@ -1,4 +1,5 @@
 import { boundary, pads, spawnFacingCenter } from './builders.js';
+import { coasterTiming, routeFromPoints, type MoverDef, type V3 } from './movers.js';
 import type { ArenaBox, ArenaMaterial, MapDef, SpawnPoint } from './types.js';
 
 /**
@@ -102,6 +103,57 @@ function tree(out: ArenaBox[], x: number, z: number, h: number): void {
   box(out, [x, h / 2, z], [1.6, h, 1.6], 'gridOrange');
   box(out, [x, h + 3, z], [9, 7, 9], 'gridGreen');
   box(out, [x, h + 7.2, z], [5.5, 2.4, 5.5], 'gridGreen');
+}
+
+/**
+ * Roller coaster (ADR-0020): a hilly loop around the park (an ellipse, 128 x 108 m, between 8 and 36 m
+ * up), clear of every other structure. The track is static boxes; the train is a mover.
+ */
+const COASTER_POINTS: V3[] = [];
+for (let i = 0; i < 240; i++) {
+  const a = (i / 240) * Math.PI * 2;
+  COASTER_POINTS.push([128 * Math.cos(a), 22 + 9 * Math.sin(3 * a) + 5 * Math.sin(2 * a + 1), 108 * Math.sin(a)]);
+}
+const COASTER_ROUTE = routeFromPoints(COASTER_POINTS);
+const COASTER_TIMING = coasterTiming(COASTER_ROUTE, 6);
+
+function coaster(out: ArenaBox[]): void {
+  const n = COASTER_POINTS.length;
+  for (let i = 0; i < n; i++) {
+    const a = COASTER_POINTS[i]!;
+    const b = COASTER_POINTS[(i + 1) % n]!;
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const dz = b[2] - a[2];
+    const flat = Math.hypot(dx, dz);
+    const len = Math.hypot(flat, dy) + 0.35; // slight overlap so segments join without gaps
+    // Length along local X: yaw about Y, pitch about Z (Euler XYZ with X = 0).
+    const rot: [number, number, number] = [0, Math.atan2(-dz, dx) * DEG, Math.atan2(dy, flat) * DEG];
+    const mid: [number, number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+    box(out, mid, [len, 0.5, 2.6], 'gridRed', rot);
+    // Rails either side, level with the bed's top.
+    const lx = -dz / flat;
+    const lz = dx / flat;
+    for (const s of [-1, 1]) box(out, [mid[0] + lx * s * 1.15, mid[1] + 0.4, mid[2] + lz * s * 1.15], [len, 0.3, 0.3], 'gridWhite', rot);
+    // Support columns every 8 segments, down to the ground, skipped near spawns.
+    if (i % 8 === 0) {
+      const nearSpawn = SPAWNS.some((sp) => Math.hypot(sp.pos[0] - a[0], sp.pos[2] - a[2]) < 12);
+      if (!nearSpawn) box(out, [a[0], (a[1] - 0.25) / 2, a[2]], [0.9, a[1] - 0.25, 0.9], 'gridWhite');
+    }
+  }
+}
+
+function coasterTrain(): MoverDef[] {
+  const colors = ['#f5c63a', '#2f7fe0', '#45b865', '#8a5cd6'];
+  return colors.map((color, i) => ({
+    kind: 'coasterCar' as const,
+    route: COASTER_ROUTE,
+    offset: -i * 4,
+    timing: COASTER_TIMING,
+    color,
+    size: [2.2, 1.6, 3.6] as V3,
+    lift: 1.05,
+  }));
 }
 
 function build(): ArenaBox[] {
@@ -226,6 +278,8 @@ function build(): ArenaBox[] {
     }
   }
 
+  coaster(out);
+
   // --- Trees, benches and hopscotch around the paths.
   for (const [x, z, th] of [
     [-45, 120, 9],
@@ -270,4 +324,5 @@ export const PLAYGROUND: MapDef = {
   decor: buildDecor(),
   spawns: SPAWNS,
   ground: 'grid',
+  movers: coasterTrain(),
 };

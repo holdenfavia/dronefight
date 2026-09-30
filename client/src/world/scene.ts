@@ -47,6 +47,8 @@ export interface World {
   setShadows(enabled: boolean): void;
   /** Swap in a map's ground, structures and decor (ADR-0012). Environment and lights stay. */
   setMap(map: MapDef): void;
+  /** Settings option: flat colors with grids on every map instead of realistic textures (ADR-0020). */
+  setGridStyle(on: boolean): void;
 }
 
 export function buildWorld(renderer: THREE.WebGPURenderer): World {
@@ -76,6 +78,11 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
   };
   const groundGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
   let arena: THREE.Group | null = null;
+  let currentGround: MapDef['ground'] = 'concrete';
+  let groundMesh: THREE.Mesh | null = null;
+  let gridStyle = false;
+  const gridAlternates = gridVersions(materials, aniso);
+  const materialFor = (key: VisibleMaterial) => (gridStyle ? gridAlternates[key] : materials[key].material);
 
   function setMap(map: MapDef): void {
     if (arena) {
@@ -86,10 +93,12 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
     }
     arena = new THREE.Group();
 
-    const ground = new THREE.Mesh(groundGeo, grounds[map.ground]);
+    currentGround = map.ground;
+    const ground = new THREE.Mesh(groundGeo, gridStyle ? grounds.grid : grounds[map.ground]);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     arena.add(ground);
+    groundMesh = ground;
 
     // Structures and decor: one merged mesh (one draw call) per material each.
     for (const [boxes, solid] of [
@@ -106,7 +115,8 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
       }
       for (const [mat, list] of byMaterial) {
         const def = materials[mat];
-        const mesh = new THREE.Mesh(mergeBoxes(list, def.tileM), def.material);
+        const mesh = new THREE.Mesh(mergeBoxes(list, def.tileM), materialFor(mat));
+        mesh.userData.matKey = mat;
         mesh.castShadow = solid;
         mesh.receiveShadow = true;
         arena.add(mesh);
@@ -129,10 +139,20 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
     sun.shadow.needsUpdate = true;
   }
 
+  function setGridStyle(on: boolean): void {
+    if (on === gridStyle) return;
+    gridStyle = on;
+    arena?.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.userData.matKey) o.material = materialFor(o.userData.matKey as VisibleMaterial);
+    });
+    if (groundMesh) groundMesh.material = on ? grounds.grid : grounds[currentGround];
+  }
+
   return {
     scene,
     sun,
     setMap,
+    setGridStyle,
     setShadows(enabled: boolean) {
       if (renderer.shadowMap.enabled === enabled && sun.castShadow === enabled) return;
       renderer.shadowMap.enabled = enabled;
@@ -264,6 +284,41 @@ function arenaMaterials(aniso: number): Record<VisibleMaterial, MaterialDef> {
   function grid(color: string): MaterialDef {
     return { material: new THREE.MeshStandardMaterial({ map: gridTexture(aniso, color), roughness: 0.75, metalness: 0 }), tileM: GRID_TILE_M };
   }
+}
+
+/** Flat colors standing in for each realistic material when grid textures are on (ADR-0020). */
+const GRID_EQUIVALENT: Record<Exclude<VisibleMaterial, `grid${string}` | 'pad'>, string> = {
+  concrete: '#b9bdc3',
+  orange: '#ff7a26',
+  steel: '#44484e',
+  white: '#eeeeec',
+  facade: '#d8d0c2',
+  glass: '#4a86c4',
+  brick: '#b85c46',
+  roof: '#62666c',
+  sidewalk: '#cbc7bf',
+  foliage: '#45b865',
+  paint: '#f2f1ec',
+};
+
+/**
+ * Grid-style versions of every material. Each keeps grid lines 1 m apart in the world: the mesh UVs
+ * were built for the original texture's tile size, so the grid texture's repeat is scaled to match.
+ */
+function gridVersions(materials: Record<VisibleMaterial, MaterialDef>, aniso: number): Record<VisibleMaterial, THREE.Material> {
+  const out = {} as Record<VisibleMaterial, THREE.Material>;
+  for (const key of Object.keys(materials) as VisibleMaterial[]) {
+    const def = materials[key];
+    if (key.startsWith('grid') || key === 'pad') {
+      out[key] = def.material;
+      continue;
+    }
+    const tex = gridTexture(aniso, GRID_EQUIVALENT[key as keyof typeof GRID_EQUIVALENT]);
+    const scale = def.tileM > 0 ? def.tileM / GRID_TILE_M : 1;
+    tex.repeat.set(scale, scale);
+    out[key] = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75, metalness: 0 });
+  }
+  return out;
 }
 
 const tmpEuler = new THREE.Euler();

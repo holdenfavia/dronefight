@@ -1,3 +1,5 @@
+import type { MoverDef } from './movers.js';
+
 // Map data shared by client and server (ADR-0012). Rendering, flight collisions and server-side
 // bullet checks are all generated from the same boxes, so what you see is exactly what you hit.
 
@@ -53,4 +55,6 @@ export interface MapDef {
   /** 8 per map; the server picks one at random away from opponents (ADR-0012). */
   spawns: readonly SpawnPoint[];
   ground: 'concrete' | 'asphalt' | 'grid';
+  /** Moving props: traffic, coaster trains, tractors (ADR-0020). Client-side only. */
+  movers?: readonly MoverDef[];
 }

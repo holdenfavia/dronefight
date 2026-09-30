@@ -215,6 +215,7 @@ export class Menu {
         <label class="field">Other pilots <input type="range" min="0" max="1" step="0.05" value="${s.audio.others}" data-audio="others"><span>${Math.round(s.audio.others * 100)}%</span></label>
         <label class="field check"><input type="checkbox" data-mute ${s.audio.muted ? 'checked' : ''}> Mute (M)</label>
         <label class="field check"><input type="checkbox" data-gfx="shadows" ${s.graphics.shadows ? 'checked' : ''}> Shadows</label>
+        <label class="field check"><input type="checkbox" data-gfx="gridTextures" ${s.graphics.gridTextures ? 'checked' : ''}> Simplified grid textures</label>
         <label class="field check"><input type="checkbox" data-gfx="showDebug" ${s.graphics.showDebug ? 'checked' : ''}> Debug readout (FPS, renderer)</label>
         <div class="actions">
           <button class="btn ghost" data-defaults>Reset to defaults</button>
@@ -253,7 +254,7 @@ export class Menu {
     });
     this.root.querySelectorAll<HTMLInputElement>('[data-gfx]').forEach((el) =>
       el.addEventListener('change', () => {
-        const key = el.dataset.gfx as 'shadows' | 'showDebug';
+        const key = el.dataset.gfx as 'shadows' | 'showDebug' | 'gridTextures';
         s.graphics[key] = el.checked;
         this.commit();
       }),

@@ -82,6 +82,8 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Texture pass: painted steel (streaks, chips, scratches), concrete walls (formwork seams, tie holes, rain streaks)
 - [ ] Art pass on arena per ADR-0007 (more)
 - [x] Playground map: giant park in solid-color grid style (ADR-0019)
+- [x] Moving props (ADR-0020): Downtown traffic, Playground roller coaster, Yard tractor; Settings option for grid textures on every map
+- [ ] Eyeball the coaster, tractor and grid toggle in play
 - [ ] Additional maps
 - [x] Sound (motors, hits, UI): procedural, ADR-0010
 - [ ] Sound tuning pass after real matches

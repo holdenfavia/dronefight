@@ -8,7 +8,7 @@ export type CameraView = 'fpv' | 'chase';
 export interface Settings {
   rates: Rates;
   camera: { uptiltDeg: number; fovHorizontalDeg: number; view: CameraView };
-  graphics: { shadows: boolean; showDebug: boolean };
+  graphics: { shadows: boolean; showDebug: boolean; gridTextures: boolean };
   /** Master volume, then your own drone vs other pilots (0..1 each). */
   audio: { volume: number; own: number; others: number; muted: boolean };
   /** Map for solo play and for rooms you create (ADR-0012). */
@@ -27,7 +27,7 @@ export function defaultSettings(): Settings {
       fovHorizontalDeg: CAMERA_DEFAULTS.fovHorizontalDeg,
       view: 'fpv',
     },
-    graphics: { shadows: true, showDebug: true },
+    graphics: { shadows: true, showDebug: true, gridTextures: false },
     audio: { volume: 0.7, own: 0.8, others: 1, muted: false },
     map: DEFAULT_MAP,
     drone: DEFAULT_DRONE,

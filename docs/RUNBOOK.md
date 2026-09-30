@@ -105,6 +105,13 @@ Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, s
 - Pick the map with **Map: … ▸** on the main menu. It applies to solo flying and to rooms you create; people joining get the room's map.
 - Mountains, clouds and the sun glow are in `client/src/world/scenery.ts`; building textures in `textures.ts`.
 
+### Moving props and grid textures (ADR-0020)
+
+- **Downtown** has 10 cars on two loops (inner at 16 m/s, outer at 20 m/s), the **Playground** a roller coaster train, the **Yard** a tractor towing a trailer. They're posed from the shared clock (server time in a room), so both pilots see them in the same place.
+- They're solid to fly into (you crash), but **rounds and missiles pass through them**: the server doesn't simulate them.
+- Routes and speeds are in each map file under `movers`; `shared/maps/moverClearance.test.ts` checks every lap stays clear of geometry and spawn pads.
+- **Settings → Simplified grid textures** swaps every realistic texture for flat colors with 1 m grids (Playground style) on any map.
+
 ### Sound
 
 All sound is synthesized in `client/src/audio/` (ADR-0010); there are no audio files. Motor profiles (quad, wing) are in `motorVoice.ts`, effects in `sfx.ts`. **Settings** has master volume plus **My drone** and **Other pilots** (their motors and gunfire, positioned so you can hear where they are). M toggles mute.

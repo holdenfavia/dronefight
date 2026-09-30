@@ -1,4 +1,5 @@
 import { BEAM, boundary, cubeFrame, gate, mulberry32, pads, spawnFacingCenter, tower } from './builders.js';
+import { routeFromPoints, roundedRect, type MoverDef, type V3 } from './movers.js';
 import type { ArenaBox, ArenaMaterial, MapDef, SpawnPoint } from './types.js';
 
 /**
@@ -273,6 +274,30 @@ function buildDecor(): ArenaBox[] {
   return out;
 }
 
+/**
+ * Traffic (ADR-0020): two loops, each car on the inside lane of its loop (2.2 m in from the street
+ * center), which clears parked cars (from 3.5 m out) and passes every intersection center with room.
+ */
+const LANE = 2.2;
+const CAR_COLORS = ['#e5483e', '#2f7fe0', '#f5c63a', '#eeeeec', '#45b865', '#26282b', '#ff8a2a', '#8a5cd6'];
+
+function traffic(): MoverDef[] {
+  const cars: MoverDef[] = [];
+  const size: V3 = [2, 1.5, 4.4];
+  const loops = [
+    { half: 30 - LANE, speed: 16, count: 4, clockwise: false },
+    { half: 90 - LANE, speed: 20, count: 6, clockwise: true },
+  ];
+  let c = 0;
+  for (const loop of loops) {
+    const route = routeFromPoints(roundedRect(-loop.half, -loop.half, loop.half, loop.half, 5, 0, loop.clockwise));
+    for (let i = 0; i < loop.count; i++) {
+      cars.push({ kind: 'car', route, offset: (route.length / loop.count) * i, speed: loop.speed, color: CAR_COLORS[c++ % CAR_COLORS.length]!, size, lift: 0.75 });
+    }
+  }
+  return cars;
+}
+
 export const DOWNTOWN: MapDef = {
   id: 'downtown',
   name: 'Downtown',
@@ -281,4 +306,5 @@ export const DOWNTOWN: MapDef = {
   decor: buildDecor(),
   spawns: SPAWNS,
   ground: 'asphalt',
+  movers: traffic(),
 };

@@ -1,4 +1,5 @@
 import { boundary, cubeFrame, gate, mulberry32, pads, spawnFacingCenter, tower } from './builders.js';
+import { routeFromPoints, roundedRect } from './movers.js';
 import type { ArenaBox, ArenaMaterial, MapDef, SpawnPoint } from './types.js';
 
 // The Yard: the original industrial arena (ADR-0007). Open space, scaffolding, an overpass, gates.
@@ -99,6 +100,9 @@ function build(): ArenaBox[] {
   return out;
 }
 
+/** Tractor route (ADR-0020): a farm loop in the open ground north of the gates, clear of spawns. */
+const TRACTOR_ROUTE = routeFromPoints(roundedRect(-50, 50, 20, 100, 8, 0, false));
+
 export const YARD: MapDef = {
   id: 'yard',
   name: 'Yard',
@@ -107,4 +111,8 @@ export const YARD: MapDef = {
   decor: [],
   spawns: SPAWNS,
   ground: 'concrete',
+  movers: [
+    { kind: 'tractor', route: TRACTOR_ROUTE, offset: 0, speed: 7, color: '#3f9a4a', size: [2.6, 3, 4.6], lift: 1.5 },
+    { kind: 'trailer', route: TRACTOR_ROUTE, offset: -7.2, speed: 7, color: '#c9a24a', size: [2.4, 1.8, 4.2], lift: 0.9 },
+  ],
 };
