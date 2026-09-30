@@ -324,3 +324,55 @@ export function asphaltTexture(anisotropy: number): THREE.CanvasTexture {
   speckle(ctx, size, 14000, rand, 0.22);
   return finish(c, anisotropy);
 }
+
+// ---- Playground grid style (ADR-0019): flat solid colors with a baked grid, nothing else.
+
+/** One grid texture covers GRID_TILE_M metres: four 1 m cells each way, bolder lines on the 4 m edge. */
+export const GRID_TILE_M = 4;
+
+export function gridTexture(anisotropy: number, color: string): THREE.CanvasTexture {
+  const size = 256;
+  const cell = size / GRID_TILE_M;
+  const [c, ctx] = canvas(size);
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, size, size);
+  // Thin 1 m lines, darker with a faint light edge so they read on any color.
+  for (let i = 1; i < GRID_TILE_M; i++) {
+    const p = i * cell;
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.fillRect(p - 1, 0, 2, size);
+    ctx.fillRect(0, p - 1, size, 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(p + 1, 0, 1, size);
+    ctx.fillRect(0, p + 1, size, 1);
+  }
+  // Bolder 4 m lines on the tile edges (half on each side, so they join seamlessly).
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(0, 0, size, 3);
+  ctx.fillRect(0, size - 3, size, 3);
+  ctx.fillRect(0, 0, 3, size);
+  ctx.fillRect(size - 3, 0, 3, size);
+  return finish(c, anisotropy);
+}
+
+/** The Playground ground: pale blue-grey grid, 1 m cells with a bolder line every GROUND_TILE_M. */
+export function gridGroundTexture(anisotropy: number): THREE.CanvasTexture {
+  const size = 512;
+  const cell = size / GROUND_TILE_M;
+  const [c, ctx] = canvas(size);
+  // Mid blue-grey: under the bright sun a lighter ground washes out and hides the grid.
+  ctx.fillStyle = '#aebacb';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 1; i < GROUND_TILE_M; i++) {
+    const p = i * cell;
+    ctx.fillStyle = 'rgba(30,45,75,0.22)';
+    ctx.fillRect(p - 1, 0, 2, size);
+    ctx.fillRect(0, p - 1, size, 2);
+  }
+  ctx.fillStyle = 'rgba(30,45,75,0.42)';
+  ctx.fillRect(0, 0, size, 3);
+  ctx.fillRect(0, size - 3, size, 3);
+  ctx.fillRect(0, 0, 3, size);
+  ctx.fillRect(size - 3, 0, 3, size);
+  return finish(c, anisotropy);
+}

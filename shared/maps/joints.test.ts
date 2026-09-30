@@ -69,3 +69,52 @@ describe('structure joints', () => {
     expect(jib.pos[1] - jib.size[1] / 2).toBeCloseTo(mastTop, 6);
   });
 });
+
+describe('Playground joints (ADR-0019)', () => {
+  const boxes = MAPS.playground.boxes;
+  const deckTop = 21;
+
+  it('the big slide starts at the playhouse deck edge and reaches the ground', () => {
+    const bed = boxes.find((b) => b.mat === 'gridYellow' && b.rot && b.size[2] === 7)!;
+    expect(inside(bed, [10.2, deckTop - 0.1, 0])).toBe(true);
+    expect(inside(bed, [51.5, 0.1, 0])).toBe(true);
+  });
+
+  it('the steep slide does the same on the other side', () => {
+    const bed = boxes.find((b) => b.mat === 'gridBlue' && b.rot && b.size[2] === 6)!;
+    // 39° slope: 0.2 m out from the deck edge the surface is already ~0.16 m lower.
+    expect(inside(bed, [-10.2, deckTop - 0.2 * Math.tan(Math.atan2(21, 26)) - 0.1, 0])).toBe(true);
+    expect(inside(bed, [-35.5, 0.1, 0])).toBe(true);
+  });
+
+  it('the stairs reach the deck', () => {
+    const steps = boxes.filter((b) => b.mat === 'gridGreen' && b.size[0] === 6 && b.size[1] === 1.05);
+    const top = Math.max(...steps.map((b) => b.pos[1] + b.size[1] / 2));
+    expect(Math.abs(top - deckTop)).toBeLessThan(0.1);
+  });
+
+  it('the climbing lattice has closed top corners', () => {
+    const lat = boxes.filter((b) => b.mat === 'gridPurple' && Math.max(...b.size) > 20);
+    // Lattice at (80, 55): 3 cells of 8 m, bars 0.6 m. Top corner just inside the outer edge.
+    const e = 12 + 0.3 - 0.05;
+    for (const x of [80 - e, 80 + e]) for (const z of [55 - e, 55 + e]) expect(covered(lat, [x, 24 + 0.6 - 0.05, z]), `corner ${x},${z}`).toBe(true);
+  });
+
+  it('every swing seat hangs from its chains', () => {
+    const seats = boxes.filter((b) => b.size[0] === 4 && b.size[1] === 0.4 && b.size[2] === 1.8);
+    const chains = boxes.filter((b) => b.size[1] === 17 && b.size[0] === 0.25);
+    expect(seats).toHaveLength(3);
+    for (const seat of seats) {
+      // A point on the seat's top surface directly under each chain is inside that chain (they overlap).
+      const mine = chains.filter((c) => Math.abs(c.pos[0] - seat.pos[0]) < 2);
+      expect(mine).toHaveLength(2);
+      for (const c of mine) {
+        const a = ((c.rot?.[0] ?? 0) * Math.PI) / 180;
+        // Bottom end of the chain: center plus half its length along its (rotated) down direction.
+        const bottom: [number, number, number] = [c.pos[0], c.pos[1] - 8.5 * Math.cos(a), c.pos[2] - 8.5 * Math.sin(a)];
+        const dist = Math.hypot(bottom[1] - seat.pos[1], bottom[2] - seat.pos[2]);
+        expect(dist, `chain at x=${c.pos[0]}`).toBeLessThan(0.6);
+      }
+    }
+  });
+});

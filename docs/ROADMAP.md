@@ -81,6 +81,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Structure polish: flush joints (cube frames, tower tops, decks, crane), exact Yard ramp, flush overpass rails, container rows, post footings; guarded by `shared/maps/joints.test.ts`
 - [x] Texture pass: painted steel (streaks, chips, scratches), concrete walls (formwork seams, tie holes, rain streaks)
 - [ ] Art pass on arena per ADR-0007 (more)
+- [x] Playground map: giant park in solid-color grid style (ADR-0019)
 - [ ] Additional maps
 - [x] Sound (motors, hits, UI): procedural, ADR-0010
 - [ ] Sound tuning pass after real matches

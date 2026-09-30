@@ -100,7 +100,7 @@ Pick **Map: Training** and **Fly solo**. Bots: **white** stationary (40/80/130/1
 
 Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, so the server needs a restart after editing them.
 
-- `downtown.ts`, `yard.ts`: layout. Everything is boxes (`ArenaBox`); `boxes` collide, `decor` is scenery only.
+- `downtown.ts`, `yard.ts`, `playground.ts`, `training.ts`: layout. The Playground uses the `grid*` materials (flat colors with a baked 1 m / 4 m grid, ADR-0019); other maps use the textured materials. Everything is boxes (`ArenaBox`); `boxes` collide, `decor` is scenery only.
 - Each map needs exactly 8 spawns. `shared/maps/maps.test.ts` checks every spawn has open space around and above it. Run `npm test` after moving things.
 - Pick the map with **Map: … ▸** on the main menu. It applies to solo flying and to rooms you create; people joining get the room's map.
 - Mountains, clouds and the sun glow are in `client/src/world/scenery.ts`; building textures in `textures.ts`.

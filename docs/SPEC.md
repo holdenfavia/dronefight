@@ -54,6 +54,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 
 - **Downtown** (default): city blocks, towers, streets, parking garage, skybridge, construction crane.
 - **Yard**: the original industrial arena.
+- **Playground** (ADR-0019): a giant playground park in solid colors with grid lines.
 - **Training** (ADR-0017): solo practice with bots (white stationary, blue fixed paths, yellow random, red evasive), hits/kills/accuracy.
 - The room creator picks the map. Distant mountains, clouds and sun glow on every map.
 

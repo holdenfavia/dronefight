@@ -11,6 +11,9 @@ import {
   facadeTexture,
   foliageTexture,
   glassTexture,
+  GRID_TILE_M,
+  gridGroundTexture,
+  gridTexture,
   roofTexture,
   SIDEWALK_TILE_M,
   sidewalkTexture,
@@ -69,6 +72,7 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
   const grounds = {
     concrete: groundMaterial(concreteGroundTexture(aniso)),
     asphalt: groundMaterial(asphaltTexture(aniso)),
+    grid: groundMaterial(gridGroundTexture(aniso)),
   };
   const groundGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
   let arena: THREE.Group | null = null;
@@ -246,7 +250,20 @@ function arenaMaterials(aniso: number): Record<VisibleMaterial, MaterialDef> {
       material: new THREE.MeshStandardMaterial({ color: '#f2f1ec', roughness: 0.7 }),
       tileM: 0,
     },
+    // Playground grid colors (ADR-0019).
+    gridRed: grid('#e5483e'),
+    gridBlue: grid('#2f7fe0'),
+    gridYellow: grid('#f5c63a'),
+    gridGreen: grid('#45b865'),
+    gridPurple: grid('#8a5cd6'),
+    gridOrange: grid('#ff8a2a'),
+    gridWhite: grid('#eeeeec'),
+    gridSand: grid('#e6d49c'),
   };
+
+  function grid(color: string): MaterialDef {
+    return { material: new THREE.MeshStandardMaterial({ map: gridTexture(aniso, color), roughness: 0.75, metalness: 0 }), tileM: GRID_TILE_M };
+  }
 }
 
 const tmpEuler = new THREE.Euler();
