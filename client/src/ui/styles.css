@@ -56,6 +56,52 @@ body {
   opacity: 0.9;
 }
 
+.osd-net {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.osd-net.warn {
+  color: var(--orange);
+}
+
+.osd-marker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: -9px 0 0 -30px;
+  width: 60px;
+  will-change: transform;
+}
+
+.osd-marker[hidden] {
+  display: none;
+}
+
+.osd-marker-diamond {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  transform: rotate(45deg);
+  box-shadow: 0 0 2px #000;
+}
+
+.osd-marker.edge .osd-marker-diamond {
+  border-color: var(--orange);
+  background: rgba(255, 106, 19, 0.35);
+}
+
+.osd-marker-label {
+  font-size: 13px;
+}
+
 .osd-cross {
   position: absolute;
   top: 50%;
@@ -442,6 +488,75 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   font-size: 15px;
+}
+
+/* ---------- Online ---------- */
+
+.room-code {
+  font-size: 72px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-align: center;
+  margin: 6px 0 4px;
+}
+
+.room-hint {
+  font-family: var(--marker);
+  text-align: center;
+  color: var(--orange-dark);
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.peer-status {
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 17px;
+  text-align: center;
+  margin: 8px 0;
+}
+
+.peer-status.ok {
+  color: #2e7d32;
+}
+
+.join-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.join-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--ui);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 6px 10px;
+  border: 3px solid var(--ink);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.divider {
+  text-align: center;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 14px 0 0;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+}
+
+.net-error {
+  color: #c62828;
+  font-weight: 700;
+  margin-top: 10px;
+  min-height: 1em;
 }
 
 @media (max-width: 600px) {

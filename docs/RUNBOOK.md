@@ -22,7 +22,25 @@ Other commands:
 | `npm test` | Unit tests (rates maths, flight model, calibration) |
 | `npm run typecheck` | Type-check client and server |
 | `npm run build` | Production build to `dist/client` |
-| `npm run server` | Bare WebSocket server on port 8787 (Phase 2 work; not needed yet) |
+| `npm run server` | Room server on port 8787 (needed for online play) |
+
+### Playing online (local server)
+
+Run the server and the client in two terminals:
+
+```bash
+npm run server
+```
+
+```bash
+npm run dev
+```
+
+In the game: **Play online → Create room**, then read the 4-letter code to your friend (or **Copy invite link**; `?room=CODE` joins automatically).
+
+- **Same Wi-Fi:** start the client with `npm run dev -- --host`, then your friend opens `http://<your-computer's-IP>:5173`. The client connects to the server on the same host, port 8787.
+- **Different houses:** needs the server deployed (Phase 2 roadmap item).
+- **Custom server address:** set `VITE_SERVER_URL=wss://your-server.example` when running or building the client.
 
 ### In-game controls
 
@@ -63,7 +81,11 @@ Connect via USB and choose **Joystick (HID)** mode when prompted. Then follow st
 
 ### Remote drone looks delayed
 
-Check the network HUD. Ping should be under ~150 ms and remote delay under 250 ms (Hard rule 1). If the delay **grows over time**, that is a bug (a snapshot backlog), not the internet. See ADR-0004.
+Check the network HUD (top right). It shows ping and **delay**: how far behind real time the other drone is on your screen. Delay = the fixed 100 ms smoothing buffer + your friend's upload time, so expect **~100–200 ms**. Over 250 ms turns orange (Hard rule 1).
+
+- If the delay **grows over time**, that is a bug (a snapshot backlog), not the internet. See ADR-0004. The buffer is capped at 8 snapshots, and the server drops (never queues) updates to a backed-up connection. The server logs `droppedSnapshots` every 30 s while players are connected.
+- "Pilot signal lost" means no update for 0.6 s (their tab is in the background, or their connection stalled). When updates resume, the drone snaps to its current position. Missed time is never replayed.
+- Browsers pause background tabs. If your friend switches away from the game, their drone freezes for you until they come back.
 
 ## Deploy
 

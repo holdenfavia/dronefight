@@ -1,10 +1,11 @@
 import { DEFAULT_RATES, type AxisRates } from '../config';
 import { CalibrationScreen } from '../input/calibrationScreen';
 import type { InputManager } from '../input/inputManager';
+import type { NetClient } from '../net/netClient';
 import { maxRate } from '../sim/rates';
 import { defaultSettings, saveSettings, type Settings } from '../settings';
 
-type Screen = 'main' | 'settings' | 'controller';
+type Screen = 'main' | 'settings' | 'controller' | 'online';
 
 export interface MenuCallbacks {
   onFly(): void;
@@ -22,6 +23,7 @@ export class Menu {
     private readonly root: HTMLElement,
     private readonly input: InputManager,
     private readonly settings: Settings,
+    private readonly net: NetClient,
     private readonly callbacks: MenuCallbacks,
   ) {
     this.calibration = new CalibrationScreen(root, input, () => this.show('main'));
@@ -34,6 +36,7 @@ export class Menu {
     this.root.hidden = false;
     if (screen === 'main') this.renderMain();
     else if (screen === 'settings') this.renderSettings();
+    else if (screen === 'online') this.renderOnline();
     else this.calibration.open();
   }
 
@@ -49,6 +52,13 @@ export class Menu {
     else this.callbacks.onFly();
   }
 
+  /** Network status changed: refresh whatever shows it. */
+  onNetChange(): void {
+    if (!this.visible) return;
+    if (this.screen === 'online') this.renderOnline();
+    if (this.screen === 'main') this.renderMain();
+  }
+
   tick(): void {
     if (!this.visible) return;
     if (this.screen === 'controller') this.calibration.tick();
@@ -62,13 +72,15 @@ export class Menu {
         <div class="scribble">flight test · phase 1</div>
       </div>
       <div class="panel main-menu">
-        <button class="btn big" data-fly>Fly</button>
+        <button class="btn big" data-fly>${this.net.inRoom ? 'Fly' : 'Fly solo'}</button>
+        <button class="btn ghost" data-online>${this.net.inRoom ? `Room ${this.net.room}` : 'Play online'}</button>
         <button class="btn ghost" data-controller>Controller setup</button>
         <button class="btn ghost" data-settings>Settings</button>
         <div class="controller-status" data-status></div>
       </div>
       <div class="keys">ESC menu · R reset · C camera · keyboard: W/S throttle, A/D yaw, arrows pitch/roll</div>`;
     this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.callbacks.onFly());
+    this.root.querySelector('[data-online]')?.addEventListener('click', () => this.show('online'));
     this.root.querySelector('[data-controller]')?.addEventListener('click', () => this.show('controller'));
     this.root.querySelector('[data-settings]')?.addEventListener('click', () => this.show('settings'));
     this.updateControllerStatus();
@@ -88,6 +100,62 @@ export class Menu {
       el.textContent = text;
       el.classList.toggle('warn', !ready);
     }
+  }
+
+  private renderOnline(): void {
+    const net = this.net;
+    const busy = net.status === 'connecting' || net.status === 'reconnecting';
+
+    if (net.inRoom && net.room) {
+      const peerCount = net.peers.size;
+      this.root.innerHTML = `
+        <div class="panel online">
+          <div class="panel-head"><span class="kicker">Play online</span><h2>Your room</h2></div>
+          <div class="room-code">${net.room}</div>
+          <div class="room-hint">read this code to your friend</div>
+          <div class="peer-status ${peerCount > 0 ? 'ok' : ''}">${peerCount > 0 ? '✓ Friend connected' : 'Waiting for your friend…'}</div>
+          <div class="actions">
+            <button class="btn ghost" data-copy>Copy invite link</button>
+            <button class="btn ghost" data-leave>Leave room</button>
+            <button class="btn" data-fly>Fly</button>
+          </div>
+        </div>`;
+      this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.callbacks.onFly());
+      this.root.querySelector('[data-leave]')?.addEventListener('click', () => {
+        net.leave();
+        this.renderOnline();
+      });
+      this.root.querySelector<HTMLButtonElement>('[data-copy]')?.addEventListener('click', (e) => {
+        const btn = e.currentTarget as HTMLButtonElement;
+        const link = `${location.origin}${location.pathname}?room=${net.room}`;
+        navigator.clipboard?.writeText(link).then(
+          () => (btn.textContent = 'Copied ✓'),
+          () => (btn.textContent = link),
+        );
+      });
+      return;
+    }
+
+    this.root.innerHTML = `
+      <div class="panel online">
+        <div class="panel-head"><span class="kicker">Play online</span><h2>1v1 room</h2></div>
+        <button class="btn big" data-create ${busy ? 'disabled' : ''}>${busy ? 'Connecting…' : 'Create room'}</button>
+        <div class="divider">or join a friend</div>
+        <form class="join-row" data-join>
+          <input maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false" data-code ${busy ? 'disabled' : ''}>
+          <button class="btn" type="submit" ${busy ? 'disabled' : ''}>Join</button>
+        </form>
+        <div class="net-error">${net.error ? escapeText(net.error) : ''}</div>
+        <div class="actions"><button class="btn ghost" data-back>Back</button></div>
+      </div>`;
+    this.root.querySelector('[data-create]')?.addEventListener('click', () => net.createRoom());
+    this.root.querySelector('[data-join]')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const code = this.root.querySelector<HTMLInputElement>('[data-code]')?.value ?? '';
+      if (code.trim()) net.joinRoom(code);
+    });
+    this.root.querySelector('[data-back]')?.addEventListener('click', () => this.show('main'));
+    this.root.querySelector<HTMLInputElement>('[data-code]')?.focus();
   }
 
   private renderSettings(): void {
@@ -171,4 +239,8 @@ export class Menu {
     saveSettings(this.settings);
     this.callbacks.onSettingsChanged();
   }
+}
+
+function escapeText(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }

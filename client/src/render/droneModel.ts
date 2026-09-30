@@ -5,13 +5,13 @@ import { PALETTE } from '../world/scene';
  * A 5" freestyle quad built from primitives. Forward is -Z, matching the flight model.
  * Used for the chase view now and for the other pilot's drone in Phase 2.
  */
-export function createDroneModel(): THREE.Group {
+export function createDroneModel(propColor: string = PALETTE.orange): THREE.Group {
   const group = new THREE.Group();
   const carbon = new THREE.MeshStandardMaterial({ color: '#141516', roughness: 0.5, metalness: 0.3 });
   const orange = new THREE.MeshStandardMaterial({ color: PALETTE.orange, roughness: 0.6 });
   const motorMat = new THREE.MeshStandardMaterial({ color: '#8d9196', roughness: 0.3, metalness: 0.8 });
   const propMat = new THREE.MeshStandardMaterial({
-    color: PALETTE.orange,
+    color: propColor,
     roughness: 0.4,
     transparent: true,
     opacity: 0.55,

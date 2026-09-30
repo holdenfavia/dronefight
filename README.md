@@ -4,7 +4,7 @@ A browser FPV drone dogfighting game, built by pilots who fly real FPV.
 
 Open a link, share a room code with a friend, plug in your radio, and fight in acro mode in a bright industrial arena. No install, no account.
 
-> **Status:** Phase 1 (flight sim). Solo flying works; online play comes in Phase 2. See the [roadmap](docs/ROADMAP.md).
+> **Status:** Phase 2 (online). Solo flying and 1v1 rooms work on a local server; deploying the server so friends can play from different houses is next. See the [roadmap](docs/ROADMAP.md).
 
 _"dronefight" is a working title._
 

@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current focus:** Phase 1 — Flight sim
+**Current focus:** Phase 3 — Combat (deploy moved after combat by choice; Phase 1 open items: real-controller check and feel sign-off)
 
 Check items off as they land. Add items as they're discovered. Moving to a new phase updates **Current focus**.
 
@@ -28,13 +28,14 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 ## Phase 2 — Online (2 players)
 
-- [ ] WebSocket server with create/join room by code (ADR-0005)
-- [ ] Send local drone state at fixed rate; broadcast to peer
-- [ ] Snapshot interpolation, latest-state-wins (ADR-0004)
-- [ ] Network HUD: ping + remote delay
-- [ ] Background-tab / reconnect handling (no backlog replay)
-- [ ] Deploy server; play from two houses
-- [ ] Phone-call test: callouts match what you see
+- [x] WebSocket server with create/join room by code (ADR-0005)
+- [x] Send local drone state at fixed rate; broadcast to peer
+- [x] Snapshot interpolation, latest-state-wins (ADR-0004)
+- [x] Network HUD: ping + remote delay
+- [x] Background-tab / reconnect handling (no backlog replay)
+- [x] Invite links (`?room=CODE`) and on-screen marker pointing to the other pilot
+- [x] Same-Wi-Fi play verified by both pilots
+- [ ] Deploy and phone-call test: moved to Phase 3.5 (after combat)
 
 ## Phase 3 — Combat
 
@@ -43,6 +44,12 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [ ] Server-side hit detection
 - [ ] Health, death, respawn
 - [ ] Match flow: score to win, rematch
+
+## Phase 3.5 — Go online
+
+- [ ] Choose hosting and record it (`/decide`)
+- [ ] Deploy server + client; play from two houses
+- [ ] Phone-call test: callouts match what you see
 
 ## Phase 4 — Polish
 
