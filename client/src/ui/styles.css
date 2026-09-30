@@ -410,6 +410,14 @@ body {
   background: var(--paper);
 }
 
+.drone-blurb {
+  font-family: var(--marker);
+  font-size: 15px;
+  color: var(--orange-dark);
+  text-align: center;
+  margin: -4px 0 2px;
+}
+
 .controller-status {
   margin-top: 6px;
   font-size: 15px;

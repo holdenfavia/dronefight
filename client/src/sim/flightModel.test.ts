@@ -1,11 +1,13 @@
 import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RATES, QUAD, SIM } from '../config';
+import { DEFAULT_RATES, QUAD, QUAD_3D, SIM } from '../config';
 import {
   createFlightOutput,
   hoverThrottle,
   MAX_THRUST_N,
   stepFlight,
+  throttleSafeToArm,
+  throttleToMotor,
   type FlightInput,
   type FlightState,
 } from './flightModel';
@@ -105,5 +107,41 @@ describe('flight model', () => {
 
   it('keeps max thrust consistent with thrust-to-weight', () => {
     expect(MAX_THRUST_N / (QUAD.massKg * SIM.gravity)).toBeCloseTo(QUAD.thrustToWeight);
+  });
+});
+
+describe('3D quad (ADR-0013)', () => {
+  it('makes zero thrust at throttle center, forward above, reversed ~70% below', () => {
+    expect(throttleToMotor(0.5, true, QUAD_3D)).toBe(0);
+    expect(throttleToMotor(1, true, QUAD_3D)).toBeCloseTo(1);
+    expect(throttleToMotor(0, true, QUAD_3D)).toBeCloseTo(-QUAD_3D.threeD!.reverseEfficiency);
+  });
+
+  it('has a small deadband around center', () => {
+    expect(throttleToMotor(0.51, true, QUAD_3D)).toBe(0);
+    expect(throttleToMotor(0.6, true, QUAD_3D)).toBeGreaterThan(0);
+  });
+
+  it('arms with the throttle at center, not at the bottom', () => {
+    expect(throttleSafeToArm(0.5, QUAD_3D, 0.05)).toBe(true);
+    expect(throttleSafeToArm(0, QUAD_3D, 0.05)).toBe(false);
+    expect(throttleSafeToArm(0, QUAD, 0.05)).toBe(true);
+  });
+
+  it('can hover upside down by reversing thrust', () => {
+    const inverted: FlightState = { ...level(), rotation: new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI) };
+    const out = createFlightOutput();
+    let throttle = 0;
+    // Find the reversed throttle that pushes up while inverted.
+    for (let t = 0.5; t >= 0; t -= 0.01) {
+      inverted.motorOutput = throttleToMotor(t, true, QUAD_3D);
+      stepFlight({ throttle: t, roll: 0, pitch: 0, yaw: 0 }, inverted, DEFAULT_RATES, true, dt, out, QUAD_3D);
+      if (out.force.y >= QUAD_3D.massKg * SIM.gravity) {
+        throttle = t;
+        break;
+      }
+    }
+    expect(throttle).toBeGreaterThan(0);
+    expect(throttle).toBeLessThan(0.5);
   });
 });

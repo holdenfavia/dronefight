@@ -1,3 +1,4 @@
+import { isDroneClassId, type DroneClassId } from './drones.js';
 import { isMapId, type MapId } from './maps/index.js';
 
 // Network protocol shared by client and server (ADR-0002, ADR-0004, ADR-0005).
@@ -72,8 +73,10 @@ export type MatchPhase = 'waiting' | 'playing' | 'ended';
 
 export interface MatchPlayer {
   id: string;
-  /** 0 = orange, 1 = lime. Also the spawn pad index. */
+  /** 0 = orange, 1 = lime. */
   team: number;
+  /** Current drone class (ADR-0013). */
+  drone: DroneClassId;
   score: number;
   hp: number;
   alive: boolean;
@@ -98,6 +101,8 @@ export type ClientMessage =
   | { t: 'leave' }
   | { t: 'state'; s: DroneState }
   | { t: 'shot'; s: Shot }
+  /** Choose a drone class; applies at the next respawn during a match (ADR-0013). */
+  | { t: 'loadout'; drone: DroneClassId }
   | { t: 'ping'; id: number; ct: number };
 
 // ---- Server -> client
@@ -117,7 +122,7 @@ export type ServerMessage =
   | { t: 'shot'; id: string; s: Shot }
   | { t: 'hit'; shooter: string; target: string; hp: number }
   | { t: 'death'; id: string; killer: string | null; cause: 'shot' | 'crash' }
-  | { t: 'respawn'; id: string; spawn: number }
+  | { t: 'respawn'; id: string; spawn: number; drone: DroneClassId }
   | { t: 'match'; m: MatchState };
 
 // ---- Validation (never trust the wire)
@@ -164,6 +169,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isDroneState(m.s) ? { t: 'state', s: m.s } : null;
     case 'ping':
       return isNum(m.id) && isNum(m.ct) ? { t: 'ping', id: m.id, ct: m.ct } : null;
+    case 'loadout':
+      return isDroneClassId(m.drone) ? { t: 'loadout', drone: m.drone } : null;
     case 'shot': {
       const s = m.s as Record<string, unknown> | null;
       if (typeof s !== 'object' || s === null || !isNum(s.ts) || !isVec(s.p, 3) || !isVec(s.d, 3)) return null;

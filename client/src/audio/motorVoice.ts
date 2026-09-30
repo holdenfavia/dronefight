@@ -1,10 +1,26 @@
 import type { AudioEngine } from './audioEngine';
 
 /**
- * The motor whine of one quad (ADR-0010). Four slightly detuned sawtooth oscillators, one per motor,
+ * The motor sound of one drone (ADR-0010). Slightly detuned sawtooth oscillators, one per motor,
  * through a low-pass filter. Pitch and brightness follow motor output; air noise follows speed.
  */
-const MOTOR = {
+export interface MotorProfile {
+  idleHz: number;
+  maxHz: number;
+  /** One entry per motor: detune as a fraction of pitch. */
+  spread: readonly number[];
+  wander: number;
+  gainIdle: number;
+  gainMax: number;
+  cutoffIdle: number;
+  cutoffMax: number;
+  windFullSpeed: number;
+  windGain: number;
+  smoothing: number;
+}
+
+/** Four motors on a 5" quad. */
+export const QUAD_MOTORS: MotorProfile = {
   /** Fundamental at idle and at full throttle (Hz). */
   idleHz: 95,
   maxHz: 470,
@@ -21,7 +37,22 @@ const MOTOR = {
   windGain: 0.2,
   /** How fast pitch/level follow the motors (seconds). */
   smoothing: 0.025,
-} as const;
+};
+
+/** One bigger pusher prop on the wing (ADR-0013): lower, smoother drone, more wind. */
+export const WING_MOTOR: MotorProfile = {
+  ...QUAD_MOTORS,
+  idleHz: 70,
+  maxHz: 320,
+  spread: [-0.003, 0.004],
+  wander: 0.002,
+  gainIdle: 0.04,
+  gainMax: 0.2,
+  cutoffIdle: 500,
+  cutoffMax: 3200,
+  windFullSpeed: 55,
+  windGain: 0.26,
+};
 
 export class MotorVoice {
   private readonly oscs: OscillatorNode[] = [];
@@ -35,7 +66,9 @@ export class MotorVoice {
   constructor(
     private readonly engine: AudioEngine,
     destination: AudioNode,
+    private readonly profile: MotorProfile = QUAD_MOTORS,
   ) {
+    const MOTOR = profile;
     const ctx = engine.ctx;
     this.output = ctx.createGain();
     this.output.connect(destination);
@@ -76,8 +109,10 @@ export class MotorVoice {
    * @param active false when disarmed or crashed: motors stop
    */
   update(motor: number, speed: number, active: boolean): void {
+    const MOTOR = this.profile;
     const t = this.engine.now;
-    const m = active ? Math.max(0, Math.min(1, motor)) : 0;
+    // 3D quads run motors backwards (negative output); they sound the same either way.
+    const m = active ? Math.min(1, Math.abs(motor)) : 0;
     const base = MOTOR.idleHz + (MOTOR.maxHz - MOTOR.idleHz) * Math.sqrt(m);
     for (let i = 0; i < this.oscs.length; i++) {
       const spread = MOTOR.spread[i] ?? 0;

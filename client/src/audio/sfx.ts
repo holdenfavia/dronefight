@@ -93,7 +93,8 @@ export class Sfx {
       p.positionX.value = from.x;
       p.positionY.value = from.y;
       p.positionZ.value = from.z;
-      g.connect(p).connect(this.engine.sfx);
+      // Positional sounds come from other pilots, so they go on the "other pilots" volume.
+      g.connect(p).connect(this.engine.remote);
     } else {
       g.connect(this.engine.sfx);
     }

@@ -1,4 +1,5 @@
 import { CAMERA_DEFAULTS, DEFAULT_RATES, type Rates } from './config';
+import { DEFAULT_DRONE, isDroneClassId, type DroneClassId } from '../../shared/drones';
 import { DEFAULT_MAP, isMapId, type MapId } from '../../shared/maps';
 import { loadJson, saveJson } from './storage';
 
@@ -8,9 +9,12 @@ export interface Settings {
   rates: Rates;
   camera: { uptiltDeg: number; fovHorizontalDeg: number; view: CameraView };
   graphics: { shadows: boolean; showDebug: boolean };
-  audio: { volume: number; muted: boolean };
+  /** Master volume, then your own drone vs other pilots (0..1 each). */
+  audio: { volume: number; own: number; others: number; muted: boolean };
   /** Map for solo play and for rooms you create (ADR-0012). */
   map: MapId;
+  /** Drone class to fly (ADR-0013). */
+  drone: DroneClassId;
 }
 
 const KEY = 'settings';
@@ -24,8 +28,9 @@ export function defaultSettings(): Settings {
       view: 'fpv',
     },
     graphics: { shadows: true, showDebug: true },
-    audio: { volume: 0.7, muted: false },
+    audio: { volume: 0.7, own: 0.8, others: 1, muted: false },
     map: DEFAULT_MAP,
+    drone: DEFAULT_DRONE,
   };
 }
 
@@ -43,6 +48,7 @@ export function loadSettings(): Settings {
     graphics: { ...d.graphics, ...saved.graphics },
     audio: { ...d.audio, ...saved.audio },
     map: isMapId(saved.map) ? saved.map : d.map,
+    drone: isDroneClassId(saved.drone) ? saved.drone : d.drone,
   };
 }
 

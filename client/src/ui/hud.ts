@@ -146,14 +146,14 @@ export class Hud {
       if (combat.phase === 'ended') status = '';
       else if (!combat.alive) status = combat.respawnIn !== null ? `respawn in ${Math.ceil(combat.respawnIn)}` : '';
       else if (combat.protected) status = 'spawn protected';
-      else if (drone.armBlocked) status = 'LOWER THROTTLE TO ARM';
-      else if (!drone.armed && !drone.crashed) status = 'DISARMED · throttle down to arm';
+      else if (drone.armBlocked) status = armHint(drone, true);
+      else if (!drone.armed && !drone.crashed) status = armHint(drone, false);
     } else if (drone.crashed) {
       status = info.autoResetIn !== null ? `CRASHED · respawn in ${Math.ceil(info.autoResetIn)}` : 'CRASHED';
     } else if (drone.armBlocked) {
-      status = 'LOWER THROTTLE TO ARM';
+      status = armHint(drone, true);
     } else if (!drone.armed) {
-      status = 'DISARMED · throttle down to arm';
+      status = armHint(drone, false);
     }
     this.set(this.el.status, status);
 
@@ -245,4 +245,11 @@ function restartAnimation(el: HTMLElement, cls: string): void {
   // Force a reflow so the animation restarts even if it is already running.
   void el.offsetWidth;
   el.classList.add(cls);
+}
+
+/** 3D quads arm with the throttle centered (ADR-0013); everything else with it down. */
+function armHint(drone: Drone, blocked: boolean): string {
+  const center = drone.classId === 'quad3d';
+  if (blocked) return center ? 'CENTER THROTTLE TO ARM' : 'LOWER THROTTLE TO ARM';
+  return center ? 'DISARMED · throttle to center to arm' : 'DISARMED · throttle down to arm';
 }

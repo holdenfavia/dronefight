@@ -106,6 +106,9 @@ export class RoomManager {
       case 'shot':
         player.room?.match.onShot(player.id, msg.s, this.now());
         break;
+      case 'loadout':
+        player.room?.match.onLoadout(player.id, msg.drone, this.now());
+        break;
       case 'ping':
         send(conn, { t: 'pong', id: msg.id, ct: msg.ct, st: this.now() });
         break;

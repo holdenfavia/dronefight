@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import { COMBAT } from '../../../shared/combat';
 
 /**
  * Tracer rounds (ADR-0009): purely visual. Hits are decided by the server.
@@ -18,6 +17,8 @@ interface Tracer {
   born: number;
   /** Where it stops (first wall or max range). */
   maxDist: number;
+  /** Round speed (m/s): each class has its own (ADR-0013). */
+  speed: number;
 }
 
 const Z = new THREE.Vector3(0, 0, 1);
@@ -39,14 +40,14 @@ export class Tracers {
     this.mesh.frustumCulled = false;
     this.mesh.count = CAPACITY;
     for (let i = 0; i < CAPACITY; i++) {
-      this.pool.push({ active: false, origin: new THREE.Vector3(), dir: new THREE.Vector3(), born: 0, maxDist: 0 });
+      this.pool.push({ active: false, origin: new THREE.Vector3(), dir: new THREE.Vector3(), born: 0, maxDist: 0, speed: 1 });
       this.mesh.setMatrixAt(i, this.m.makeScale(0, 0, 0));
       this.mesh.setColorAt(i, this.color.set('#ffffff'));
     }
     scene.add(this.mesh);
   }
 
-  spawn(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number, color: string, ageMs = 0): void {
+  spawn(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number, color: string, speed: number, ageMs = 0): void {
     const i = this.next;
     this.next = (this.next + 1) % CAPACITY;
     const t = this.pool[i];
@@ -56,6 +57,7 @@ export class Tracers {
     t.dir.copy(dir).normalize();
     t.born = performance.now() - ageMs;
     t.maxDist = maxDist;
+    t.speed = speed;
     // Brighter than 1.0 so tracers read as glowing (tone mapping is off for this material).
     this.mesh.setColorAt(i, this.color.set(color).multiplyScalar(1.6));
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
@@ -66,7 +68,7 @@ export class Tracers {
     for (let i = 0; i < CAPACITY; i++) {
       const t = this.pool[i];
       if (!t || !t.active) continue;
-      const dist = ((now - t.born) / 1000) * COMBAT.bulletSpeed;
+      const dist = ((now - t.born) / 1000) * t.speed;
       const head = Math.min(dist, t.maxDist);
       const tail = Math.max(0, dist - STREAK);
       if (tail >= t.maxDist) {

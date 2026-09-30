@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COMBAT } from '../../shared/combat.js';
+import { DRONE_CLASSES } from '../../shared/drones.js';
 import type { DroneState, ServerMessage, Vec3 } from '../../shared/protocol.js';
 import { interceptTime } from '../../shared/lead.js';
 import { MAPS, SPAWN_SAFE_DISTANCE } from '../../shared/maps/index.js';
@@ -57,8 +58,10 @@ function setup() {
   };
 }
 
+/** Both test pilots fly the default class unless a test changes it. */
+const FS = DRONE_CLASSES.freestyle;
 const afterProtection = COMBAT.spawnProtectionMs + 100;
-const shotInterval = 1000 / COMBAT.fireRate;
+const shotInterval = 1000 / FS.fireRate;
 
 describe('Match (ADR-0009)', () => {
   it('starts when two pilots join, on opposite teams', () => {
@@ -74,7 +77,7 @@ describe('Match (ADR-0009)', () => {
     t.advance(afterProtection);
     t.fireAt(t.posB());
     t.advance(200);
-    expect(t.hp('B')).toBe(COMBAT.maxHp - COMBAT.damage);
+    expect(t.hp('B')).toBe(FS.maxHp - FS.damage);
     expect(t.log.some((m) => m.t === 'hit' && m.shooter === 'A' && m.target === 'B')).toBe(true);
   });
 
@@ -83,7 +86,7 @@ describe('Match (ADR-0009)', () => {
     t.advance(100);
     t.fireAt(t.posB());
     t.advance(200);
-    expect(t.hp('B')).toBe(COMBAT.maxHp);
+    expect(t.hp('B')).toBe(FS.maxHp);
   });
 
   it('walls are cover', () => {
@@ -95,13 +98,13 @@ describe('Match (ADR-0009)', () => {
     t.advance(100);
     t.fireAt(t.posB());
     t.advance(300);
-    expect(t.hp('B')).toBe(COMBAT.maxHp);
+    expect(t.hp('B')).toBe(FS.maxHp);
   });
 
   it('enough hits kill, score, and respawn after the delay', () => {
     const t = setup();
     t.advance(afterProtection);
-    const hitsToKill = Math.ceil(COMBAT.maxHp / COMBAT.damage);
+    const hitsToKill = Math.ceil(FS.maxHp / FS.damage);
     for (let i = 0; i < hitsToKill; i++) {
       t.fireAt(t.posB());
       t.advance(shotInterval + 1);
@@ -110,7 +113,7 @@ describe('Match (ADR-0009)', () => {
     expect(t.score('A')).toBe(1);
     expect(t.log.some((m) => m.t === 'death' && m.id === 'B' && m.killer === 'A' && m.cause === 'shot')).toBe(true);
     t.advance(COMBAT.respawnMs);
-    expect(t.match.state().players.find((p) => p.id === 'B')).toMatchObject({ alive: true, hp: COMBAT.maxHp });
+    expect(t.match.state().players.find((p) => p.id === 'B')).toMatchObject({ alive: true, hp: FS.maxHp });
   });
 
   it('rejects a faster-than-possible gun', () => {
@@ -118,7 +121,7 @@ describe('Match (ADR-0009)', () => {
     t.advance(afterProtection);
     for (let i = 0; i < 20; i++) t.fireAt(t.posB());
     t.advance(200);
-    expect(t.hp('B')).toBe(COMBAT.maxHp - COMBAT.damage);
+    expect(t.hp('B')).toBe(FS.maxHp - FS.damage);
   });
 
   it('lag compensation: hits where the shooter saw the target, within the rewind limit', () => {
@@ -129,18 +132,18 @@ describe('Match (ADR-0009)', () => {
     t.advance(500);
     // A's screen shows B 100 ms in the past (interpolation buffer), and the round takes ~57 ms to fly
     // 20 m, so A leads B to where it will be *on A's screen* when the round arrives. That counts.
-    const flight = 20 / COMBAT.bulletSpeed;
+    const flight = 20 / FS.bulletSpeed;
     const seen: Vec3 = [t.posB()[0] - 20 * (0.1 - flight), t.posB()[1], t.posB()[2]];
     t.fireAt(seen);
     t.advance(200);
-    expect(t.hp('B')).toBe(COMBAT.maxHp - COMBAT.damage);
+    expect(t.hp('B')).toBe(FS.maxHp - FS.damage);
 
     // Aiming where B was 600 ms ago is beyond the rewind limit: miss.
     t.advance(shotInterval + 1);
     const stale: Vec3 = [t.posB()[0] - 20 * 0.6, t.posB()[1], t.posB()[2]];
     t.fireAt(stale, t.getNow() - 500);
     t.advance(200);
-    expect(t.hp('B')).toBe(COMBAT.maxHp - COMBAT.damage);
+    expect(t.hp('B')).toBe(FS.maxHp - FS.damage);
   });
 
   it('aiming at the lead indicator hits a fast crossing target (ADR-0011)', () => {
@@ -154,7 +157,7 @@ describe('Match (ADR-0009)', () => {
       const b = t.posB();
       const seen: Vec3 = [b[0] - 30 * 0.1, b[1], b[2]];
       const d = [seen[0] - t.posA[0], seen[1] - t.posA[1], seen[2] - t.posA[2]] as const;
-      const tt = interceptTime(d[0], d[1], d[2], 30, 0, 0, COMBAT.bulletSpeed) ?? 0;
+      const tt = interceptTime(d[0], d[1], d[2], 30, 0, 0, FS.bulletSpeed) ?? 0;
       const before = t.hp('B') ?? 0;
       t.fireAt([seen[0] + 30 * tt, seen[1], seen[2]]);
       t.advance(shotInterval + 1);
@@ -224,6 +227,50 @@ describe('Match (ADR-0009)', () => {
     const t = setup();
     t.match.removePlayer('B', t.getNow());
     expect(t.match.state().phase).toBe('waiting');
+  });
+});
+
+describe('drone classes (ADR-0013)', () => {
+  it("uses the shooter's damage and the target's health", () => {
+    const t = setup();
+    t.match.onLoadout('A', 'wing', t.getNow());
+    t.match.onLoadout('B', 'quad3d', t.getNow());
+    // Mid-match: nothing changes until each pilot's next respawn.
+    expect(t.match.state().players.find((p) => p.id === 'A')?.drone).toBe('freestyle');
+    // Kill both to apply the switch.
+    t.match.onState('A', droneAt(t.posA, [0, 0, 0], true), t.getNow());
+    t.match.onState('B', droneAt(t.posB(), [0, 0, 0], true), t.getNow());
+    t.advance(COMBAT.respawnMs + 100);
+    const players = t.match.state().players;
+    expect(players.find((p) => p.id === 'A')).toMatchObject({ drone: 'wing', hp: DRONE_CLASSES.wing.maxHp });
+    expect(players.find((p) => p.id === 'B')).toMatchObject({ drone: 'quad3d', hp: DRONE_CLASSES.quad3d.maxHp });
+
+    // Respawns moved everyone; put them back in the open and fight.
+    t.match.onState('A', droneAt(t.posA), t.getNow());
+    t.match.onState('B', droneAt(t.posB()), t.getNow());
+    t.advance(afterProtection);
+    t.fireAt(t.posB());
+    t.advance(200);
+    expect(t.hp('B')).toBe(DRONE_CLASSES.quad3d.maxHp - DRONE_CLASSES.wing.damage);
+  });
+
+  it('switches immediately outside a running match', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match('yard', (msg) => log.push(msg));
+    match.addPlayer('A', 0);
+    match.onLoadout('A', 'wing', 0);
+    expect(match.state().players[0]).toMatchObject({ drone: 'wing', hp: DRONE_CLASSES.wing.maxHp });
+  });
+
+  it('enforces each class fire rate', () => {
+    const t = setup();
+    t.advance(afterProtection);
+    // Freestyle fires 12/s: two shots 20 ms apart is too fast, second is ignored.
+    t.fireAt(t.posB());
+    t.advance(20);
+    t.fireAt(t.posB());
+    t.advance(200);
+    expect(t.hp('B')).toBe(FS.maxHp - FS.damage);
   });
 });
 

@@ -1,10 +1,10 @@
 import type { RemoteView } from '../render/remoteDrones';
 import type { AudioEngine } from './audioEngine';
-import { MotorVoice } from './motorVoice';
+import { MotorVoice, QUAD_MOTORS, WING_MOTOR } from './motorVoice';
 
 /** Other pilots' motors, positioned at their drones so you can hear where they are (ADR-0010). */
 export class RemoteAudio {
-  private readonly voices = new Map<string, { voice: MotorVoice; panner: PannerNode }>();
+  private readonly voices = new Map<string, { voice: MotorVoice; panner: PannerNode; wing: boolean }>();
 
   constructor(private readonly engine: AudioEngine) {}
 
@@ -12,11 +12,18 @@ export class RemoteAudio {
     const seen = new Set<string>();
     for (const view of views) {
       seen.add(view.id);
+      const wing = view.droneClass === 'wing';
       let entry = this.voices.get(view.id);
+      if (entry && entry.wing !== wing) {
+        // They switched class (ADR-0013): swap to the matching motor sound.
+        entry.voice.dispose();
+        entry.panner.disconnect();
+        entry = undefined;
+      }
       if (!entry) {
         const panner = this.engine.createPanner();
-        panner.connect(this.engine.sfx);
-        entry = { voice: new MotorVoice(this.engine, panner), panner };
+        panner.connect(this.engine.remote);
+        entry = { voice: new MotorVoice(this.engine, panner, wing ? WING_MOTOR : QUAD_MOTORS), panner, wing };
         this.voices.set(view.id, entry);
       }
       const p = view.position;

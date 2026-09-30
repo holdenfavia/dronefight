@@ -19,12 +19,18 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 - Custom flight model computes thrust, drag, prop wash and rate commands. Rapier applies all forces, with real gravity (9.81 m/s²), and handles motion and collisions. Tuned by feel (ADR-0008).
 - Adjustable FPV camera tilt (uptilt) and FOV.
 
+## Drone classes (ADR-0013)
+
+- **Freestyle 5"** (default), **3D quad** (reversible thrust; throttle center = zero), **FPV wing** (fixed-wing; can't hover; spawns airborne).
+- Full classes: health, damage, fire rate, round speed and size differ per class. Picked in the menu; in a match it applies at your next respawn.
+
 ## Controls
 
 - Real radios via the browser Gamepad API. Primary test device: **DJI FPV Remote Controller 2** over USB-C.
 - A stick mapping and calibration screen assigns axes, inverts, endpoints and deadband (ADR-0006).
 - Fallbacks: Xbox/PlayStation gamepad, keyboard (for testing only).
-- Settings persist per browser.
+- Settings persist per browser. F toggles fullscreen.
+- Near the map edge, an orange grid fades in on the invisible boundary wall so you see it before hitting it.
 
 ## Multiplayer
 
@@ -61,7 +67,7 @@ Inspired by the *feel* of Flight Division, never its assets:
 ## Audio (ADR-0010)
 
 - All sound synthesized in the browser (no audio files). Motor whine follows throttle; the other pilot's motors and shots are positional.
-- Master volume in Settings; M mutes.
+- Master volume plus separate **My drone** and **Other pilots** volumes in Settings (other pilots' motors and gunfire are positional); M mutes.
 
 ## Hard rules
 

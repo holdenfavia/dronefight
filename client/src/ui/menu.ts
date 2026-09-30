@@ -1,6 +1,7 @@
 import { DEFAULT_RATES, type AxisRates } from '../config';
 import { CalibrationScreen } from '../input/calibrationScreen';
 import type { InputManager } from '../input/inputManager';
+import { droneClass, DRONE_ORDER } from '../../../shared/drones';
 import { getMap, MAP_ORDER } from '../../../shared/maps';
 import type { NetClient } from '../net/netClient';
 import { maxRate } from '../sim/rates';
@@ -14,6 +15,8 @@ export interface MenuCallbacks {
   onSettingsChanged(): void;
   /** The chosen map changed (solo play switches immediately). */
   onMapChanged(): void;
+  /** The chosen drone class changed (solo: now; in a match: next respawn). */
+  onDroneChanged(): void;
 }
 
 /** Pause menu with main, settings and controller-setup screens. */
@@ -77,14 +80,23 @@ export class Menu {
       <div class="panel main-menu">
         <button class="btn big" data-fly>${this.net.inRoom ? 'Fly' : 'Fly solo'}</button>
         <button class="btn ghost" data-online>${this.net.inRoom ? `Room ${this.net.room}` : 'Play online'}</button>
+        <button class="btn ghost" data-drone>Drone: ${droneClass(this.settings.drone).name} ▸</button>
+        <div class="drone-blurb">${droneClass(this.settings.drone).blurb}</div>
         ${this.net.inRoom ? '' : `<button class="btn ghost" data-map>Map: ${getMap(this.settings.map).name} ▸</button>`}
         <button class="btn ghost" data-controller>Controller setup</button>
         <button class="btn ghost" data-settings>Settings</button>
         <div class="controller-status" data-status></div>
       </div>
-      <div class="keys">ESC menu · R reset · C camera · M mute · keyboard: W/S throttle, A/D yaw, arrows pitch/roll, Space fire</div>`;
+      <div class="keys">ESC menu · F fullscreen · R reset · C camera · M mute · keyboard: W/S throttle, A/D yaw, arrows pitch/roll, Space fire</div>`;
     this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.callbacks.onFly());
     this.root.querySelector('[data-online]')?.addEventListener('click', () => this.show('online'));
+    this.root.querySelector('[data-drone]')?.addEventListener('click', () => {
+      const i = DRONE_ORDER.indexOf(this.settings.drone);
+      this.settings.drone = DRONE_ORDER[(i + 1) % DRONE_ORDER.length] ?? DRONE_ORDER[0]!;
+      saveSettings(this.settings);
+      this.callbacks.onDroneChanged();
+      this.renderMain();
+    });
     this.root.querySelector('[data-map]')?.addEventListener('click', () => {
       const i = MAP_ORDER.indexOf(this.settings.map);
       this.settings.map = MAP_ORDER[(i + 1) % MAP_ORDER.length] ?? MAP_ORDER[0]!;
@@ -195,7 +207,9 @@ export class Menu {
         <label class="field">View
           <select data-view><option value="fpv" ${s.camera.view === 'fpv' ? 'selected' : ''}>FPV</option><option value="chase" ${s.camera.view === 'chase' ? 'selected' : ''}>Chase</option></select>
         </label>
-        <label class="field">Volume <input type="range" min="0" max="1" step="0.05" value="${s.audio.volume}" data-volume><span>${Math.round(s.audio.volume * 100)}%</span></label>
+        <label class="field">Volume <input type="range" min="0" max="1" step="0.05" value="${s.audio.volume}" data-audio="volume"><span>${Math.round(s.audio.volume * 100)}%</span></label>
+        <label class="field">My drone <input type="range" min="0" max="1" step="0.05" value="${s.audio.own}" data-audio="own"><span>${Math.round(s.audio.own * 100)}%</span></label>
+        <label class="field">Other pilots <input type="range" min="0" max="1" step="0.05" value="${s.audio.others}" data-audio="others"><span>${Math.round(s.audio.others * 100)}%</span></label>
         <label class="field check"><input type="checkbox" data-mute ${s.audio.muted ? 'checked' : ''}> Mute (M)</label>
         <label class="field check"><input type="checkbox" data-gfx="shadows" ${s.graphics.shadows ? 'checked' : ''}> Shadows</label>
         <label class="field check"><input type="checkbox" data-gfx="showDebug" ${s.graphics.showDebug ? 'checked' : ''}> Debug readout (FPS, renderer)</label>
@@ -241,19 +255,21 @@ export class Menu {
         this.commit();
       }),
     );
-    this.root.querySelector<HTMLInputElement>('[data-volume]')?.addEventListener('input', (e) => {
-      const el = e.target as HTMLInputElement;
-      s.audio.volume = Number(el.value);
-      const label = el.nextElementSibling;
-      if (label) label.textContent = `${Math.round(s.audio.volume * 100)}%`;
-      this.commit();
-    });
+    this.root.querySelectorAll<HTMLInputElement>('[data-audio]').forEach((el) =>
+      el.addEventListener('input', () => {
+        const key = el.dataset.audio as 'volume' | 'own' | 'others';
+        s.audio[key] = Number(el.value);
+        const label = el.nextElementSibling;
+        if (label) label.textContent = `${Math.round(s.audio[key] * 100)}%`;
+        this.commit();
+      }),
+    );
     this.root.querySelector<HTMLInputElement>('[data-mute]')?.addEventListener('change', (e) => {
       s.audio.muted = (e.target as HTMLInputElement).checked;
       this.commit();
     });
     this.root.querySelector('[data-defaults]')?.addEventListener('click', () => {
-      Object.assign(s, defaultSettings(), { rates: structuredClone(DEFAULT_RATES), map: s.map });
+      Object.assign(s, defaultSettings(), { rates: structuredClone(DEFAULT_RATES), map: s.map, drone: s.drone });
       this.commit();
       this.renderSettings();
     });

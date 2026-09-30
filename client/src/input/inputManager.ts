@@ -181,8 +181,8 @@ export class InputManager {
     s.armSwitch = null;
   }
 
-  /** Keyboard throttle snaps back to zero on respawn so the quad doesn't launch. */
-  resetKeyboardThrottle(): void {
-    this.keyboardThrottle = 0;
+  /** Keyboard throttle snaps back to its rest position on respawn (center for a 3D quad, ADR-0013). */
+  resetKeyboardThrottle(rest = 0): void {
+    this.keyboardThrottle = rest;
   }
 }

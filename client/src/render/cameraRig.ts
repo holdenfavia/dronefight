@@ -11,6 +11,8 @@ export function verticalFovDeg(horizontalDeg: number, aspect: number): number {
 
 export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
+  /** Class-specific uptilt that replaces the user setting (wings, ADR-0013). */
+  uptiltOverride: number | null = null;
   private readonly uptilt = new THREE.Quaternion();
   private readonly xAxis = new THREE.Vector3(1, 0, 0);
   private readonly offset = new THREE.Vector3();
@@ -38,7 +40,7 @@ export class CameraRig {
     const cam = this.camera;
     if (this.settings.camera.view === 'fpv') {
       this.chaseInitialized = false;
-      this.uptilt.setFromAxisAngle(this.xAxis, this.settings.camera.uptiltDeg * DEG);
+      this.uptilt.setFromAxisAngle(this.xAxis, (this.uptiltOverride ?? this.settings.camera.uptiltDeg) * DEG);
       cam.quaternion.copy(rot).multiply(this.uptilt);
       this.offset.set(0, 0.03, -0.05).applyQuaternion(rot);
       cam.position.copy(pos).add(this.offset);

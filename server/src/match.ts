@@ -1,5 +1,6 @@
 import { getMap, pickSpawn, type MapDef, type MapId } from '../../shared/maps/index.js';
 import { COMBAT } from '../../shared/combat.js';
+import { DEFAULT_DRONE, droneClass, type DroneClassId } from '../../shared/drones.js';
 import {
   NET,
   type DroneState,
@@ -35,6 +36,9 @@ interface HistoryEntry {
 interface Pilot {
   id: string;
   team: number;
+  /** Current class, and the one to switch to at next respawn (ADR-0013). */
+  drone: DroneClassId;
+  pendingDrone: DroneClassId | null;
   score: number;
   hp: number;
   alive: boolean;
@@ -51,6 +55,9 @@ interface Pilot {
 
 interface Bullet {
   shooter: string;
+  /** Shooter's class stats at the moment of firing. */
+  speed: number;
+  damage: number;
   p: Vec3;
   d: Vec3;
   /** Distance to the first wall along the path (or max range). */
@@ -82,7 +89,7 @@ export class Match {
     this.colliders = buildColliders(this.map.boxes);
   }
 
-  addPlayer(id: string, now: number): void {
+  addPlayer(id: string, now: number, drone: DroneClassId = DEFAULT_DRONE): void {
     this.now = now;
     const used = new Set([...this.pilots.values()].map((p) => p.team));
     let team = 0;
@@ -90,8 +97,10 @@ export class Match {
     this.pilots.set(id, {
       id,
       team,
+      drone,
+      pendingDrone: null,
       score: 0,
-      hp: COMBAT.maxHp,
+      hp: droneClass(drone).maxHp,
       alive: true,
       protectedUntil: 0,
       respawnAt: null,
@@ -116,10 +125,30 @@ export class Match {
       this.bullets = [];
       for (const p of this.pilots.values()) {
         p.score = 0;
-        p.hp = COMBAT.maxHp;
+        if (p.pendingDrone) p.drone = p.pendingDrone;
+        p.pendingDrone = null;
+        p.hp = droneClass(p.drone).maxHp;
         p.alive = true;
         p.respawnAt = null;
       }
+    }
+    this.broadcastState();
+  }
+
+  /** Class change: immediate outside a running match or while dead; otherwise at the next respawn (ADR-0013). */
+  onLoadout(id: string, drone: DroneClassId, now: number): void {
+    const pilot = this.pilots.get(id);
+    if (!pilot || pilot.drone === drone) {
+      if (pilot) pilot.pendingDrone = null;
+      return;
+    }
+    this.now = now;
+    if (this.phase !== 'playing') {
+      pilot.drone = drone;
+      pilot.pendingDrone = null;
+      pilot.hp = droneClass(drone).maxHp;
+    } else {
+      pilot.pendingDrone = drone;
     }
     this.broadcastState();
   }
@@ -149,7 +178,8 @@ export class Match {
 
     if (this.phase !== 'playing' || !pilot.alive) return;
     // Allow jitter in arrival times, but not a faster gun.
-    if (st - pilot.lastShotAt < (1000 / COMBAT.fireRate) * 0.5) return;
+    const gun = droneClass(pilot.drone);
+    if (st - pilot.lastShotAt < (1000 / gun.fireRate) * 0.5) return;
     const last = pilot.history[pilot.history.length - 1];
     if (!last) return;
     const off = Math.hypot(shot.p[0] - last.p[0], shot.p[1] - last.p[1], shot.p[2] - last.p[2]);
@@ -167,7 +197,7 @@ export class Match {
     const maxDist = raycastArena(this.colliders, px, py, pz, dx, dy, dz, COMBAT.range);
     const seen = shot.ts - NET.interpDelayMs;
     const t0 = Math.min(st, Math.max(seen, st - MAX_REWIND_MS));
-    this.bullets.push({ shooter: id, p: shot.p, d: shot.d, maxDist, t0, traveled: 0 });
+    this.bullets.push({ shooter: id, speed: gun.bulletSpeed, damage: gun.damage, p: shot.p, d: shot.d, maxDist, t0, traveled: 0 });
     this.stepBullets(st);
   }
 
@@ -196,6 +226,7 @@ export class Match {
       players: [...this.pilots.values()].map((p) => ({
         id: p.id,
         team: p.team,
+        drone: p.drone,
         score: p.score,
         hp: p.hp,
         alive: p.alive,
@@ -207,11 +238,11 @@ export class Match {
   /** Advance rounds as far as target history allows (the target timeline can't run past `now`). */
   private stepBullets(now: number): void {
     if (this.bullets.length === 0) return;
-    const stepDist = (COMBAT.bulletSpeed * SUBSTEP_MS) / 1000;
-    const msPerMeter = 1000 / COMBAT.bulletSpeed;
     const remaining: Bullet[] = [];
 
     for (const b of this.bullets) {
+      const stepDist = (b.speed * SUBSTEP_MS) / 1000;
+      const msPerMeter = 1000 / b.speed;
       let done = false;
       while (!done && b.traveled < b.maxDist) {
         const next = Math.min(b.traveled + stepDist, b.maxDist);
@@ -229,8 +260,8 @@ export class Match {
           if (target.id === b.shooter || !target.alive || target.protectedUntil > now) continue;
           const pos = sampleHistory(target.history, targetTime);
           if (!pos) continue;
-          if (segmentPointDistance(ax, ay, az, bx, by, bz, pos[0], pos[1], pos[2]) <= COMBAT.hitRadius) {
-            this.hit(b.shooter, target, now);
+          if (segmentPointDistance(ax, ay, az, bx, by, bz, pos[0], pos[1], pos[2]) <= droneClass(target.drone).hitRadius) {
+            this.hit(b.shooter, b.damage, target, now);
             done = true;
             break;
           }
@@ -242,8 +273,8 @@ export class Match {
     this.bullets = remaining;
   }
 
-  private hit(shooterId: string, target: Pilot, now: number): void {
-    target.hp = Math.max(0, target.hp - COMBAT.damage);
+  private hit(shooterId: string, damage: number, target: Pilot, now: number): void {
+    target.hp = Math.max(0, target.hp - damage);
     target.lastDamagedBy = shooterId;
     target.lastDamagedAt = now;
     this.emit({ t: 'hit', shooter: shooterId, target: target.id, hp: target.hp });
@@ -282,13 +313,15 @@ export class Match {
     // Until the next state arrives, the pilot is at the spawn: later spawns must avoid it too.
     const at = this.map.spawns[spawn]!.pos;
     pilot.history = [{ st: now, p: [at[0], at[1], at[2]], v: [0, 0, 0] }];
+    if (pilot.pendingDrone) pilot.drone = pilot.pendingDrone;
+    pilot.pendingDrone = null;
     pilot.alive = true;
-    pilot.hp = COMBAT.maxHp;
+    pilot.hp = droneClass(pilot.drone).maxHp;
     pilot.respawnAt = null;
     pilot.protectedUntil = now + COMBAT.spawnProtectionMs;
     pilot.lastDamagedBy = null;
     this.protectedAnnounced.add(pilot.id);
-    this.emit({ t: 'respawn', id: pilot.id, spawn });
+    this.emit({ t: 'respawn', id: pilot.id, spawn, drone: pilot.drone });
     this.broadcastState();
   }
 

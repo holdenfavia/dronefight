@@ -1,4 +1,5 @@
 import { DEFAULT_SERVER_PORT, PROTOCOL_VERSION } from '../../../shared/constants';
+import type { DroneClassId } from '../../../shared/drones';
 import type { MapId } from '../../../shared/maps';
 import {
   NET,
@@ -86,6 +87,14 @@ export class NetClient {
   joinRoom(code: string): void {
     this.wantRoom = { kind: 'join', code: normalizeRoomCode(code) };
     this.ensureConnected();
+  }
+
+  /** Drone class to fly; sent on join and whenever it changes (ADR-0013). */
+  private loadout: DroneClassId | null = null;
+
+  setLoadout(drone: DroneClassId): void {
+    this.loadout = drone;
+    if (this.inRoom) this.send({ t: 'loadout', drone });
   }
 
   /** Send one round to the server, which decides whether it hits (ADR-0009). */
@@ -219,6 +228,7 @@ export class NetClient {
         this.peers.clear();
         for (const id of msg.peers) this.addPeer(id);
         this.setStatus('in-room');
+        if (this.loadout) this.send({ t: 'loadout', drone: this.loadout });
         break;
       case 'peer-joined':
         this.addPeer(msg.id);

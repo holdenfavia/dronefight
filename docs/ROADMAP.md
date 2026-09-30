@@ -54,6 +54,15 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Maps & polish (ADR-0012): Downtown map, map picker, 8 random anti-camp spawns, 0.75 m hitbox, mountains/clouds/skyline
 - [ ] Play Downtown together and tune (building density, spawn spots, hitbox)
 
+## Phase 3.6: Drone classes (ADR-0013)
+
+- [x] Per-class stats shared by client and server; loadout message; server uses shooter/target class
+- [x] 3D quad: reversible thrust, center deadband, arm at center
+- [x] FPV wing: flight model (lift, stall, drag, weathervane), airborne launch, model, audio
+- [x] Drone picker in menu; class models for other pilots
+- [x] Separate volume for your drone vs other pilots; F toggles fullscreen; boundary grid fades in near the map edge
+- [ ] Play all three against each other and tune
+
 ## Phase 3.5 — Go online
 
 - [ ] Choose hosting and record it (`/decide`)

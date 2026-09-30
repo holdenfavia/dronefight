@@ -12,8 +12,10 @@ export class AudioEngine {
   readonly ctx: AudioContext;
   /** Effects bus. */
   readonly sfx: GainNode;
-  /** Motor bus (your own quad). */
+  /** Your own drone's motors. */
   readonly motors: GainNode;
+  /** Other pilots: their motors and gunfire, positioned in 3D so you can hear where they are. */
+  readonly remote: GainNode;
   /** Two seconds of white noise, shared by every noisy sound. */
   readonly noise: AudioBuffer;
 
@@ -36,8 +38,10 @@ export class AudioEngine {
 
     this.sfx = this.ctx.createGain();
     this.motors = this.ctx.createGain();
+    this.remote = this.ctx.createGain();
     this.sfx.connect(this.master);
     this.motors.connect(this.master);
+    this.remote.connect(this.master);
 
     this.noise = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
     const data = this.noise.getChannelData(0);
@@ -62,6 +66,13 @@ export class AudioEngine {
   setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
     this.applyGain();
+  }
+
+  /** Your own drone vs other pilots, each 0..1 on top of the master volume. */
+  setMix(own: number, others: number): void {
+    const t = this.ctx.currentTime;
+    this.motors.gain.setTargetAtTime(Math.max(0, Math.min(1, own)), t, GAIN_SMOOTHING);
+    this.remote.gain.setTargetAtTime(Math.max(0, Math.min(1, others)), t, GAIN_SMOOTHING);
   }
 
   setMuted(muted: boolean): void {

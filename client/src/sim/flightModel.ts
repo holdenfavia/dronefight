@@ -1,5 +1,5 @@
 import { Quaternion, Vector3 } from 'three';
-import { QUAD, SIM, type Rates } from '../config';
+import { QUAD, SIM, type QuadParams, type Rates } from '../config';
 import { betaflightRate } from './rates';
 
 /**
@@ -26,7 +26,7 @@ export interface FlightState {
   linvel: Vector3;
   /** World-space angular velocity (rad/s). */
   angvel: Vector3;
-  /** Current motor output as a fraction of max thrust (spools with QUAD.motorTau). */
+  /** Current motor output as a fraction of max thrust; negative when a 3D quad reverses (spools with motorTau). */
   motorOutput: number;
   /** Simulation time in seconds, drives deterministic prop-wash noise. */
   time: number;
@@ -41,7 +41,10 @@ export interface FlightOutput {
 }
 
 const DEG = Math.PI / 180;
-export const MAX_THRUST_N = QUAD.thrustToWeight * QUAD.massKg * SIM.gravity;
+export function maxThrust(p: QuadParams): number {
+  return p.thrustToWeight * p.massKg * SIM.gravity;
+}
+export const MAX_THRUST_N = maxThrust(QUAD);
 
 // Scratch objects: the flight model runs 500x per second, so it must not allocate (Hard rule 2).
 const invRot = new Quaternion();
@@ -54,16 +57,31 @@ export function createFlightOutput(): FlightOutput {
   return { force: new Vector3(), angvel: new Vector3(), motorOutput: 0 };
 }
 
-/** Throttle stick (0..1) -> desired motor output (0..1), before spool lag. */
-export function throttleToMotor(throttle: number, armed: boolean): number {
+/**
+ * Throttle stick (0..1) -> desired motor output, before spool lag.
+ * Normal quads: 0..1 with airmode idle. 3D quads (ADR-0013): center is zero, below center reverses.
+ */
+export function throttleToMotor(throttle: number, armed: boolean, p: QuadParams = QUAD): number {
   if (!armed) return 0;
   const t = Math.max(0, Math.min(1, throttle));
-  return Math.max(QUAD.idleThrust, Math.pow(t, QUAD.throttleExponent));
+  if (p.threeD) {
+    const c = t * 2 - 1;
+    const db = p.threeD.centerDeadband;
+    if (Math.abs(c) <= db) return 0;
+    const mag = Math.pow((Math.abs(c) - db) / (1 - db), p.throttleExponent);
+    return c > 0 ? mag : -mag * p.threeD.reverseEfficiency;
+  }
+  return Math.max(p.idleThrust, Math.pow(t, p.throttleExponent));
+}
+
+/** True when the throttle is where it's safe to arm: bottom for normal quads, center for 3D. */
+export function throttleSafeToArm(throttle: number, p: QuadParams, margin: number): boolean {
+  return p.threeD ? Math.abs(throttle - 0.5) <= margin : throttle <= margin;
 }
 
 /** Throttle (0..1) needed to hover, handy for the HUD and tests. */
-export function hoverThrottle(): number {
-  return Math.pow(1 / QUAD.thrustToWeight, 1 / QUAD.throttleExponent);
+export function hoverThrottle(p: QuadParams = QUAD): number {
+  return Math.pow(1 / p.thrustToWeight, 1 / p.throttleExponent);
 }
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -87,13 +105,14 @@ export function stepFlight(
   armed: boolean,
   dt: number,
   out: FlightOutput,
+  p: QuadParams = QUAD,
 ): FlightOutput {
   invRot.copy(state.rotation).invert();
   up.set(0, 1, 0).applyQuaternion(state.rotation);
 
   // --- Motors: spool toward the commanded output.
-  const motorTarget = throttleToMotor(input.throttle, armed);
-  const motorAlpha = 1 - Math.exp(-dt / QUAD.motorTau);
+  const motorTarget = throttleToMotor(input.throttle, armed, p);
+  const motorAlpha = 1 - Math.exp(-dt / p.motorTau);
   out.motorOutput = state.motorOutput + (motorTarget - state.motorOutput) * motorAlpha;
 
   // --- Rotation: track the Betaflight rate setpoint, like a well-tuned PID loop.
@@ -108,9 +127,9 @@ export function stepFlight(
     // Prop wash: descending into your own disturbed air shakes the quad.
     const descent = -state.linvel.dot(up);
     const wash =
-      smoothstep(QUAD.propWash.startSpeed, QUAD.propWash.fullSpeed, descent) *
-      Math.min(1, out.motorOutput * 3) *
-      QUAD.propWash.maxDegPerSec *
+      smoothstep(p.propWash.startSpeed, p.propWash.fullSpeed, descent) *
+      Math.min(1, Math.abs(out.motorOutput) * 3) *
+      p.propWash.maxDegPerSec *
       DEG;
     if (wash > 0) {
       targetBody.x += wash * washNoise(state.time, 1);
@@ -119,7 +138,7 @@ export function stepFlight(
     }
 
     bodyAngvel.copy(state.angvel).applyQuaternion(invRot);
-    const rateAlpha = 1 - Math.exp(-dt / QUAD.rateTau);
+    const rateAlpha = 1 - Math.exp(-dt / p.rateTau);
     bodyAngvel.lerp(targetBody, rateAlpha);
     out.angvel.copy(bodyAngvel).applyQuaternion(state.rotation);
   } else {
@@ -128,14 +147,14 @@ export function stepFlight(
   }
 
   // --- Forces: thrust along body up, drag computed in the body frame.
-  out.force.copy(up).multiplyScalar(out.motorOutput * MAX_THRUST_N);
+  out.force.copy(up).multiplyScalar(out.motorOutput * maxThrust(p));
 
   bodyVec.copy(state.linvel).applyQuaternion(invRot);
   const speed = bodyVec.length();
   bodyVec.set(
-    -(QUAD.dragQuadratic.x * speed + QUAD.dragLinear) * bodyVec.x,
-    -(QUAD.dragQuadratic.y * speed + QUAD.dragLinear) * bodyVec.y,
-    -(QUAD.dragQuadratic.z * speed + QUAD.dragLinear) * bodyVec.z,
+    -(p.dragQuadratic.x * speed + p.dragLinear) * bodyVec.x,
+    -(p.dragQuadratic.y * speed + p.dragLinear) * bodyVec.y,
+    -(p.dragQuadratic.z * speed + p.dragLinear) * bodyVec.z,
   );
   out.force.add(bodyVec.applyQuaternion(state.rotation));
 

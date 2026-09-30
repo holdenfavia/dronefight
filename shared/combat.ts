@@ -1,15 +1,9 @@
-// Combat tuning shared by client and server (ADR-0009, ADR-0011). Rules live in the ADRs; numbers are tunable here.
+// Combat rules shared by client and server (ADR-0009, ADR-0011, ADR-0012). Rules live in the ADRs.
+// Per-class numbers (health, damage, fire rate, round speed, hit radius) are in shared/drones.ts (ADR-0013).
 
 export const COMBAT = {
-  fireRate: 12,
-  /** Round speed (m/s). */
-  bulletSpeed: 350,
   /** Max round travel (m). */
   range: 300,
-  damage: 20,
-  maxHp: 100,
-  /** Hit sphere around a drone (m): half the ~1.5 m drawn width, so the hitbox matches what you see (ADR-0012). */
-  hitRadius: 0.75,
   /** Invulnerable this long after respawn, unless you fire. */
   spawnProtectionMs: 2000,
   respawnMs: 3000,

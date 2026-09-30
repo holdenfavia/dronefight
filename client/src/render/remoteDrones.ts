@@ -3,8 +3,9 @@ import { NET } from '../../../shared/protocol';
 import type { NetClient } from '../net/netClient';
 import { createSampledState, type SampleMode } from '../net/snapshotBuffer';
 import { TEAM_COLORS } from '../../../shared/combat';
+import type { DroneClassId } from '../../../shared/drones';
 import { DRONE_VISUAL } from '../config';
-import { createDroneModel, setDronePropColor } from './droneModel';
+import { createClassModel, setDronePropColor } from './droneModel';
 
 export interface RemoteView {
   id: string;
@@ -20,6 +21,7 @@ export interface RemoteView {
   motor: number;
   armed: boolean;
   crashed: boolean;
+  droneClass: DroneClassId;
 }
 
 /** Renders other pilots' drones from their snapshot buffers. They are not simulated locally. */
@@ -72,14 +74,22 @@ export class RemoteDrones {
 
     this.views.length = 0;
     for (const peer of net.peers.values()) {
+      const player = net.match?.players.find((p) => p.id === peer.id);
+      const cls = player?.drone ?? 'freestyle';
       let model = this.models.get(peer.id);
+      // Their class changed (ADR-0013): swap the model.
+      if (model && model.userData.droneClass !== cls) {
+        this.scene.remove(model);
+        this.models.delete(peer.id);
+        model = undefined;
+      }
       if (!model) {
-        // Other pilots get white props so they read differently from your own drone in chase view.
-        model = createDroneModel('#f4f2ee');
-        // Drawn ~1.5 m across so it's a readable target; physics stay 5" (ADR-0011).
-        model.scale.setScalar(DRONE_VISUAL.scale);
+        // Drawn at the class's readable size; their physics stay real size (ADR-0011, ADR-0013).
+        model = createClassModel(cls, '#f4f2ee');
         this.models.set(peer.id, model);
         this.scene.add(model);
+      }
+      if (!this.glows.has(peer.id)) {
         // Constant on-screen size, so they stay visible far away. Walls still hide it.
         const glow = new THREE.Sprite(
           new THREE.SpriteMaterial({
@@ -96,7 +106,7 @@ export class RemoteDrones {
         this.scene.add(glow);
       }
       const glow = this.glows.get(peer.id);
-      const team = net.match?.players.find((p) => p.id === peer.id)?.team;
+      const team = player?.team;
       const color = TEAM_COLORS[team ?? 1] ?? TEAM_COLORS[1];
       setDronePropColor(model, color);
       const s = peer.buffer.sample(renderTime, this.sample);
@@ -122,6 +132,7 @@ export class RemoteDrones {
           motor: 0,
           armed: false,
           crashed: false,
+          droneClass: cls,
         };
         this.viewPool.set(peer.id, view);
       }
@@ -135,6 +146,7 @@ export class RemoteDrones {
       view.motor = s.motor;
       view.armed = s.armed;
       view.crashed = s.crashed;
+      view.droneClass = cls;
       this.views.push(view);
     }
   }

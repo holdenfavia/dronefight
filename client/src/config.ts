@@ -8,8 +8,29 @@ export const SIM = {
   gravity: 9.81,
 } as const;
 
+/** Quad flight parameters. Freestyle and 3D share the model; 3D adds reversible thrust (ADR-0013). */
+export interface QuadParams {
+  massKg: number;
+  halfExtents: { x: number; y: number; z: number };
+  thrustToWeight: number;
+  throttleExponent: number;
+  idleThrust: number;
+  motorTau: number;
+  rateTau: number;
+  dragQuadratic: { x: number; y: number; z: number };
+  dragLinear: number;
+  propWash: { startSpeed: number; fullSpeed: number; maxDegPerSec: number };
+  /** Present for 3D mode: throttle center is zero thrust, below center reverses the motors. */
+  threeD?: {
+    /** Reverse thrust as a fraction of forward (symmetric 3D props are less efficient). */
+    reverseEfficiency: number;
+    /** Half-width of the zero-thrust band around center, as a fraction of stick travel. */
+    centerDeadband: number;
+  };
+}
+
 /** A 5" freestyle quad, roughly. */
-export const QUAD = {
+export const QUAD: QuadParams = {
   massKg: 0.65,
   /** Collision box half-extents in metres (x = right, y = up, z = forward). */
   halfExtents: { x: 0.12, y: 0.035, z: 0.12 },
@@ -36,13 +57,26 @@ export const QUAD = {
   /** Prop wash: random torque shake when descending through your own disturbed air. */
   propWash: {
     /** Descent speed along body-down (m/s) where wash starts. */
-    startSpeed: 2,
+    startSpeed: 4,
     /** Descent speed where wash reaches full strength. */
-    fullSpeed: 8,
-    /** Peak angular-rate disturbance (deg/s). */
-    maxDegPerSec: 90,
+    fullSpeed: 12,
+    /** Peak angular-rate disturbance (deg/s). Cut from 90 at the pilots' request: barely a shimmer now. Set 0 to remove. */
+    maxDegPerSec: 12,
   },
-} as const;
+};
+
+/** 3D quad (ADR-0013): lighter build, bidirectional motors, slower to reverse direction. */
+export const QUAD_3D: QuadParams = {
+  ...QUAD,
+  massKg: 0.6,
+  thrustToWeight: 7,
+  // Reversing a motor takes longer than spooling one way.
+  motorTau: 0.035,
+  // Symmetric frame: top and bottom faces are similar.
+  dragQuadratic: { x: 0.012, y: 0.02, z: 0.012 },
+  idleThrust: 0,
+  threeD: { reverseEfficiency: 0.7, centerDeadband: 0.04 },
+};
 
 export const CRASH = {
   /** Instant change in velocity (m/s) within one physics step that counts as a crash. */
@@ -51,10 +85,8 @@ export const CRASH = {
   autoResetSeconds: 2.5,
 } as const;
 
-/** Drones are drawn bigger than their 5" physics body so they're readable targets (ADR-0011). */
+/** How other drones are made readable (ADR-0011). Per-class draw scale is in shared/drones.ts (ADR-0013). */
 export const DRONE_VISUAL = {
-  /** Model scale. The base model is ~0.31 m across, so 4.8 draws ~1.5 m. */
-  scale: 4.8,
   /** Glow sprite size as a fraction of screen height, so it stays visible at any distance. */
   glowScreenSize: 0.05,
   /** Trail length in seconds, and its width in metres. */

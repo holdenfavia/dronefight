@@ -53,13 +53,14 @@ In the game: **Play online → Create room**, then read the 4-letter code to you
 | Reset (solo only; in a match the server respawns you) | Mapped reset button | R |
 | Camera FPV / chase | | C |
 | Mute / unmute | | M |
+| Fullscreen | | F |
 | Menu / pause | | Esc |
 
 Keyboard flight is for testing only.
 
 ### Tuning the flight feel
 
-Every physics and feel constant lives in `client/src/config.ts` (thrust-to-weight, drag, motor spool, rate tracking, prop wash, crash threshold). Rates and camera are adjustable in-game under **Settings**. Current baseline (guarded by tests in `client/src/sim/flightModel.test.ts`): hover near 25% throttle, idle lift ~5% of weight (zero throttle drops almost like free fall), flat terminal fall ~16 m/s, full-throttle punch ~160 km/h, forward top speed ~170 km/h, full stick reaches max rate in ~25 ms. Gravity is real (9.81 m/s²); fix floatiness with idle thrust and drag, not gravity.
+Every physics and feel constant lives in `client/src/config.ts` (thrust-to-weight, drag, motor spool, rate tracking, prop wash, crash threshold). Rates and camera are adjustable in-game under **Settings**. Current baseline (guarded by tests in `client/src/sim/flightModel.test.ts`): hover near 25% throttle, idle lift ~5% of weight (zero throttle drops almost like free fall), flat terminal fall ~16 m/s, full-throttle punch ~160 km/h, forward top speed ~170 km/h, full stick reaches max rate in ~25 ms, prop wash very light (max 12°/s shake, only when dropping faster than 4 m/s; set `propWash.maxDegPerSec` to 0 to remove it). Gravity is real (9.81 m/s²); fix floatiness with idle thrust and drag, not gravity.
 
 ### Combat
 
@@ -70,6 +71,14 @@ Rules are in ADR-0009. Tunable numbers (fire rate, round speed, damage, HP, resp
 - **Aim at the lead circle**, not the drone: it shows where your rounds will meet them (ADR-0011). Other drones are drawn ~1.5 m across with a glow and a fading trail. Your own physics stay a real 5".
 - Visual size, glow size and trail length/width are in `DRONE_VISUAL` in `client/src/config.ts`.
 - Tracers show instantly, but only the server decides hits. You'll see the hit marker when the server confirms, one round trip later.
+
+### Drone classes
+
+Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on the main menu. Solo switches now; in a match it applies at your next respawn.
+
+- **3D quad:** throttle center is zero thrust. Push up for normal thrust, pull below center to reverse the motors (hover inverted, back up). It arms with the throttle **centered**. On the keyboard, throttle starts at center on respawn.
+- **FPV wing:** can't hover. It spawns in the air at flying speed, facing along a street/lane. Keep your speed up: when slow, the nose drops. Camera uptilt is fixed for the wing (`WING.cameraUptiltDeg`).
+- Combat stats per class are in `shared/drones.ts` (server and client). Quad flight tuning is in `client/src/config.ts` (`QUAD`, `QUAD_3D`); wing tuning in `client/src/sim/wingModel.ts` (`WING`).
 
 ### Maps
 
@@ -82,7 +91,7 @@ Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, s
 
 ### Sound
 
-All sound is synthesized in `client/src/audio/` (ADR-0010); there are no audio files. Motor pitch/level/brightness constants are in `motorVoice.ts`, effects in `sfx.ts`. Volume and mute are in **Settings** (M toggles mute).
+All sound is synthesized in `client/src/audio/` (ADR-0010); there are no audio files. Motor profiles (quad, wing) are in `motorVoice.ts`, effects in `sfx.ts`. **Settings** has master volume plus **My drone** and **Other pilots** (their motors and gunfire, positioned so you can hear where they are). M toggles mute.
 
 - No sound at all? Browsers only start audio after a click or key press, so click **Fly** with the mouse. Gamepad input alone doesn't count.
 - Sound pauses when the tab is in the background and gets quieter while the menu is open.

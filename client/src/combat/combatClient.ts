@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { DEFAULT_MAP, getMap, type MapDef, type SpawnPoint } from '../../../shared/maps';
 import { COMBAT, TEAM_COLORS, TEAM_NAMES } from '../../../shared/combat';
+import { droneClass, type DroneClassId } from '../../../shared/drones';
 import type { MatchPlayer } from '../../../shared/protocol';
 import { buildColliders, raycastArena } from '../../../shared/raycast';
 import type { ControlState } from '../input/inputManager';
@@ -45,8 +46,8 @@ export class CombatClient {
     myTeam: 0,
     scores: [0, 0],
     killsToWin: COMBAT.killsToWin,
-    hp: COMBAT.maxHp,
-    maxHp: COMBAT.maxHp,
+    hp: 100,
+    maxHp: 100,
     alive: true,
     protected: false,
     respawnIn: null,
@@ -61,7 +62,8 @@ export class CombatClient {
     private readonly hud: Hud,
     /** The FPV camera's position and axes, which the guns are mounted around (ADR-0009, ADR-0011). */
     private readonly aim: (origin: THREE.Vector3, forward: THREE.Vector3, right: THREE.Vector3, up: THREE.Vector3) => void,
-    private readonly onRespawn: (spawn: SpawnPoint) => void,
+    /** Server respawned us: at this spawn, flying this class (ADR-0012, ADR-0013). */
+    private readonly onRespawn: (spawn: SpawnPoint, drone: DroneClassId) => void,
     private readonly sounds: CombatSounds,
   ) {}
 
@@ -94,7 +96,7 @@ export class CombatClient {
     if (control.fire && canFire) {
       if (this.fireCooldown <= 0) {
         this.fire();
-        this.fireCooldown = Math.max(0, this.fireCooldown) + 1 / COMBAT.fireRate;
+        this.fireCooldown = Math.max(0, this.fireCooldown) + 1 / droneClass(this.drone.classId).fireRate;
       }
     } else if (this.fireCooldown < 0) {
       this.fireCooldown = 0;
@@ -128,7 +130,9 @@ export class CombatClient {
     h.scores[1] = 0;
     for (const p of m.players) h.scores[p.team === 1 ? 1 : 0] = p.score;
     h.killsToWin = m.killsToWin;
-    h.hp = me?.hp ?? COMBAT.maxHp;
+    const cls = droneClass(me?.drone ?? this.drone.classId);
+    h.maxHp = cls.maxHp;
+    h.hp = me?.hp ?? cls.maxHp;
     h.alive = me?.alive ?? true;
     h.protected = me?.protected ?? false;
     h.respawnIn = this.respawnDeadline !== null ? Math.max(0, (this.respawnDeadline - performance.now()) / 1000) : null;
@@ -159,7 +163,7 @@ export class CombatClient {
     const o = this.origin;
     const d = this.dir;
     const maxDist = raycastArena(this.colliders, o.x, o.y, o.z, d.x, d.y, d.z, COMBAT.range);
-    this.tracers.spawn(o, d, maxDist, this.myColor);
+    this.tracers.spawn(o, d, maxDist, this.myColor, droneClass(this.drone.classId).bulletSpeed);
     this.sounds.shot();
     const r = (x: number) => Math.round(x * 1000) / 1000;
     this.net.sendShot({
@@ -205,7 +209,7 @@ export class CombatClient {
         case 'respawn':
           if (ev.id === you) {
             this.respawnDeadline = null;
-            this.onRespawn(this.map.spawns[ev.spawn] ?? this.map.spawns[0]!);
+            this.onRespawn(this.map.spawns[ev.spawn] ?? this.map.spawns[0]!, ev.drone);
             if (this.toast) this.toast = null;
           }
           break;
@@ -221,10 +225,17 @@ export class CombatClient {
       const [px, py, pz] = shot.s.p;
       const [dx, dy, dz] = shot.s.d;
       const maxDist = raycastArena(this.colliders, px, py, pz, dx, dy, dz, COMBAT.range);
-      const team = this.net.match?.players.find((p) => p.id === shot.id)?.team ?? 1;
-      this.tracers.spawn(this.shotOrigin.set(px, py, pz), this.shotDir.set(dx, dy, dz), maxDist, TEAM_COLORS[team] ?? TEAM_COLORS[1]);
+      const shooter = this.net.match?.players.find((p) => p.id === shot.id);
+      const team = shooter?.team ?? 1;
+      const speed = droneClass(shooter?.drone ?? 'freestyle').bulletSpeed;
+      this.tracers.spawn(this.shotOrigin.set(px, py, pz), this.shotDir.set(dx, dy, dz), maxDist, TEAM_COLORS[team] ?? TEAM_COLORS[1], speed);
       this.sounds.shot(this.shotOrigin);
     }
+  }
+
+  /** A short message in the middle of the screen. */
+  notify(text: string): void {
+    this.showToast(text, performance.now());
   }
 
   private showToast(text: string, now: number, ms: number = TOAST_MS): void {
