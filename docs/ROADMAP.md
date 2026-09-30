@@ -62,6 +62,11 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Drone picker in menu; class models for other pilots
 - [x] Separate volume for your drone vs other pilots; F toggles fullscreen; boundary grid fades in near the map edge
 - [x] Class weapons (ADR-0014): wing rotary cannon + Cobra, 3D shotgun, Special input, token-bucket rate checks
+- [x] Cobra reworked to physics (ADR-0015); Map buttons quick remap
+- [x] Specials (ADR-0016): 3D smoke screen with concealment; Freestyle TOW-style guided missile; particles; sounds
+- [x] Training ground (ADR-0017): map, stationary/path/random/evasive bots, local practice hits, stats HUD
+- [x] Pressure test: fixed missile exploding on launch (client impact check), silent server rejections, ghost launches, departed pilots' missiles; fuzz + real-socket missile test
+- [ ] Play-test with real hands on the sticks
 - [ ] Play all three against each other and tune
 
 ## Phase 3.5 — Go online

@@ -23,7 +23,8 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 
 - **Freestyle 5"** (default), **3D quad** (reversible thrust; throttle center = zero), **FPV wing** (fixed-wing; can't hover; spawns airborne).
 - Full classes: health, damage, fire rate, round speed and size differ per class. Picked in the menu; in a match it applies at your next respawn.
-- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s, BRRRT) plus a **Cobra** maneuver on the Special button (E); 3D quad choked double-barrel shotgun (2/s, 8 pellets).
+- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s, BRRRT) plus a physics-based **Cobra** while holding Special (E or a mapped radio button, ADR-0015); 3D quad choked double-barrel shotgun (2/s, 8 pellets).
+- Specials (ADR-0015/0016): wing **Cobra** (hold), 3D quad **smoke screen** (tap: hides you and blocks the enemy's lead indicator), Freestyle **guided missile** (tap to switch guns/missile; steer it with your crosshair; 5 s max flight, proximity fuse, splash).
 
 ## Controls
 
@@ -53,6 +54,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 
 - **Downtown** (default): city blocks, towers, streets, parking garage, skybridge, construction crane.
 - **Yard**: the original industrial arena.
+- **Training** (ADR-0017): solo practice with bots (white stationary, blue fixed paths, yellow random, red evasive), hits/kills/accuracy.
 - The room creator picks the map. Distant mountains, clouds and sun glow on every map.
 
 ## Art direction (ADR-0007)

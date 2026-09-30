@@ -34,7 +34,7 @@ export const WING = {
   /** Drag: parasitic, induced factor, and extra flat-plate drag when the air hits the wing broadside. */
   cd0: 0.035,
   inducedK: 0.06,
-  cdBroadside: 1.1,
+  cdBroadside: 0.5,
   /** Side force per (m/s of sideslip x m/s of airspeed): the winglets act as fins. */
   sideDamping: 0.05,
   /** Max commanded rates at full stick (deg/s). */
@@ -58,32 +58,44 @@ export const WING = {
 } as const;
 
 /**
- * Pugachev's Cobra on the Special button (ADR-0014): snap the nose up to ~100° off the flight path,
- * hold while broadside drag bleeds speed, then pitch back down. Weathervaning is off while it runs.
+ * Pugachev's Cobra (ADR-0014, reworked): hold Special for full up-elevator with stabilization off.
+ * Pitch is then integrated from real moments instead of commanded directly:
+ *   elevator moment      ~ q * S * c * elevator        (q = dynamic pressure: grows with airspeed squared)
+ *   static stability     ~ -q * S * c * stability * sin(alpha)   (fights back harder as the nose rises)
+ *   pitch damping        ~ -q * S * c * damping * rate / speed
+ *   spin drag            ~ -spinDrag * rate * |rate|  (doesn't fade with speed, so a slowed wing can't tumble)
+ * divided by the wing's pitch inertia. So the nose accelerates up in an arc, a fast wing Cobras hard,
+ * a slow one barely can, speed bleeds from broadside drag, and the nose falls back as authority fades.
  */
 export const COBRA = {
-  /** Needs this much airspeed to start (m/s). */
-  minSpeed: 12,
-  cooldownSeconds: 3,
-  /** Nose-up phase: rate (deg/s) and duration (s). 420 x 0.26 ≈ 109°. */
-  upRateDeg: 420,
-  upSeconds: 0.26,
-  /** Hold at high angle of attack. */
-  holdSeconds: 0.35,
-  /** Nose-down recovery: rate and duration. 320 x 0.3 ≈ 96°. */
-  downRateDeg: 320,
-  downSeconds: 0.3,
+  /** Mean chord (m) and pitch moment of inertia (kg m^2). */
+  chord: 0.3,
+  pitchInertia: 0.03,
+  /** Moment coefficients: full up-elevator, static stability, and pitch damping. */
+  elevator: 0.08,
+  stability: 0.075,
+  damping: 0.2,
+  /** Flat-plate rotational drag (N m per (rad/s)^2): a spinning wing pushes air even when it isn't moving. */
+  spinDrag: 0.02,
 } as const;
 
-const DEG = Math.PI / 180;
-
-/** Commanded nose-up pitch rate (rad/s) at time `t` into a Cobra, or null once it has finished. */
-export function cobraPitchRate(t: number): number | null {
-  if (t < COBRA.upSeconds) return COBRA.upRateDeg * DEG;
-  if (t < COBRA.upSeconds + COBRA.holdSeconds) return 0;
-  if (t < COBRA.upSeconds + COBRA.holdSeconds + COBRA.downSeconds) return -COBRA.downRateDeg * DEG;
-  return null;
+/**
+ * One step of Cobra pitch dynamics. Takes and returns the body pitch rate (rad/s, nose-up positive).
+ * `alpha` is the angle of attack (rad), `speed` the airspeed (m/s).
+ */
+export function cobraPitchStep(pitchRate: number, alpha: number, speed: number, dt: number): number {
+  const q = 0.5 * WING.rho * speed * speed;
+  const qsc = q * WING.area * COBRA.chord;
+  const moment =
+    qsc * COBRA.elevator -
+    // Past 90° the airflow still pushes the nose back, so the restoring moment stays at full strength.
+    qsc * COBRA.stability * Math.sin(Math.max(-Math.PI / 2, Math.min(Math.PI / 2, alpha))) -
+    (qsc * COBRA.damping * COBRA.chord * pitchRate) / Math.max(speed, 5) -
+    COBRA.spinDrag * pitchRate * Math.abs(pitchRate);
+  return pitchRate + (moment / COBRA.pitchInertia) * dt;
 }
+
+const DEG = Math.PI / 180;
 
 const invRot = new Quaternion();
 const vBody = new Vector3();
@@ -111,14 +123,15 @@ export function liftCoefficient(alpha: number): number {
   return Math.sign(alpha) * mag;
 }
 
+
 export function stepWing(
   input: FlightInput,
   state: FlightState,
   armed: boolean,
   dt: number,
   out: FlightOutput,
-  /** During a Cobra: the scripted nose-up pitch rate (rad/s), which replaces the pitch stick. */
-  cobraRate: number | null = null,
+  /** Special held: Cobra pitch dynamics replace the pitch stick and weathervaning (ADR-0014). */
+  cobra = false,
 ): FlightOutput {
   const rot = state.rotation;
   invRot.copy(rot).invert();
@@ -133,11 +146,12 @@ export function stepWing(
 
   // --- Aerodynamics. Air moves opposite to the wing, so the flow direction is -velocity.
   const speed = state.linvel.length();
+  let alpha = 0;
   if (speed > 0.5) {
     vHat.copy(state.linvel).divideScalar(speed);
     vBody.copy(state.linvel).applyQuaternion(invRot);
     // Positive when the nose is above the flight path.
-    const alpha = Math.atan2(-vBody.y, -vBody.z);
+    alpha = Math.atan2(-vBody.y, -vBody.z);
     const cl = liftCoefficient(alpha);
     const q = 0.5 * WING.rho * speed * speed * WING.area;
 
@@ -155,20 +169,30 @@ export function stepWing(
 
   // --- Rotation: commanded rates, weaker when slow, plus the nose weathervaning into the airflow.
   const authority = Math.max(WING.minAuthority, Math.min(1, speed / WING.controlSpeed));
-  if (armed || speed > 3) {
+  const rateAlpha = 1 - Math.exp(-dt / WING.rateTau);
+  if (cobra) {
+    // Cobra: pitch integrates real moments; roll and yaw still follow the sticks (ADR-0014).
+    bodyAngvel.copy(state.angvel).applyQuaternion(invRot);
+    const pitch = cobraPitchStep(bodyAngvel.x, alpha, speed, dt);
+    target.set(0, -expo(input.yaw) * WING.maxYawDeg * DEG * authority, -expo(input.roll) * WING.maxRollDeg * DEG * authority);
+    bodyAngvel.y += (target.y - bodyAngvel.y) * rateAlpha;
+    bodyAngvel.z += (target.z - bodyAngvel.z) * rateAlpha;
+    bodyAngvel.x = pitch;
+    out.angvel.copy(bodyAngvel).applyQuaternion(rot);
+  } else if (armed || speed > 3) {
     target.set(
-      cobraRate ?? -expo(input.pitch) * WING.maxPitchDeg * DEG * authority,
+      -expo(input.pitch) * WING.maxPitchDeg * DEG * authority,
       -expo(input.yaw) * WING.maxYawDeg * DEG * authority,
       -expo(input.roll) * WING.maxRollDeg * DEG * authority,
     );
     // To world, then add the weathervane turn that swings the nose toward the flight path.
     target.applyQuaternion(rot);
-    if (speed > 0.5 && cobraRate === null) {
+    if (speed > 0.5) {
       vane.crossVectors(forward, vHat).multiplyScalar(WING.weathervane * Math.min(1.5, speed / WING.controlSpeed));
       target.add(vane);
     }
     bodyAngvel.copy(state.angvel);
-    bodyAngvel.lerp(target, 1 - Math.exp(-dt / WING.rateTau));
+    bodyAngvel.lerp(target, rateAlpha);
     out.angvel.copy(bodyAngvel);
   } else {
     out.angvel.copy(state.angvel);

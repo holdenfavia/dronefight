@@ -35,6 +35,38 @@ export class Sfx {
     this.tone(out, t + 0.01, 'triangle', 60, 32, 0.25, 0.3);
   }
 
+  /** Rocket launch (ADR-0016): a rising rushing hiss with a thump. */
+  rocketLaunch(from?: Position): void {
+    const out = this.output(from, from ? 1 : 0.7);
+    const t = this.engine.now;
+    this.noise(out, t, 0.6, { type: 'bandpass', freq: 600, to: 2600 }, 0.7, 0.55);
+    this.tone(out, t, 'sine', 140, 60, 0.12, 0.35);
+  }
+
+  /** Rocket explosion: crack, deep boom, long rumble. Always positional. */
+  explosion(at: Position): void {
+    const out = this.output(at, 1.4);
+    const t = this.engine.now;
+    this.noise(out, t, 0.08, { type: 'highpass', freq: 1800 }, 0.8, 0.07);
+    this.noise(out, t, 1.2, { type: 'lowpass', freq: 1500, to: 120 }, 1, 1.1);
+    this.tone(out, t, 'sine', 80, 28, 0.7, 0.9);
+  }
+
+  /** 3D smoke screen: a pressurized hiss. */
+  smoke(from?: Position): void {
+    const out = this.output(from, from ? 1 : 0.6);
+    const t = this.engine.now;
+    this.noise(out, t, 1.3, { type: 'highpass', freq: 2500, to: 900 }, 0.5, 1.2);
+  }
+
+  /** Weapon switch: two quick mechanical clicks. */
+  weaponSwitch(): void {
+    const out = this.output();
+    const t = this.engine.now;
+    this.noise(out, t, 0.02, { type: 'highpass', freq: 3000 }, 0.5, 0.018);
+    this.noise(out, t + 0.07, 0.025, { type: 'bandpass', freq: 1800 }, 0.6, 0.02);
+  }
+
   /** Wing Cobra (ADR-0014): the airframe slams broadside into the air. */
   cobra(): void {
     const out = this.output();

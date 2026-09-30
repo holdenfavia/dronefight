@@ -2,7 +2,7 @@ import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { SIM } from '../config';
 import { createFlightOutput, type FlightInput, type FlightState } from './flightModel';
-import { COBRA, cobraPitchRate, levelFlightSpeed, liftCoefficient, stepWing, WING } from './wingModel';
+import { levelFlightSpeed, liftCoefficient, stepWing, WING } from './wingModel';
 
 const dt = 1 / SIM.hz;
 const centered: FlightInput = { throttle: 0, roll: 0, pitch: 0, yaw: 0 };
@@ -75,16 +75,30 @@ describe('wing model (ADR-0013)', () => {
   });
 });
 
-describe('Cobra (ADR-0014)', () => {
-  it('pitches the nose up past vertical and bleeds speed, then comes back', () => {
-    const s = flying(40);
+describe('Cobra (ADR-0014): physics-based, hold Special', () => {
+  const nose = new Vector3();
+  /** Angle between the nose and the airflow (deg). */
+  const aoa = (s: FlightState) => {
+    nose.set(0, 0, -1).applyQuaternion(s.rotation);
+    const v = s.linvel.length();
+    return v < 0.1 ? 0 : (Math.acos(Math.max(-1, Math.min(1, nose.dot(s.linvel) / v))) * 180) / Math.PI;
+  };
+  /** Nose above the horizon (deg, -90..90). */
+  const pitchUp = (s: FlightState) => {
+    nose.set(0, 0, -1).applyQuaternion(s.rotation);
+    return (Math.asin(Math.max(-1, Math.min(1, nose.y))) * 180) / Math.PI;
+  };
+
+  /** Hold the Cobra for `hold` s at 80% throttle, then fly normally (sticks centered) for `after` s. */
+  function cobra(speed: number, hold: number, after = 0) {
+    const s = flying(speed);
     const out = createFlightOutput();
-    let t = 0;
-    let maxNoseUp = -1;
-    for (;;) {
-      const rate = cobraPitchRate(t);
-      if (rate === null) break;
-      stepWing({ ...centered, throttle: 0.4 }, s, true, dt, out, rate);
+    let peakAoa = 0;
+    let aoaAt60ms = 0;
+    let endAoa = 0;
+    const steps = Math.round((hold + after) * SIM.hz);
+    for (let i = 0; i < steps; i++) {
+      stepWing({ ...centered, throttle: 0.8 }, s, true, dt, out, i < hold * SIM.hz);
       s.motorOutput = out.motorOutput;
       s.linvel.addScaledVector(out.force, dt / WING.massKg);
       s.linvel.y -= SIM.gravity * dt;
@@ -92,17 +106,30 @@ describe('Cobra (ADR-0014)', () => {
       const w = s.angvel;
       const angle = w.length() * dt;
       if (angle > 0) s.rotation.premultiply(new Quaternion().setFromAxisAngle(w.clone().normalize(), angle)).normalize();
-      const nose = new Vector3(0, 0, -1).applyQuaternion(s.rotation);
-      maxNoseUp = Math.max(maxNoseUp, nose.y);
-      t += dt;
+      if (i < hold * SIM.hz) peakAoa = Math.max(peakAoa, aoa(s));
+      if (i === Math.round(0.06 * SIM.hz)) aoaAt60ms = aoa(s);
+      endAoa = aoa(s);
     }
-    // Nose went well up (at least ~70° above the horizon)...
-    expect(maxNoseUp).toBeGreaterThan(Math.sin((70 * Math.PI) / 180));
-    // ...and the airbrake took a big chunk of speed.
-    expect(s.linvel.length()).toBeLessThan(40 * 0.7);
+    return { peakAoa, aoaAt60ms, endAoa, pitch: pitchUp(s), speed: s.linvel.length() };
+  }
+
+  it('builds up over time instead of snapping (under 15° after 60 ms)', () => {
+    for (const v of [12, 20, 30, 40]) expect(cobra(v, 0.5).aoaAt60ms).toBeLessThan(15);
   });
 
-  it('lasts under a second', () => {
-    expect(cobraPitchRate(COBRA.upSeconds + COBRA.holdSeconds + COBRA.downSeconds + 0.01)).toBeNull();
+  it('a fast entry pitches past ~90° to the airflow; a slow one barely can', () => {
+    const fast = cobra(40, 0.5);
+    const slow = cobra(12, 0.5);
+    expect(fast.peakAoa).toBeGreaterThan(85);
+    expect(fast.peakAoa).toBeLessThan(125);
+    expect(slow.peakAoa).toBeLessThan(fast.peakAoa * 0.6);
+  });
+
+  it('works as an airbrake: a fast entry loses about half its speed', () => {
+    expect(cobra(40, 0.5).speed).toBeLessThan(40 * 0.6);
+  });
+
+  it('recovers to normal flight after release', () => {
+    expect(cobra(30, 0.5, 1.5).endAoa).toBeLessThan(15);
   });
 });

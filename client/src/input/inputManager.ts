@@ -22,7 +22,9 @@ export interface ControlState extends FlightInput {
   resetPressed: boolean;
   /** Fire held (ADR-0009). */
   fire: boolean;
-  /** True for one poll when the class special (e.g. Cobra) is pressed (ADR-0014). */
+  /** Class special held (e.g. the wing's Cobra, ADR-0014). */
+  special: boolean;
+  /** True for one poll when the class special is pressed. */
   specialPressed: boolean;
 }
 
@@ -49,6 +51,7 @@ export class InputManager {
     armSwitch: null,
     resetPressed: false,
     fire: false,
+    special: false,
     specialPressed: false,
   };
   source: InputSource = 'keyboard';
@@ -132,6 +135,7 @@ export class InputManager {
 
     this.state.resetPressed = resetDown && !this.resetWasDown;
     this.resetWasDown = resetDown;
+    this.state.special = specialDown;
     this.state.specialPressed = specialDown && !this.specialWasDown;
     this.specialWasDown = specialDown;
     return this.state;

@@ -7,7 +7,7 @@ import type { NetClient } from '../net/netClient';
 import { maxRate } from '../sim/rates';
 import { defaultSettings, saveSettings, type Settings } from '../settings';
 
-type Screen = 'main' | 'settings' | 'controller' | 'online';
+type Screen = 'main' | 'settings' | 'controller' | 'buttons' | 'online';
 
 export interface MenuCallbacks {
   onFly(): void;
@@ -43,6 +43,7 @@ export class Menu {
     if (screen === 'main') this.renderMain();
     else if (screen === 'settings') this.renderSettings();
     else if (screen === 'online') this.renderOnline();
+    else if (screen === 'buttons') this.calibration.openButtons();
     else this.calibration.open();
   }
 
@@ -67,7 +68,7 @@ export class Menu {
 
   tick(): void {
     if (!this.visible) return;
-    if (this.screen === 'controller') this.calibration.tick();
+    if (this.screen === 'controller' || this.screen === 'buttons') this.calibration.tick();
     if (this.screen === 'main') this.updateControllerStatus();
   }
 
@@ -84,6 +85,7 @@ export class Menu {
         <div class="drone-blurb">${droneClass(this.settings.drone).blurb}</div>
         ${this.net.inRoom ? '' : `<button class="btn ghost" data-map>Map: ${getMap(this.settings.map).name} ▸</button>`}
         <button class="btn ghost" data-controller>Controller setup</button>
+        <button class="btn ghost" data-buttons>Map buttons (fire, special…)</button>
         <button class="btn ghost" data-settings>Settings</button>
         <div class="controller-status" data-status></div>
       </div>
@@ -105,6 +107,7 @@ export class Menu {
       this.renderMain();
     });
     this.root.querySelector('[data-controller]')?.addEventListener('click', () => this.show('controller'));
+    this.root.querySelector('[data-buttons]')?.addEventListener('click', () => this.show('buttons'));
     this.root.querySelector('[data-settings]')?.addEventListener('click', () => this.show('settings'));
     this.updateControllerStatus();
   }

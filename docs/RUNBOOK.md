@@ -79,8 +79,22 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 
 - **3D quad:** throttle center is zero thrust. Push up for normal thrust, pull below center to reverse the motors (hover inverted, back up). It arms with the throttle **centered**. On the keyboard, throttle starts at center on respawn.
 - **FPV wing:** can't hover. It spawns in the air at flying speed, facing along a street/lane. Keep your speed up: when slow, the nose drops. Camera uptilt is fixed for the wing (`WING.cameraUptiltDeg`).
-- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s) plus the **Cobra** on Special (E), 3 s cooldown shown in the HUD; 3D quad double-barrel shotgun (2 blasts/s, 8 pellets). Controller profiles saved earlier have no Special binding: re-run Controller setup to add one.
+- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s) plus the **Cobra** while holding Special (E): physics-based, stronger the faster you enter it, costs speed, no cooldown (ADR-0015); 3D quad double-barrel shotgun (2 blasts/s, 8 pellets). To put Special (or Fire) on your radio without redoing the sticks, use **Map buttons** on the main menu. There, Skip keeps a button's current binding.
 - Combat stats per class are in `shared/drones.ts` (server and client). Quad flight tuning is in `client/src/config.ts` (`QUAD`, `QUAD_3D`); wing tuning in `client/src/sim/wingModel.ts` (`WING`).
+
+### Class specials (ADR-0015, ADR-0016)
+
+| Class | Special (E / mapped button) |
+|---|---|
+| FPV wing | **Hold** for a Cobra: physics-based, stronger the faster you enter, costs speed |
+| 3D quad | **Tap** for a smoke screen: hides you (glow, trail, marker, lead) for 6 s; 10 s cooldown |
+| Freestyle 5" | **Tap** to switch Guns / **guided missile**. Fire launches it; keep your crosshair on the target to steer (TOW-style). 2.5 s burn, self-destructs at 5 s, one in flight (firing again replaces it), pod of 3 |
+
+Numbers: `shared/abilities.ts` (smoke), `shared/missile.ts` (missile physics, shared by server and client), `COBRA` in `client/src/sim/wingModel.ts`.
+
+### Training ground (ADR-0017)
+
+Pick **Map: Training** and **Fly solo**. Bots: **white** stationary (40/80/130/180 m down the lanes), **blue** fixed paths, **yellow** random, **red** evasive (they jink harder while your crosshair is on them). Hits, kills and accuracy show at the top. **R** respawns you and resets the stats. The lead circle follows the bot nearest your crosshair. Bots are solo-only; hits on them are checked locally (`client/src/training/`).
 
 ### Maps
 

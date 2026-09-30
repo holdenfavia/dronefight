@@ -33,7 +33,7 @@ const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
 const MAX_PENDING_SHOTS = 64;
 
 /** Gameplay events from the server, drained by the game each frame. Never dropped. */
-export type CombatEvent = Extract<ServerMessage, { t: 'hit' | 'death' | 'respawn' }>;
+export type CombatEvent = Extract<ServerMessage, { t: 'hit' | 'death' | 'respawn' | 'ability' | 'boom' | 'missile' }>;
 export type RemoteShot = Extract<ServerMessage, { t: 'shot' }>;
 
 export function defaultServerUrl(): string {
@@ -95,6 +95,11 @@ export class NetClient {
   setLoadout(drone: DroneClassId): void {
     this.loadout = drone;
     if (this.inRoom) this.send({ t: 'loadout', drone });
+  }
+
+  /** Tell the room we used an ability here (3D smoke, ADR-0016). */
+  sendAbility(p: [number, number, number]): void {
+    if (this.inRoom) this.send({ t: 'ability', kind: 'smoke', p });
   }
 
   /** Send one round to the server, which decides whether it hits (ADR-0009). */
@@ -251,6 +256,9 @@ export class NetClient {
       case 'hit':
       case 'death':
       case 'respawn':
+      case 'ability':
+      case 'boom':
+      case 'missile':
         this.events.push(msg);
         break;
       case 'shot':

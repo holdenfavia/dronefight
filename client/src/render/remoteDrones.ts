@@ -22,6 +22,8 @@ export interface RemoteView {
   armed: boolean;
   crashed: boolean;
   droneClass: DroneClassId;
+  /** Hidden by smoke from where you're looking (ADR-0016). */
+  concealed: boolean;
 }
 
 /** Renders other pilots' drones from their snapshot buffers. They are not simulated locally. */
@@ -56,7 +58,8 @@ export class RemoteDrones {
 
   constructor(private readonly scene: THREE.Scene) {}
 
-  update(net: NetClient): void {
+  /** `isConcealed` hides a pilot's glow (and flags the view) when smoke is in the way. */
+  update(net: NetClient, isConcealed: (pos: THREE.Vector3) => boolean = () => false): void {
     const serverNow = net.serverNow();
     const renderTime = serverNow - NET.interpDelayMs;
     const now = performance.now();
@@ -133,6 +136,7 @@ export class RemoteDrones {
           armed: false,
           crashed: false,
           droneClass: cls,
+          concealed: false,
         };
         this.viewPool.set(peer.id, view);
       }
@@ -147,6 +151,8 @@ export class RemoteDrones {
       view.armed = s.armed;
       view.crashed = s.crashed;
       view.droneClass = cls;
+      view.concealed = isConcealed(model.position);
+      if (glow && view.concealed) glow.visible = false;
       this.views.push(view);
     }
   }

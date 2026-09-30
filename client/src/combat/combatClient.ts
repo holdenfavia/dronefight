@@ -9,6 +9,9 @@ import type { NetClient } from '../net/netClient';
 import type { Tracers } from '../render/tracers';
 import type { Drone } from '../sim/drone';
 import type { CombatHudInfo, Hud } from '../ui/hud';
+import { SMOKE } from '../../../shared/abilities';
+import { MISSILE, refillPod, type AimRay } from '../../../shared/missile';
+import type { Missiles, SmokeClouds } from './effects';
 
 /**
  * Client side of combat (ADR-0009). Fires rounds and draws tracers instantly; the server decides
@@ -30,6 +33,11 @@ export interface CombatSounds {
   cannon(firing: boolean): void;
   /** Another pilot's rotary cannon fired a round just now. */
   remoteCannon(pilotId: string): void;
+  /** Rocket launch and smoke deploy (ADR-0016); positional when `from` is given. */
+  rocketLaunch(from?: { x: number; y: number; z: number }): void;
+  smoke(from?: { x: number; y: number; z: number }): void;
+  /** Weapon switch click. */
+  weaponSwitch(): void;
   hitConfirm(): void;
   damage(): void;
   countdown(secondsLeft: number): void;
@@ -54,6 +62,16 @@ export class CombatClient {
   private readonly pelletDir = new THREE.Vector3();
   /** Last shotgun blast time per remote pilot, so 8 pellets make one boom. */
   private readonly lastBlast = new Map<string, number>();
+  /** Every round/pellet we fire, for local practice hit checks on the Training map (ADR-0017). */
+  onLocalRound: ((origin: THREE.Vector3, dir: THREE.Vector3, speed: number, damage: number, maxDist: number) => void) | null = null;
+  /** Freestyle: which weapon Special has selected, and the missile pod mirror (ADR-0016). */
+  weapon: 'guns' | 'missiles' = 'guns';
+  private missilePod: number = MISSILE.pod;
+  private missilePodAt = performance.now();
+  private nextMissileId = 1;
+  private readonly aimRay: AimRay = { o: [0, 0, 0], d: [0, 0, -1] };
+  /** 3D quad: when the smoke screen is ready again (performance.now() ms). */
+  private smokeReadyAt = 0;
   private readonly hudInfo: CombatHudInfo = {
     phase: 'waiting',
     myTeam: 0,
@@ -78,7 +96,81 @@ export class CombatClient {
     /** Server respawned us: at this spawn, flying this class (ADR-0012, ADR-0013). */
     private readonly onRespawn: (spawn: SpawnPoint, drone: DroneClassId) => void,
     private readonly sounds: CombatSounds,
+    private readonly effects: { smoke: SmokeClouds; missiles: Missiles },
   ) {}
+
+  /** Round speed for the lead indicator; null with guided missiles selected (you steer them, no lead). */
+  get projectileSpeed(): number | null {
+    return this.missilesSelected ? null : droneClass(this.drone.classId).bulletSpeed;
+  }
+
+  private get missilesSelected(): boolean {
+    return this.drone.classId === 'freestyle' && this.weapon === 'missiles';
+  }
+
+  private get myId(): string {
+    return this.net.you ?? 'me';
+  }
+
+  /** Our line of sight while guiding a missile, for the server (sent with our state). Null otherwise. */
+  guidance(): [number, number, number, number, number, number] | null {
+    if (this.effects.missiles.inFlight(this.myId) === 0) return null;
+    const { o, d } = this.currentAim();
+    const r = (x: number) => Math.round(x * 1000) / 1000;
+    return [r(o[0]), r(o[1]), r(o[2]), r(d[0]), r(d[1]), r(d[2])];
+  }
+
+  /** Where the crosshair points right now: the FPV camera's line of sight. */
+  private currentAim(): AimRay {
+    this.aim(this.origin, this.dir, this.right, this.up);
+    this.aimRay.o[0] = this.origin.x;
+    this.aimRay.o[1] = this.origin.y;
+    this.aimRay.o[2] = this.origin.z;
+    this.aimRay.d[0] = this.dir.x;
+    this.aimRay.d[1] = this.dir.y;
+    this.aimRay.d[2] = this.dir.z;
+    return this.aimRay;
+  }
+
+  /** HUD readout for this class's special (ADR-0015/0016). The wing's Cobra is reported by the game. */
+  specialReadout(): { label: string; value: string } | null {
+    const now = performance.now();
+    if (this.drone.classId === 'freestyle') {
+      if (this.weapon === 'guns') return { label: 'WEAPON', value: 'GUNS' };
+      if (this.effects.missiles.inFlight(this.myId) > 0) return { label: 'MISSILE', value: 'GUIDE IT' };
+      const pod = refillPod(this.missilePod, this.missilePodAt, now).ammo;
+      return { label: 'MISSILE', value: `${Math.floor(pod)}/${MISSILE.pod}` };
+    }
+    if (this.drone.classId === 'quad3d') {
+      const wait = this.smokeReadyAt - now;
+      return { label: 'SMOKE', value: wait > 0 ? `${Math.ceil(wait / 1000)}s` : 'READY' };
+    }
+    return null;
+  }
+
+  /** True if smoke hides `target` from `eye` (ADR-0016). */
+  conceals(eye: THREE.Vector3, target: THREE.Vector3): boolean {
+    return this.effects.smoke.conceals(eye, target);
+  }
+
+  /** Tap-Special abilities: Freestyle weapon switch, 3D smoke. (The wing's Cobra is a hold, handled by the drone.) */
+  private handleSpecial(control: ControlState, alive: boolean): void {
+    if (!control.specialPressed) return;
+    if (this.drone.classId === 'freestyle') {
+      this.weapon = this.weapon === 'guns' ? 'missiles' : 'guns';
+      this.sounds.weaponSwitch();
+      this.notify(this.weapon === 'missiles' ? 'Guided missile' : 'Guns');
+    } else if (this.drone.classId === 'quad3d') {
+      const now = performance.now();
+      if (!alive || this.drone.crashed || now < this.smokeReadyAt) return;
+      this.smokeReadyAt = now + SMOKE.cooldownMs;
+      const p = this.drone.currPos;
+      this.effects.smoke.deploy(p);
+      this.sounds.smoke();
+      const r = (x: number) => Math.round(x * 100) / 100;
+      this.net.sendAbility([r(p.x), r(p.y), r(p.z)]);
+    }
+  }
 
   /** Rounds stop at this map's walls; respawns use its spawn list (ADR-0012). */
   setMap(map: MapDef): void {
@@ -107,9 +199,23 @@ export class CombatClient {
     this.fireCooldown -= dt;
     const me = this.me();
     const gun = droneClass(this.drone.classId);
-    const canFire = flying && this.drone.armed && !this.drone.crashed && (!this.inMatch || (me?.alive ?? false));
+    if (this.drone.classId !== 'freestyle') this.weapon = 'guns';
+    const alive = !this.inMatch || (me?.alive ?? false);
+    if (flying) this.handleSpecial(control, alive);
+    const canFire = flying && this.drone.armed && !this.drone.crashed && alive;
     const firing = control.fire && canFire;
-    if (firing) {
+    // Guided missiles: steered by our line of sight every frame (TOW-style, ADR-0016).
+    this.effects.missiles.update(dt, alive && !this.drone.crashed ? this.currentAim() : null);
+    if (firing && this.missilesSelected) {
+      const pod = refillPod(this.missilePod, this.missilePodAt, performance.now());
+      this.missilePod = pod.ammo;
+      this.missilePodAt = pod.at;
+      if (this.effects.missiles.inFlight(this.myId) < MISSILE.maxInFlight && this.missilePod >= 1 && this.fireCooldown <= 0) {
+        this.missilePod -= 1;
+        this.fireMissile();
+        this.fireCooldown = 0.3;
+      }
+    } else if (firing) {
       const interval = 1 / gun.fireRate;
       for (let i = 0; i < MAX_SHOTS_PER_FRAME && this.fireCooldown <= 0; i++) {
         this.fire();
@@ -119,7 +225,7 @@ export class CombatClient {
     } else if (this.fireCooldown < 0) {
       this.fireCooldown = 0;
     }
-    this.sounds.cannon(firing && gun.gunSound === 'vulcan');
+    this.sounds.cannon(firing && gun.gunSound === 'vulcan' && !this.missilesSelected);
 
     if (this.toast && now > this.toast.until) this.toast = null;
 
@@ -169,6 +275,25 @@ export class CombatClient {
     return TEAM_NAMES[team] ?? 'Opponent';
   }
 
+  /** Launch a guided missile (ADR-0016) from the current barrel, along the line of sight. */
+  private fireMissile(): void {
+    this.aim(this.origin, this.dir, this.right, this.up);
+    this.converge.copy(this.origin).addScaledVector(this.dir, COMBAT.convergence);
+    this.origin
+      .addScaledVector(this.dir, COMBAT.muzzleForward)
+      .addScaledVector(this.right, COMBAT.gunSide * this.barrel)
+      .addScaledVector(this.up, -COMBAT.gunDrop);
+    this.dir.subVectors(this.converge, this.origin).normalize();
+    this.barrel = -this.barrel;
+    const o = this.origin;
+    const d = this.dir;
+    const rid = this.nextMissileId++;
+    this.effects.missiles.launchLocal(this.myId, rid, o, d);
+    this.sounds.rocketLaunch();
+    const r = (x: number) => Math.round(x * 1000) / 1000;
+    this.net.sendShot({ ts: Math.round(this.net.serverNow()), p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)], w: 'rocket', rid });
+  }
+
   private fire(): void {
     this.aim(this.origin, this.dir, this.right, this.up);
     // Both guns converge on a point straight ahead of the camera.
@@ -196,6 +321,7 @@ export class CombatClient {
       }
       const maxDist = raycastArena(this.colliders, o.x, o.y, o.z, d.x, d.y, d.z, gun.range);
       this.tracers.spawn(o, d, maxDist, this.myColor, gun.bulletSpeed);
+      this.onLocalRound?.(o, d, gun.bulletSpeed, gun.damage, maxDist);
       this.net.sendShot({ ts, p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)] });
     }
     if (gun.gunSound !== 'vulcan') this.sounds.shot(gun.gunSound);
@@ -234,6 +360,17 @@ export class CombatClient {
             this.showToast(`${this.teamName(ev.id)} crashed`, now);
           }
           break;
+        case 'ability':
+          this.effects.smoke.deploy(ev.p);
+          this.sounds.smoke(this.shotOrigin.set(ev.p[0], ev.p[1], ev.p[2]));
+          break;
+        case 'boom':
+          // Server-decided detonation: draw it here, for everyone's missiles including ours.
+          this.effects.missiles.detonate(ev.id === you ? this.myId : ev.id, ev.rid, ev.p);
+          break;
+        case 'missile':
+          if (ev.id !== you) this.effects.missiles.track(ev.id, ev.rid, ev.p, ev.v);
+          break;
         case 'respawn':
           if (ev.id === you) {
             this.respawnDeadline = null;
@@ -252,6 +389,11 @@ export class CombatClient {
     for (const shot of this.net.remoteShots.splice(0)) {
       const [px, py, pz] = shot.s.p;
       const [dx, dy, dz] = shot.s.d;
+      if (shot.s.w === 'rocket') {
+        this.effects.missiles.launchRemote(shot.id, shot.s.rid ?? 0, this.shotOrigin.set(px, py, pz), this.shotDir.set(dx, dy, dz));
+        this.sounds.rocketLaunch(this.shotOrigin);
+        continue;
+      }
       const shooter = this.net.match?.players.find((p) => p.id === shot.id);
       const team = shooter?.team ?? 1;
       const gun = droneClass(shooter?.drone ?? 'freestyle');

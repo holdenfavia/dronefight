@@ -57,6 +57,8 @@ export interface DroneState {
   m: number;
   armed: boolean;
   crashed: boolean;
+  /** Line of sight (origin xyz, direction xyz) while guiding a missile (ADR-0016). */
+  g?: [number, number, number, number, number, number];
 }
 
 /** One round fired (ADR-0009). */
@@ -67,6 +69,9 @@ export interface Shot {
   p: Vec3;
   /** Normalized direction. */
   d: Vec3;
+  /** Guided missile instead of a round (Freestyle, ADR-0016), with the shooter's id for it. */
+  w?: 'rocket';
+  rid?: number;
 }
 
 export type MatchPhase = 'waiting' | 'playing' | 'ended';
@@ -103,6 +108,8 @@ export type ClientMessage =
   | { t: 'shot'; s: Shot }
   /** Choose a drone class; applies at the next respawn during a match (ADR-0013). */
   | { t: 'loadout'; drone: DroneClassId }
+  /** Use a class ability at a position (3D smoke screen, ADR-0016). */
+  | { t: 'ability'; kind: 'smoke'; p: Vec3 }
   | { t: 'ping'; id: number; ct: number };
 
 // ---- Server -> client
@@ -123,7 +130,13 @@ export type ServerMessage =
   | { t: 'hit'; shooter: string; target: string; hp: number }
   | { t: 'death'; id: string; killer: string | null; cause: 'shot' | 'crash' }
   | { t: 'respawn'; id: string; spawn: number; drone: DroneClassId }
-  | { t: 'match'; m: MatchState };
+  | { t: 'match'; m: MatchState }
+  /** Someone used an ability (ADR-0016). */
+  | { t: 'ability'; id: string; kind: 'smoke'; p: Vec3 }
+  /** A missile exploded here (server-decided, ADR-0016). `id` is the shooter, `rid` their missile id. */
+  | { t: 'boom'; id: string; rid: number; p: Vec3 }
+  /** Where a guided missile is now (sent ~20x/s while it flies). */
+  | { t: 'missile'; id: string; rid: number; p: Vec3; v: Vec3 };
 
 // ---- Validation (never trust the wire)
 
@@ -145,7 +158,8 @@ export function isDroneState(x: unknown): x is DroneState {
     isVec(s.v, 3) &&
     isNum(s.m) &&
     typeof s.armed === 'boolean' &&
-    typeof s.crashed === 'boolean'
+    typeof s.crashed === 'boolean' &&
+    (s.g === undefined || isVec(s.g, 6))
   );
 }
 
@@ -169,6 +183,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isDroneState(m.s) ? { t: 'state', s: m.s } : null;
     case 'ping':
       return isNum(m.id) && isNum(m.ct) ? { t: 'ping', id: m.id, ct: m.ct } : null;
+    case 'ability':
+      return m.kind === 'smoke' && isVec(m.p, 3) ? { t: 'ability', kind: 'smoke', p: m.p as Vec3 } : null;
     case 'loadout':
       return isDroneClassId(m.drone) ? { t: 'loadout', drone: m.drone } : null;
     case 'shot': {
@@ -177,7 +193,13 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       const d = s.d as Vec3;
       const len = Math.hypot(d[0], d[1], d[2]);
       if (len < 0.5 || len > 1.5) return null;
-      return { t: 'shot', s: { ts: s.ts, p: s.p as Vec3, d: [d[0] / len, d[1] / len, d[2] / len] } };
+      const shot: Shot = { ts: s.ts, p: s.p as Vec3, d: [d[0] / len, d[1] / len, d[2] / len] };
+      if (s.w === 'rocket') {
+        if (!isNum(s.rid)) return null;
+        shot.w = 'rocket';
+        shot.rid = s.rid;
+      }
+      return { t: 'shot', s: shot };
     }
     default:
       return null;

@@ -6,6 +6,10 @@ import { CannonVoice } from './audio/cannonVoice';
 import { RemoteAudio } from './audio/remoteAudio';
 import { Sfx } from './audio/sfx';
 import { CombatClient } from './combat/combatClient';
+import { Missiles, SmokeClouds } from './combat/effects';
+import { buildColliders } from '../../shared/raycast';
+import { Particles } from './render/particles';
+import { TrainingGround } from './training/trainingGround';
 import { interceptTime } from '../../shared/lead';
 import type { DroneState } from '../../shared/protocol';
 import { InputManager } from './input/inputManager';
@@ -60,7 +64,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const input = new InputManager();
   if (import.meta.env.DEV) {
     // Handy for poking at the game from the browser console while developing.
-    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; } } });
+    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get training() { return training; }, get combatEffects() { return combatEffects; } } });
   }
   const rig = new CameraRig(settings);
   rig.uptiltOverride = drone.classId === 'wing' ? WING.cameraUptiltDeg : null;
@@ -68,6 +72,37 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const remotes = new RemoteDrones(world.scene);
   const net = new NetClient(defaultServerUrl(), () => menu.onNetChange());
   const tracers = new Tracers(world.scene);
+  const particles = new Particles(world.scene);
+  // Map geometry for predicting our missile's impacts (rebuilt when the map changes).
+  let mapColliders = buildColliders(currentMap.boxes);
+  // Smoke screens and rockets (ADR-0016); explosions are positional sounds.
+  const combatEffects = {
+    smoke: new SmokeClouds(particles),
+    missiles: new Missiles(world.scene, particles, () => mapColliders, (at: THREE.Vector3) => {
+      sfx.explosion(at);
+      training.splash(at);
+    }),
+  };
+  // Solo practice bots on the Training map (ADR-0017).
+  const training = new TrainingGround(world.scene, {
+    onHit: () => {
+      hud.flashHit();
+      sfx.hitConfirm();
+    },
+    onKill: (at) => {
+      combatEffects.missiles.effect(at);
+      sfx.explosion(at);
+    },
+  });
+  // Our missile's predicted proximity fuse: practice bots, or the other pilots in a room (the server
+  // decides the real explosion; this just keeps it from visibly flying through them first).
+  const pilotTargets: THREE.Vector3[] = [];
+  combatEffects.missiles.fuseTargets = () => {
+    if (training.active) return training.targets();
+    pilotTargets.length = 0;
+    for (const v of remotes.views) if (!v.crashed && v.mode !== 'hold') pilotTargets.push(v.position);
+    return pilotTargets;
+  };
   const trails = new Trails(world.scene);
   const audio = new AudioEngine();
   const sfx = new Sfx(audio);
@@ -109,9 +144,14 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       damage: () => sfx.damage(),
       countdown: (n) => sfx.countdown(n),
       stinger: (kind) => sfx.stinger(kind),
+      rocketLaunch: (from) => sfx.rocketLaunch(from),
+      smoke: (from) => sfx.smoke(from),
+      weaponSwitch: () => sfx.weaponSwitch(),
     },
+    combatEffects,
   );
   combat.setMap(currentMap);
+  combat.onLocalRound = (o, d, speed, damage, maxDist) => training.addRound(o, d, speed, damage, maxDist);
 
   let paused = true;
   const menu = new Menu(menuRoot, input, settings, net, {
@@ -160,6 +200,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     world.setMap(currentMap);
     arenaColliders.set(currentMap.boxes);
     combat.setMap(currentMap);
+  combat.onLocalRound = (o, d, speed, damage, maxDist) => training.addRound(o, d, speed, damage, maxDist);
+    mapColliders = buildColliders(currentMap.boxes);
     boundaryGrid.setHalfSize(currentMap.halfSize);
     drone.respawnAt(randomSpawn(currentMap));
     input.resetKeyboardThrottle(drone.restingThrottle);
@@ -240,6 +282,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       m: r(drone.state.motorOutput),
       armed: drone.armed,
       crashed: drone.crashed,
+      // Our line of sight while a missile is in flight: the server steers the real missile with it (ADR-0016).
+      g: combat.guidance() ?? undefined,
     };
   }
 
@@ -285,7 +329,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   function leadFor(target: THREE.Vector3, velocity: THREE.Vector3): { x: number; y: number } | null {
     toTargetLead.subVectors(target, drone.currPos);
     const d = toTargetLead;
-    const speed = droneClass(drone.classId).bulletSpeed;
+    const speed = combat.projectileSpeed;
+    if (speed === null) return null;
     const t = interceptTime(d.x, d.y, d.z, velocity.x, velocity.y, velocity.z, speed);
     if (t === null || t * speed > COMBAT.range) return null;
     leadPoint.copy(target).addScaledVector(velocity, t);
@@ -297,6 +342,13 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     lead.x = ((projected.x + 1) / 2) * container.clientWidth;
     lead.y = ((1 - projected.y) / 2) * container.clientHeight;
     return lead;
+  }
+
+  /** Lead indicator on the practice bot nearest the crosshair (ADR-0017). */
+  function practiceLead(): { x: number; y: number } | null {
+    if (!training.active || paused) return null;
+    const t = training.bestTarget(rig.camera);
+    return t ? leadFor(t.position, t.velocity) : null;
   }
 
   const netInfo: NetHudInfo = { status: 'offline', room: null, pingMs: 0, peer: null };
@@ -342,6 +394,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       if (!combat.inMatch) {
         const autoReset = drone.crashed && drone.crashTime >= CRASH.autoResetSeconds;
         if (control.resetPressed || autoReset) respawn();
+        if (control.resetPressed && training.active) training.resetStats();
       }
 
       accumulator += frameDt;
@@ -363,10 +416,13 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
     // Networking runs even while paused, so your friend still sees where you are.
     net.update(frameDt, localState);
-    remotes.update(net);
+    remotes.update(net, (pos) => combat.conceals(rig.camera.position, pos));
     const remote = remotes.views[0];
     combat.update(frameDt, control, !paused);
     tracers.update();
+    particles.update(rig.camera, frameDt);
+    training.setActive(!net.inRoom && currentMap.id === 'training');
+    training.update(paused ? 0 : frameDt, rig.camera);
     trails.update(remotes.views, rig.camera, (team) => TEAM_COLORS[team ?? 1] ?? TEAM_COLORS[1]);
     setDronePropColor(droneModel, combat.myColor);
 
@@ -395,8 +451,16 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       net: netHud(),
       combat: combat.hudState(),
       // Edge arrow only when they're off screen; on screen, the trail and glow show them.
-      marker: remote && !markerFor(remote.position).onScreen ? marker : null,
-      lead: remote && !paused && remote.mode !== 'hold' && !remote.crashed ? leadFor(remote.position, remote.velocity) : null,
+      // Smoke hides the other pilot's marker and lead circle too (ADR-0016).
+      marker: remote && !remote.concealed && !markerFor(remote.position).onScreen ? marker : null,
+      lead: remote && !remote.concealed && !paused && remote.mode !== 'hold' && !remote.crashed
+        ? leadFor(remote.position, remote.velocity)
+        : practiceLead(),
+      training: training.active ? training.statsText() : null,
+      special:
+        drone.classId === 'wing'
+          ? { label: 'COBRA', value: drone.cobraActive ? 'ON' : drone.speed < 15 ? 'LOW SPEED' : 'READY' }
+          : combat.specialReadout(),
     });
 
     renderer.render(world.scene, rig.camera);

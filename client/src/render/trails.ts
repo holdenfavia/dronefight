@@ -113,7 +113,11 @@ export class Trails {
   constructor(private readonly scene: THREE.Scene) {}
 
   /** Record and redraw the trail for each visible pilot; remove trails for pilots who left. */
-  update(pilots: readonly { id: string; position: THREE.Vector3; team: number | null; crashed: boolean }[], camera: THREE.Camera, colorFor: (team: number | null) => string): void {
+  update(
+    pilots: readonly { id: string; position: THREE.Vector3; team: number | null; crashed: boolean; concealed?: boolean }[],
+    camera: THREE.Camera,
+    colorFor: (team: number | null) => string,
+  ): void {
     const now = performance.now();
     const seen = new Set<string>();
     for (const pilot of pilots) {
@@ -124,7 +128,8 @@ export class Trails {
         this.trails.set(pilot.id, trail);
         this.scene.add(trail.mesh);
       }
-      if (!pilot.crashed) trail.push(pilot.position, now);
+      // Inside smoke the trail stops growing: it leads into the cloud and disappears (ADR-0016).
+      if (!pilot.crashed && !pilot.concealed) trail.push(pilot.position, now);
       trail.update(now, camera, colorFor(pilot.team));
     }
     for (const [id, trail] of this.trails) {

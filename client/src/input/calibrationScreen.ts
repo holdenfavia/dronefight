@@ -53,6 +53,9 @@ export class CalibrationScreen {
   private special: SwitchBinding | null = null;
   private deadband: number = INPUT.deadband;
   private pending: { axis: number; invert: boolean } | SwitchBinding | null = null;
+  /** Full setup, or just the buttons on an already-calibrated controller. */
+  private steps: Step[] = STEPS;
+  private buttonsOnly = false;
 
   constructor(
     private readonly root: HTMLElement,
@@ -60,7 +63,20 @@ export class CalibrationScreen {
     private readonly onClose: () => void,
   ) {}
 
+  /** Full setup: sticks, then buttons. */
   open(): void {
+    this.start(false);
+  }
+
+  /** Quick remap of Arm / Reset / Fire / Special, keeping the stick calibration (ADR-0014). */
+  openButtons(): void {
+    this.start(true);
+  }
+
+  private start(buttonsOnly: boolean): void {
+    this.buttonsOnly = buttonsOnly;
+    const buttonSteps: StepId[] = ['select', 'arm', 'reset', 'fire', 'special', 'test'];
+    this.steps = buttonsOnly ? STEPS.filter((st) => buttonSteps.includes(st.id)) : STEPS;
     this.step = 0;
     this.padIndex = -1;
     this.assigned = {};
@@ -73,7 +89,7 @@ export class CalibrationScreen {
 
   /** Called every frame while the screen is visible. */
   tick(): void {
-    const current = STEPS[this.step];
+    const current = this.steps[this.step];
     if (!current) return;
     if (current.id === 'select') {
       this.renderPadList();
@@ -124,17 +140,18 @@ export class CalibrationScreen {
   }
 
   private render(): void {
-    const current = STEPS[this.step];
+    const current = this.steps[this.step];
     if (!current) return;
     const skippable = current.id === 'arm' || current.id === 'reset' || current.id === 'fire' || current.id === 'special';
     const isTest = current.id === 'test';
     this.root.innerHTML = `
       <div class="panel calib">
         <div class="panel-head">
-          <span class="kicker">Controller setup · ${this.step + 1}/${STEPS.length}</span>
+          <span class="kicker">${this.buttonsOnly ? 'Map buttons' : 'Controller setup'} · ${this.step + 1}/${this.steps.length}</span>
           <h2>${current.title}</h2>
         </div>
         <p class="calib-body">${current.body}</p>
+        ${this.buttonsOnly && this.currentBinding(current.id) !== undefined ? `<p class="hint">Currently: ${this.currentBinding(current.id) ? describeSwitch(this.currentBinding(current.id)!) : 'not set'}. Skip keeps it.</p>` : ''}
         <div class="calib-live"></div>
         <div class="calib-status"></div>
         ${isTest ? `<label class="field">Deadband <input type="range" min="0" max="0.15" step="0.005" value="${this.deadband}" data-deadband><span data-deadband-value>${this.deadband.toFixed(3)}</span></label>` : ''}
@@ -148,8 +165,12 @@ export class CalibrationScreen {
     this.root.querySelector('[data-cancel]')?.addEventListener('click', () => this.onClose());
     this.root.querySelector('[data-back]')?.addEventListener('click', () => this.go(this.step - 1));
     this.root.querySelector('[data-skip]')?.addEventListener('click', () => {
-      this.pending = null;
-      this.commit();
+      // Remapping buttons: Skip keeps the current binding. Full setup: Skip means "none".
+      if (this.buttonsOnly) this.go(this.step + 1);
+      else {
+        this.pending = null;
+        this.commit();
+      }
     });
     this.root.querySelector('[data-next]')?.addEventListener('click', () => this.commit());
     const db = this.root.querySelector<HTMLInputElement>('[data-deadband]');
@@ -161,20 +182,20 @@ export class CalibrationScreen {
   }
 
   private go(step: number): void {
-    this.step = Math.max(0, Math.min(STEPS.length - 1, step));
+    this.step = Math.max(0, Math.min(this.steps.length - 1, step));
     this.pending = null;
     const raw = this.input.readRaw(this.padIndex);
     this.stepBaseline = raw;
     // Stepping back to a stick step re-detects it, so drop that assignment and any after it.
     const order: StickChannel[] = ['throttle', 'roll', 'pitch', 'yaw'];
-    const id = STEPS[this.step]?.id;
+    const id = this.steps[this.step]?.id;
     const idx = order.indexOf(id as StickChannel);
     if (idx >= 0) for (const ch of order.slice(idx)) delete this.assigned[ch];
     this.render();
   }
 
   private commit(): void {
-    const id = STEPS[this.step]?.id;
+    const id = this.steps[this.step]?.id;
     const raw = this.input.readRaw(this.padIndex);
     switch (id) {
       case 'range':
@@ -232,6 +253,34 @@ export class CalibrationScreen {
     };
   }
 
+  /** The saved binding for a button step, or undefined for steps that aren't buttons. */
+  private currentBinding(id: StepId): SwitchBinding | null | undefined {
+    if (id === 'arm') return this.arm;
+    if (id === 'reset') return this.reset;
+    if (id === 'fire') return this.fire;
+    if (id === 'special') return this.special;
+    return undefined;
+  }
+
+  /** Buttons-only mode: start from the saved stick calibration and bindings. */
+  private loadExisting(id: string): boolean {
+    const profile = this.input.getProfile(id);
+    if (!profile) return false;
+    for (const ch of ['throttle', 'roll', 'pitch', 'yaw'] as const) {
+      const cal = profile.axes[ch];
+      this.assigned[ch] = { axis: cal.axis, invert: cal.invert };
+      this.rangeMin[cal.axis] = cal.min;
+      this.rangeMax[cal.axis] = cal.max;
+      this.center[cal.axis] = cal.center;
+    }
+    this.deadband = profile.deadband;
+    this.arm = profile.arm;
+    this.reset = profile.reset;
+    this.fire = profile.fire ?? null;
+    this.special = profile.special ?? null;
+    return true;
+  }
+
   private trackRange(raw: RawSnapshot): void {
     raw.axes.forEach((v, i) => {
       this.rangeMin[i] = Math.min(this.rangeMin[i] ?? v, v);
@@ -275,6 +324,11 @@ export class CalibrationScreen {
         this.padId = pad.id;
         this.rangeMin = [];
         this.rangeMax = [];
+        if (this.buttonsOnly && !this.loadExisting(pad.id)) {
+          const live = this.root.querySelector('.calib-live');
+          if (live) live.innerHTML = '<div class="empty">This controller isn\'t set up yet. Run the full Controller setup first.</div>';
+          return;
+        }
         this.go(1);
       }),
     );
@@ -332,7 +386,8 @@ export class CalibrationScreen {
     const armText = profile.arm ? (readSwitch(profile.arm, raw) ? 'ARMED' : 'off') : 'auto (throttle low)';
     const resetText = profile.reset ? (readSwitch(profile.reset, raw) ? 'PRESSED' : 'off') : 'R key';
     const fireText = profile.fire ? (readSwitch(profile.fire, raw) ? 'FIRING' : 'off') : 'Space';
-    sw.textContent = `Arm: ${armText} · Reset: ${resetText} · Fire: ${fireText}`;
+    const specialText = profile.special ? (readSwitch(profile.special, raw) ? 'PRESSED' : 'off') : 'E key';
+    sw.textContent = `Arm: ${armText} · Reset: ${resetText} · Fire: ${fireText} · Special: ${specialText}`;
   }
 
   private setStatus(text: string): void {

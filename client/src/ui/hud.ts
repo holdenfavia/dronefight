@@ -56,6 +56,10 @@ export interface HudInfo {
   /** Lead indicator: where to aim so your rounds meet them (ADR-0011). Screen px. */
   lead: { x: number; y: number } | null;
   combat: CombatHudInfo | null;
+  /** This class's special: Cobra, smoke, or weapon/rockets (ADR-0015/0016). */
+  special: { label: string; value: string } | null;
+  /** Training stats line (ADR-0017), shown where the match score would be. */
+  training: string | null;
 }
 
 type El =
@@ -75,7 +79,8 @@ type El =
   | 'damage'
   | 'banner'
   | 'lead'
-  | 'special';
+  | 'special'
+  | 'specialLabel';
 
 /** On-screen display, styled after a Betaflight OSD. Updates text only when it changes. */
 export class Hud {
@@ -99,7 +104,7 @@ export class Hud {
         <div class="osd-item"><span class="osd-label">THR</span><span data-thr></span></div>
         <div class="osd-item"><span class="osd-label">SPD</span><span data-spd></span></div>
         <div class="osd-item"><span class="osd-label">ALT</span><span data-alt></span></div>
-        <div class="osd-item" data-special-item><span class="osd-label">COBRA</span><span data-special></span></div>
+        <div class="osd-item" data-special-item><span class="osd-label" data-special-label></span><span data-special></span></div>
       </div>`;
     const q = (sel: string) => {
       const found = root.querySelector<HTMLElement>(sel);
@@ -124,6 +129,7 @@ export class Hud {
       banner: q('[data-banner]'),
       lead: q('[data-lead]'),
       special: q('[data-special]'),
+      specialLabel: q('[data-special-label]'),
     };
   }
 
@@ -137,15 +143,20 @@ export class Hud {
     restartAnimation(this.el.damage, 'show');
   }
 
+  private trainingText: string | null = null;
+
   update(info: HudInfo): void {
     const { drone } = info;
+    this.trainingText = info.training;
     this.set(this.el.thr, `${Math.round(info.throttle * 100)}%`);
     this.set(this.el.spd, `${Math.round(drone.speed * 3.6)} km/h`);
     this.set(this.el.alt, `${Math.max(0, drone.currPos.y).toFixed(0)} m`);
-    // Wing only: Cobra readiness (ADR-0014).
-    const wing = drone.classId === 'wing';
-    (this.el.special.parentElement as HTMLElement).hidden = !wing;
-    if (wing) this.set(this.el.special, drone.cobraTime !== null ? 'GO' : drone.cobraCooldown > 0 ? `${Math.ceil(drone.cobraCooldown)}s` : 'READY');
+    // Class special readout (ADR-0015/0016).
+    (this.el.special.parentElement as HTMLElement).hidden = !info.special;
+    if (info.special) {
+      this.set(this.el.specialLabel, info.special.label);
+      this.set(this.el.special, info.special.value);
+    }
 
     let status = '';
     const combat = info.combat;
@@ -182,7 +193,8 @@ export class Hud {
   private updateCombat(c: CombatHudInfo | null): void {
     const active = !!c && c.phase !== 'waiting';
     this.el.hp.hidden = !active;
-    this.el.score.hidden = !active;
+    this.el.score.hidden = !active && !this.trainingText;
+    if (!active && this.trainingText) this.set(this.el.score, this.trainingText);
     if (!c || !active) {
       this.set(this.el.banner, c?.toast ?? '');
       return;

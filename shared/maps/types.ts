@@ -31,7 +31,7 @@ export interface SpawnPoint {
   yawDeg: number;
 }
 
-export type MapId = 'downtown' | 'yard';
+export type MapId = 'downtown' | 'yard' | 'training';
 
 export interface MapDef {
   id: MapId;
