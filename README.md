@@ -4,7 +4,7 @@ A browser FPV drone dogfighting game, built by pilots who fly real FPV.
 
 Open a link, share a room code with a friend, plug in your radio, and fight in acro mode in a bright industrial arena. No install, no account.
 
-> **Status:** Early development: Phase 1 (flight sim). Nothing playable yet. See the [roadmap](docs/ROADMAP.md).
+> **Status:** Phase 1 (flight sim). Solo flying works; online play comes in Phase 2. See the [roadmap](docs/ROADMAP.md).
 
 _"dronefight" is a working title._
 
@@ -33,12 +33,17 @@ The reasoning behind each choice is in [`docs/decisions/`](docs/decisions/README
 ### Prerequisites
 
 - **git**
-- **Node.js 22 LTS or newer** from [nodejs.org](https://nodejs.org)
+- **Node.js 26** (see `.node-version`; 22+ works): `brew install node` or [nodejs.org](https://nodejs.org)
 - **Chrome or Edge** (best gamepad support)
 
 ### Run it
 
-_Setup commands will be added once the project is scaffolded. See [RUNBOOK.md](docs/RUNBOOK.md)._
+```bash
+npm install
+npm run dev
+```
+
+Open http://localhost:5173 in Chrome or Edge, run **Controller setup** once, then **Fly**. Controls, tests and tuning notes are in [RUNBOOK.md](docs/RUNBOOK.md).
 
 ### Connect your radio
 

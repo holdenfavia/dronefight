@@ -8,23 +8,23 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 - [x] Spec, decisions, roadmap, runbook, CLAUDE.md
 - [x] git repository initialized, first commit
-- [ ] Node.js installed (see RUNBOOK)
-- [ ] Vite + TypeScript project scaffold (client), strict mode
-- [ ] Server package scaffold (Node + `ws`)
+- [x] Node.js installed (see RUNBOOK)
+- [x] Vite + TypeScript project scaffold (client), strict mode
+- [x] Server package scaffold (Node + `ws`)
 
 ## Phase 1 — Flight sim (solo)
 
-- [ ] Three.js scene: sky, ground, lighting, one test arena
-- [ ] Gamepad input layer + mapping/calibration screen (ADR-0006)
-- [ ] Verify DJI FPV Remote Controller 2 works end to end
-- [ ] Keyboard fallback for testing
-- [ ] Acro flight model with Betaflight-style rates (ADR-0003)
-- [ ] FPV camera with adjustable uptilt and FOV
-- [ ] Collisions against arena geometry (Rapier)
-- [ ] Crash + reset
-- [ ] Settings panel (rates, camera) persisted per browser
-- [ ] FPS counter in debug HUD
-- [ ] Both pilots agree it "feels right"
+- [x] Three.js scene: sky, ground, lighting, one test arena
+- [x] Gamepad input layer + mapping/calibration screen (ADR-0006)
+- [ ] Verify DJI FPV Remote Controller 2 works end to end (wizard tested with a simulated radio; needs the real one)
+- [x] Keyboard fallback for testing
+- [x] Acro flight model with Betaflight-style rates (ADR-0008)
+- [x] FPV camera with adjustable uptilt and FOV
+- [x] Collisions against arena geometry (Rapier)
+- [x] Crash + reset
+- [x] Settings panel (rates, camera) persisted per browser
+- [x] FPS counter in debug HUD
+- [ ] Both pilots agree it "feels right" (tune in `client/src/config.ts`)
 
 ## Phase 2 — Online (2 players)
 
