@@ -61,6 +61,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] FPV wing: flight model (lift, stall, drag, weathervane), airborne launch, model, audio
 - [x] Drone picker in menu; class models for other pilots
 - [x] Separate volume for your drone vs other pilots; F toggles fullscreen; boundary grid fades in near the map edge
+- [x] Class weapons (ADR-0014): wing rotary cannon + Cobra, 3D shotgun, Special input, token-bucket rate checks
 - [ ] Play all three against each other and tune
 
 ## Phase 3.5 — Go online

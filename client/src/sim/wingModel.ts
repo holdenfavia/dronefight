@@ -57,7 +57,33 @@ export const WING = {
   launchSpeed: 20,
 } as const;
 
+/**
+ * Pugachev's Cobra on the Special button (ADR-0014): snap the nose up to ~100° off the flight path,
+ * hold while broadside drag bleeds speed, then pitch back down. Weathervaning is off while it runs.
+ */
+export const COBRA = {
+  /** Needs this much airspeed to start (m/s). */
+  minSpeed: 12,
+  cooldownSeconds: 3,
+  /** Nose-up phase: rate (deg/s) and duration (s). 420 x 0.26 ≈ 109°. */
+  upRateDeg: 420,
+  upSeconds: 0.26,
+  /** Hold at high angle of attack. */
+  holdSeconds: 0.35,
+  /** Nose-down recovery: rate and duration. 320 x 0.3 ≈ 96°. */
+  downRateDeg: 320,
+  downSeconds: 0.3,
+} as const;
+
 const DEG = Math.PI / 180;
+
+/** Commanded nose-up pitch rate (rad/s) at time `t` into a Cobra, or null once it has finished. */
+export function cobraPitchRate(t: number): number | null {
+  if (t < COBRA.upSeconds) return COBRA.upRateDeg * DEG;
+  if (t < COBRA.upSeconds + COBRA.holdSeconds) return 0;
+  if (t < COBRA.upSeconds + COBRA.holdSeconds + COBRA.downSeconds) return -COBRA.downRateDeg * DEG;
+  return null;
+}
 
 const invRot = new Quaternion();
 const vBody = new Vector3();
@@ -91,6 +117,8 @@ export function stepWing(
   armed: boolean,
   dt: number,
   out: FlightOutput,
+  /** During a Cobra: the scripted nose-up pitch rate (rad/s), which replaces the pitch stick. */
+  cobraRate: number | null = null,
 ): FlightOutput {
   const rot = state.rotation;
   invRot.copy(rot).invert();
@@ -129,13 +157,13 @@ export function stepWing(
   const authority = Math.max(WING.minAuthority, Math.min(1, speed / WING.controlSpeed));
   if (armed || speed > 3) {
     target.set(
-      -expo(input.pitch) * WING.maxPitchDeg * DEG * authority,
+      cobraRate ?? -expo(input.pitch) * WING.maxPitchDeg * DEG * authority,
       -expo(input.yaw) * WING.maxYawDeg * DEG * authority,
       -expo(input.roll) * WING.maxRollDeg * DEG * authority,
     );
     // To world, then add the weathervane turn that swings the nose toward the flight path.
     target.applyQuaternion(rot);
-    if (speed > 0.5) {
+    if (speed > 0.5 && cobraRate === null) {
       vane.crossVectors(forward, vHat).multiplyScalar(WING.weathervane * Math.min(1.5, speed / WING.controlSpeed));
       target.add(vane);
     }

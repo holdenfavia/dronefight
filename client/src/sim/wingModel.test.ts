@@ -2,7 +2,7 @@ import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { SIM } from '../config';
 import { createFlightOutput, type FlightInput, type FlightState } from './flightModel';
-import { levelFlightSpeed, liftCoefficient, stepWing, WING } from './wingModel';
+import { COBRA, cobraPitchRate, levelFlightSpeed, liftCoefficient, stepWing, WING } from './wingModel';
 
 const dt = 1 / SIM.hz;
 const centered: FlightInput = { throttle: 0, roll: 0, pitch: 0, yaw: 0 };
@@ -72,5 +72,37 @@ describe('wing model (ADR-0013)', () => {
     const out = createFlightOutput();
     stepWing({ ...centered, throttle: 0.5, roll: 1 }, flying(20), true, 0.05, out);
     expect(out.angvel.z).toBeLessThan(0);
+  });
+});
+
+describe('Cobra (ADR-0014)', () => {
+  it('pitches the nose up past vertical and bleeds speed, then comes back', () => {
+    const s = flying(40);
+    const out = createFlightOutput();
+    let t = 0;
+    let maxNoseUp = -1;
+    for (;;) {
+      const rate = cobraPitchRate(t);
+      if (rate === null) break;
+      stepWing({ ...centered, throttle: 0.4 }, s, true, dt, out, rate);
+      s.motorOutput = out.motorOutput;
+      s.linvel.addScaledVector(out.force, dt / WING.massKg);
+      s.linvel.y -= SIM.gravity * dt;
+      s.angvel.copy(out.angvel);
+      const w = s.angvel;
+      const angle = w.length() * dt;
+      if (angle > 0) s.rotation.premultiply(new Quaternion().setFromAxisAngle(w.clone().normalize(), angle)).normalize();
+      const nose = new Vector3(0, 0, -1).applyQuaternion(s.rotation);
+      maxNoseUp = Math.max(maxNoseUp, nose.y);
+      t += dt;
+    }
+    // Nose went well up (at least ~70° above the horizon)...
+    expect(maxNoseUp).toBeGreaterThan(Math.sin((70 * Math.PI) / 180));
+    // ...and the airbrake took a big chunk of speed.
+    expect(s.linvel.length()).toBeLessThan(40 * 0.7);
+  });
+
+  it('lasts under a second', () => {
+    expect(cobraPitchRate(COBRA.upSeconds + COBRA.holdSeconds + COBRA.downSeconds + 0.01)).toBeNull();
   });
 });

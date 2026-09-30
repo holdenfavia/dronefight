@@ -4,7 +4,7 @@ import { DRONE_CLASSES } from '../../shared/drones.js';
 import type { DroneState, ServerMessage, Vec3 } from '../../shared/protocol.js';
 import { interceptTime } from '../../shared/lead.js';
 import { MAPS, SPAWN_SAFE_DISTANCE } from '../../shared/maps/index.js';
-import { Match, sampleHistory } from './match.js';
+import { Match, sampleHistory, takeRound } from './match.js';
 
 function droneAt(p: Vec3, v: Vec3 = [0, 0, 0], crashed = false): DroneState {
   return { ts: 0, p, v, q: [0, 0, 0, 1], m: 0.3, armed: true, crashed };
@@ -114,14 +114,6 @@ describe('Match (ADR-0009)', () => {
     expect(t.log.some((m) => m.t === 'death' && m.id === 'B' && m.killer === 'A' && m.cause === 'shot')).toBe(true);
     t.advance(COMBAT.respawnMs);
     expect(t.match.state().players.find((p) => p.id === 'B')).toMatchObject({ alive: true, hp: FS.maxHp });
-  });
-
-  it('rejects a faster-than-possible gun', () => {
-    const t = setup();
-    t.advance(afterProtection);
-    for (let i = 0; i < 20; i++) t.fireAt(t.posB());
-    t.advance(200);
-    expect(t.hp('B')).toBe(FS.maxHp - FS.damage);
   });
 
   it('lag compensation: hits where the shooter saw the target, within the rewind limit', () => {
@@ -262,15 +254,44 @@ describe('drone classes (ADR-0013)', () => {
     expect(match.state().players[0]).toMatchObject({ drone: 'wing', hp: DRONE_CLASSES.wing.maxHp });
   });
 
-  it('enforces each class fire rate', () => {
-    const t = setup();
-    t.advance(afterProtection);
-    // Freestyle fires 12/s: two shots 20 ms apart is too fast, second is ignored.
-    t.fireAt(t.posB());
-    t.advance(20);
-    t.fireAt(t.posB());
-    t.advance(200);
-    expect(t.hp('B')).toBe(FS.maxHp - FS.damage);
+});
+
+describe('fire-rate token bucket (ADR-0014)', () => {
+  /** Try to fire every `stepMs` for `ms`, starting from a full bucket. Returns rounds accepted. */
+  function spam(cls: keyof typeof DRONE_CLASSES, ms: number, stepMs: number): number {
+    const gun = DRONE_CLASSES[cls];
+    const pilot = { ammo: 0, ammoAt: -100_000 };
+    let accepted = 0;
+    for (let t = 0; t < ms; t += stepMs) if (takeRound(pilot, gun, t)) accepted++;
+    return accepted;
+  }
+
+  for (const cls of ['freestyle', 'quad3d', 'wing'] as const) {
+    it(`${cls}: sustained rate is capped at its rounds per second (plus a small burst)`, () => {
+      const gun = DRONE_CLASSES[cls];
+      const perSecond = gun.fireRate * gun.pellets;
+      const burst = Math.max(gun.pellets * 2, perSecond * 0.2);
+      const accepted = spam(cls, 1000, 1);
+      expect(accepted).toBeGreaterThanOrEqual(perSecond);
+      expect(accepted).toBeLessThanOrEqual(Math.ceil(perSecond + burst));
+    });
+  }
+
+  it('a 50/s cannon arriving in network bunches is not dropped', () => {
+    // 50 rounds/s arriving as bunches of 5 every 100 ms: all should be accepted.
+    const gun = DRONE_CLASSES.wing;
+    const pilot = { ammo: 0, ammoAt: -100_000 };
+    let accepted = 0;
+    for (let t = 0; t < 2000; t += 100) for (let i = 0; i < 5; i++) if (takeRound(pilot, gun, t)) accepted++;
+    expect(accepted).toBe(100);
+  });
+
+  it('a full shotgun blast (8 pellets at once) is accepted', () => {
+    const gun = DRONE_CLASSES.quad3d;
+    const pilot = { ammo: 0, ammoAt: -100_000 };
+    let accepted = 0;
+    for (let i = 0; i < gun.pellets; i++) if (takeRound(pilot, gun, 0)) accepted++;
+    expect(accepted).toBe(gun.pellets);
   });
 });
 

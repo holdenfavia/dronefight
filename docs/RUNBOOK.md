@@ -50,6 +50,7 @@ In the game: **Play online → Create room**, then read the 4-letter code to you
 | Pitch / roll | Right stick | Arrow keys |
 | Arm | Arm switch (if mapped), else throttle low | Throttle low (auto) |
 | Fire | Mapped fire button/switch (Controller setup) | Space |
+| Special (wing: Cobra) | Mapped Special button (Controller setup), gamepad left trigger | E |
 | Reset (solo only; in a match the server respawns you) | Mapped reset button | R |
 | Camera FPV / chase | | C |
 | Mute / unmute | | M |
@@ -78,6 +79,7 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 
 - **3D quad:** throttle center is zero thrust. Push up for normal thrust, pull below center to reverse the motors (hover inverted, back up). It arms with the throttle **centered**. On the keyboard, throttle starts at center on respawn.
 - **FPV wing:** can't hover. It spawns in the air at flying speed, facing along a street/lane. Keep your speed up: when slow, the nose drops. Camera uptilt is fixed for the wing (`WING.cameraUptiltDeg`).
+- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s) plus the **Cobra** on Special (E), 3 s cooldown shown in the HUD; 3D quad double-barrel shotgun (2 blasts/s, 8 pellets). Controller profiles saved earlier have no Special binding: re-run Controller setup to add one.
 - Combat stats per class are in `shared/drones.ts` (server and client). Quad flight tuning is in `client/src/config.ts` (`QUAD`, `QUAD_3D`); wing tuning in `client/src/sim/wingModel.ts` (`WING`).
 
 ### Maps

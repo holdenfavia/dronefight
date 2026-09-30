@@ -16,4 +16,5 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0010](0010-procedural-audio.md) | Procedural audio (Web Audio): throttle-following motors, positional other pilots, synthesized effects; no audio files | Accepted |
 | [0011](0011-combat-readability.md) | Combat readability: 1.5 m drones (visual) and hit radius, damage 20, twin converging guns, trails, glow, lead indicator | Accepted (amended by 0012) |
 | [0012](0012-maps-and-random-spawns.md) | Maps as shared data (Downtown, Yard), host picks map, 8 random spawns kept away from opponents, 0.75 m hitbox, mountains/clouds scenery | Accepted |
-| [0013](0013-drone-classes.md) | Drone classes: Freestyle, 3D quad (reversible thrust), FPV wing (fixed-wing model); per-class health/damage/fire rate/round speed/size; switch at next respawn | Accepted |
+| [0013](0013-drone-classes.md) | Drone classes: Freestyle, 3D quad (reversible thrust), FPV wing (fixed-wing model); per-class health/damage/fire rate/round speed/size; switch at next respawn | Accepted (amended by 0014) |
+| [0014](0014-class-weapons-and-cobra.md) | Wing rotary cannon (50/s, continuous BRRRT) and Cobra maneuver on a Special button; 3D quad choked double-barrel shotgun (2/s, 8 pellets); per-class token-bucket rate checks | Accepted |

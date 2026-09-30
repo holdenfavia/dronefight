@@ -6,7 +6,7 @@ import { CRASH, INPUT, QUAD, QUAD_3D, type QuadParams, type Rates } from '../con
 import type { ControlState } from '../input/inputManager';
 import { createFlightOutput, stepFlight, throttleSafeToArm, type FlightState } from './flightModel';
 import type { Physics } from './physics';
-import { stepWing, WING } from './wingModel';
+import { COBRA, cobraPitchRate, stepWing, WING } from './wingModel';
 
 const QUAD_PARAMS: Record<Exclude<DroneClassId, 'wing'>, QuadParams> = { freestyle: QUAD, quad3d: QUAD_3D };
 
@@ -22,6 +22,10 @@ export class Drone {
   crashTime = 0;
   /** Arm switch is on but throttle is too high to arm. */
   armBlocked = false;
+  /** Seconds into the current Cobra, or null (wing only, ADR-0014). */
+  cobraTime: number | null = null;
+  /** Seconds until the Cobra can be used again. */
+  cobraCooldown = 0;
 
   readonly state: FlightState = {
     rotation: new Quaternion(),
@@ -105,6 +109,8 @@ export class Drone {
     this.armed = false;
     this.crashed = false;
     this.crashTime = 0;
+    this.cobraTime = null;
+    this.cobraCooldown = 0;
     this.state.motorOutput = 0;
     this.readBody();
     this.prevPos.copy(this.currPos);
@@ -135,6 +141,16 @@ export class Drone {
     }
   }
 
+  /** Class special, once per frame (ADR-0014). Returns true if a Cobra started. */
+  handleSpecial(control: ControlState): boolean {
+    if (!control.specialPressed || this.droneClass !== 'wing') return false;
+    if (this.crashed || !this.armed || this.cobraTime !== null || this.cobraCooldown > 0) return false;
+    if (this.speed < COBRA.minSpeed) return false;
+    this.cobraTime = 0;
+    this.cobraCooldown = COBRA.cooldownSeconds;
+    return true;
+  }
+
   /** Before world.step(): compute and apply flight forces. */
   preStep(control: ControlState, rates: Rates, dt: number): void {
     this.readBody();
@@ -147,9 +163,15 @@ export class Drone {
       this.state.motorOutput = 0;
       return;
     }
+    this.cobraCooldown = Math.max(0, this.cobraCooldown - dt);
+    let cobraRate: number | null = null;
+    if (this.cobraTime !== null) {
+      cobraRate = cobraPitchRate(this.cobraTime);
+      this.cobraTime = cobraRate === null ? null : this.cobraTime + dt;
+    }
     const out =
       this.droneClass === 'wing'
-        ? stepWing(control, this.state, this.armed, dt, this.out)
+        ? stepWing(control, this.state, this.armed, dt, this.out, cobraRate)
         : stepFlight(control, this.state, rates, this.armed, dt, this.out, QUAD_PARAMS[this.droneClass]);
     this.state.motorOutput = out.motorOutput;
     this.state.time += dt;

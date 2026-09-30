@@ -27,6 +27,8 @@ export interface ControllerProfile {
   reset: SwitchBinding | null;
   /** Optional: profiles saved before combat existed don't have it (ADR-0009). */
   fire?: SwitchBinding | null;
+  /** Optional class ability, e.g. the wing's Cobra (ADR-0014). */
+  special?: SwitchBinding | null;
 }
 
 export interface RawSnapshot {
@@ -130,7 +132,8 @@ export function standardGamepadProfile(id: string, deadband: number): Controller
     deadband: Math.max(deadband, 0.08),
     arm: null,
     reset: { kind: 'button', index: 3 },
-    // Right trigger.
+    // Right trigger fires; left trigger is the class special (Cobra).
     fire: { kind: 'button', index: 7 },
+    special: { kind: 'button', index: 6 },
   };
 }

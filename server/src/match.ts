@@ -1,6 +1,6 @@
 import { getMap, pickSpawn, type MapDef, type MapId } from '../../shared/maps/index.js';
 import { COMBAT } from '../../shared/combat.js';
-import { DEFAULT_DRONE, droneClass, type DroneClassId } from '../../shared/drones.js';
+import { DEFAULT_DRONE, droneClass, type DroneClass, type DroneClassId } from '../../shared/drones.js';
 import {
   NET,
   type DroneState,
@@ -47,7 +47,9 @@ interface Pilot {
   lastDamagedBy: string | null;
   lastDamagedAt: number;
   lastCrashed: boolean;
-  lastShotAt: number;
+  /** Token bucket for fire-rate checks (ADR-0014): rounds available, and when it was last refilled. */
+  ammo: number;
+  ammoAt: number;
   /** Index of the last spawn used, so the next one differs (ADR-0012). */
   lastSpawn: number | null;
   history: HistoryEntry[];
@@ -107,7 +109,8 @@ export class Match {
       lastDamagedBy: null,
       lastDamagedAt: 0,
       lastCrashed: false,
-      lastShotAt: -Infinity,
+      ammo: 0,
+      ammoAt: now,
       lastSpawn: null,
       history: [],
     });
@@ -179,12 +182,11 @@ export class Match {
     if (this.phase !== 'playing' || !pilot.alive) return;
     // Allow jitter in arrival times, but not a faster gun.
     const gun = droneClass(pilot.drone);
-    if (st - pilot.lastShotAt < (1000 / gun.fireRate) * 0.5) return;
+    if (!takeRound(pilot, gun, st)) return;
     const last = pilot.history[pilot.history.length - 1];
     if (!last) return;
     const off = Math.hypot(shot.p[0] - last.p[0], shot.p[1] - last.p[1], shot.p[2] - last.p[2]);
     if (off > COMBAT.maxMuzzleOffset) return;
-    pilot.lastShotAt = st;
 
     if (pilot.protectedUntil > st) {
       // Firing ends your own spawn protection.
@@ -194,7 +196,7 @@ export class Match {
 
     const [px, py, pz] = shot.p;
     const [dx, dy, dz] = shot.d;
-    const maxDist = raycastArena(this.colliders, px, py, pz, dx, dy, dz, COMBAT.range);
+    const maxDist = raycastArena(this.colliders, px, py, pz, dx, dy, dz, gun.range);
     const seen = shot.ts - NET.interpDelayMs;
     const t0 = Math.min(st, Math.max(seen, st - MAX_REWIND_MS));
     this.bullets.push({ shooter: id, speed: gun.bulletSpeed, damage: gun.damage, p: shot.p, d: shot.d, maxDist, t0, traveled: 0 });
@@ -331,7 +333,8 @@ export class Match {
     this.bullets = [];
     for (const pilot of this.pilots.values()) {
       pilot.score = 0;
-      pilot.lastShotAt = -Infinity;
+      pilot.ammo = 0;
+      pilot.ammoAt = now;
       this.respawn(pilot, now);
     }
     this.broadcastState();
@@ -340,6 +343,21 @@ export class Match {
   private broadcastState(): void {
     this.emit({ t: 'match', m: this.state() });
   }
+}
+
+/**
+ * Fire-rate check (ADR-0014): a token bucket per pilot. It refills at the class's rounds per second
+ * (shots x pellets) and holds a small burst, so network jitter can't drop legitimate fire, but
+ * nobody can shoot faster than their class allows over time.
+ */
+export function takeRound(pilot: { ammo: number; ammoAt: number }, gun: DroneClass, now: number): boolean {
+  const perSecond = gun.fireRate * gun.pellets;
+  const burst = Math.max(gun.pellets * 2, perSecond * 0.2);
+  pilot.ammo = Math.min(burst, pilot.ammo + ((now - pilot.ammoAt) / 1000) * perSecond);
+  pilot.ammoAt = now;
+  if (pilot.ammo < 1) return false;
+  pilot.ammo -= 1;
+  return true;
 }
 
 /** Target position at server time `t`: interpolated, or briefly extrapolated past the newest entry. */

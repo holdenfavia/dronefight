@@ -285,6 +285,10 @@ body {
   font-size: 24px;
 }
 
+.osd-item[hidden] {
+  display: none;
+}
+
 .osd-label {
   color: var(--orange);
   margin-right: 8px;

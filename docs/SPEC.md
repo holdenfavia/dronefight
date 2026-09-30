@@ -23,6 +23,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 
 - **Freestyle 5"** (default), **3D quad** (reversible thrust; throttle center = zero), **FPV wing** (fixed-wing; can't hover; spawns airborne).
 - Full classes: health, damage, fire rate, round speed and size differ per class. Picked in the menu; in a match it applies at your next respawn.
+- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s, BRRRT) plus a **Cobra** maneuver on the Special button (E); 3D quad choked double-barrel shotgun (2/s, 8 pellets).
 
 ## Controls
 

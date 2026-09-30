@@ -11,14 +11,36 @@ interface Position {
 export class Sfx {
   constructor(private readonly engine: AudioEngine) {}
 
-  /** One round. With a position it's the other pilot's gun, heard from where they are. */
-  shot(from?: Position): void {
+  /** One shot. With a position it's the other pilot's gun, heard from where they are. */
+  shot(style: 'standard' | 'shotgun' = 'standard', from?: Position): void {
+    if (style === 'shotgun') {
+      this.shotgun(from);
+      return;
+    }
     const out = this.output(from, from ? 0.9 : 0.55);
     const t = this.engine.now;
     // Crack: bright noise burst.
     this.noise(out, t, 0.05, { type: 'highpass', freq: 1400 }, 0.5, 0.045);
     // Thump: pitched-down sine.
     this.tone(out, t, 'sine', 170, 50, 0.08, 0.45);
+  }
+
+  /** Double-barrel shotgun blast (ADR-0014): sharp crack, deep boom, rolling tail. */
+  private shotgun(from?: Position): void {
+    const out = this.output(from, from ? 1 : 0.8);
+    const t = this.engine.now;
+    this.noise(out, t, 0.06, { type: 'highpass', freq: 2200 }, 0.6, 0.05);
+    this.noise(out, t, 0.45, { type: 'lowpass', freq: 2000, to: 250 }, 0.9, 0.4);
+    this.tone(out, t, 'sine', 110, 38, 0.32, 0.85);
+    this.tone(out, t + 0.01, 'triangle', 60, 32, 0.25, 0.3);
+  }
+
+  /** Wing Cobra (ADR-0014): the airframe slams broadside into the air. */
+  cobra(): void {
+    const out = this.output();
+    const t = this.engine.now;
+    this.noise(out, t, 0.9, { type: 'bandpass', freq: 500, to: 1800 }, 0.55, 0.85);
+    this.tone(out, t, 'sine', 55, 90, 0.5, 0.2);
   }
 
   /** Your round hit: a bright double tick. */

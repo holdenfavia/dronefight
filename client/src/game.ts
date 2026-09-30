@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { CRASH, SIM } from './config';
 import { AudioEngine } from './audio/audioEngine';
 import { MotorVoice, QUAD_MOTORS, WING_MOTOR } from './audio/motorVoice';
+import { CannonVoice } from './audio/cannonVoice';
 import { RemoteAudio } from './audio/remoteAudio';
 import { Sfx } from './audio/sfx';
 import { CombatClient } from './combat/combatClient';
@@ -72,6 +73,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const sfx = new Sfx(audio);
   let motorSound = new MotorVoice(audio, audio.motors, drone.classId === 'wing' ? WING_MOTOR : QUAD_MOTORS);
   const remoteAudio = new RemoteAudio(audio);
+  const cannon = new CannonVoice(audio, audio.sfx, 0.8);
   // Every menu button clicks.
   menuRoot.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('button')) sfx.click();
@@ -99,7 +101,15 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       drone.respawnAt(spawn);
       input.resetKeyboardThrottle(drone.restingThrottle);
     },
-    sfx,
+    {
+      shot: (style, from) => sfx.shot(style, from),
+      cannon: (firing) => cannon.setFiring(firing),
+      remoteCannon: (id) => remoteAudio.markCannon(id),
+      hitConfirm: () => sfx.hitConfirm(),
+      damage: () => sfx.damage(),
+      countdown: (n) => sfx.countdown(n),
+      stinger: (kind) => sfx.stinger(kind),
+    },
   );
   combat.setMap(currentMap);
 
@@ -327,6 +337,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
     if (!paused) {
       drone.updateArming(control);
+      if (drone.handleSpecial(control)) sfx.cobra();
       // In a match the server decides deaths and respawns (ADR-0009); solo keeps local reset.
       if (!combat.inMatch) {
         const autoReset = drone.crashed && drone.crashTime >= CRASH.autoResetSeconds;

@@ -15,7 +15,7 @@ import type { InputManager } from './inputManager';
 
 // Controller setup wizard (ADR-0006). Part of the input layer, so it may read raw values.
 
-type StepId = 'select' | 'range' | 'center' | StickChannel | 'arm' | 'reset' | 'fire' | 'test';
+type StepId = 'select' | 'range' | 'center' | StickChannel | 'arm' | 'reset' | 'fire' | 'special' | 'test';
 
 interface Step {
   id: StepId;
@@ -34,6 +34,7 @@ const STEPS: Step[] = [
   { id: 'arm', title: 'Arm switch', body: 'Flip the switch you want to use to <b>ARM</b>. No arm switch? Skip: the quad arms when throttle is low.' },
   { id: 'reset', title: 'Reset button', body: 'Press or flip what you want for <b>RESET</b> (respawn). Or skip and use the R key.' },
   { id: 'fire', title: 'Fire', body: 'Press and hold the button or switch you want to <b>FIRE</b> with. Or skip and use the Space bar.' },
+  { id: 'special', title: 'Special', body: 'Press the button you want for your class <b>SPECIAL</b> (the wing\'s Cobra). Or skip and use the E key.' },
   { id: 'test', title: 'Check it', body: 'Move the sticks. Each bar should follow the right stick in the right direction. Save when it looks good.' },
 ];
 
@@ -49,6 +50,7 @@ export class CalibrationScreen {
   private arm: SwitchBinding | null = null;
   private reset: SwitchBinding | null = null;
   private fire: SwitchBinding | null = null;
+  private special: SwitchBinding | null = null;
   private deadband: number = INPUT.deadband;
   private pending: { axis: number; invert: boolean } | SwitchBinding | null = null;
 
@@ -65,6 +67,7 @@ export class CalibrationScreen {
     this.arm = null;
     this.reset = null;
     this.fire = null;
+    this.special = null;
     this.render();
   }
 
@@ -105,7 +108,8 @@ export class CalibrationScreen {
       }
       case 'arm':
       case 'reset':
-      case 'fire': {
+      case 'fire':
+      case 'special': {
         const exclude = Object.values(this.assigned).map((a) => a.axis);
         const found = this.stepBaseline ? detectSwitch(this.stepBaseline, raw, exclude) : null;
         this.pending = found;
@@ -122,7 +126,7 @@ export class CalibrationScreen {
   private render(): void {
     const current = STEPS[this.step];
     if (!current) return;
-    const skippable = current.id === 'arm' || current.id === 'reset' || current.id === 'fire';
+    const skippable = current.id === 'arm' || current.id === 'reset' || current.id === 'fire' || current.id === 'special';
     const isTest = current.id === 'test';
     this.root.innerHTML = `
       <div class="panel calib">
@@ -194,6 +198,9 @@ export class CalibrationScreen {
       case 'fire':
         this.fire = this.pending && 'kind' in this.pending ? this.pending : null;
         break;
+      case 'special':
+        this.special = this.pending && 'kind' in this.pending ? this.pending : null;
+        break;
       case 'test': {
         const profile = this.buildProfile();
         if (profile) this.input.saveProfile(profile);
@@ -221,6 +228,7 @@ export class CalibrationScreen {
       arm: this.arm,
       reset: this.reset,
       fire: this.fire,
+      special: this.special,
     };
   }
 

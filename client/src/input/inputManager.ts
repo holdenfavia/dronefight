@@ -22,6 +22,8 @@ export interface ControlState extends FlightInput {
   resetPressed: boolean;
   /** Fire held (ADR-0009). */
   fire: boolean;
+  /** True for one poll when the class special (e.g. Cobra) is pressed (ADR-0014). */
+  specialPressed: boolean;
 }
 
 export type InputSource = 'radio' | 'gamepad' | 'keyboard';
@@ -47,6 +49,7 @@ export class InputManager {
     armSwitch: null,
     resetPressed: false,
     fire: false,
+    specialPressed: false,
   };
   source: InputSource = 'keyboard';
   /** Gamepad.id of a connected controller with no profile yet, if that's all we have. */
@@ -58,6 +61,7 @@ export class InputManager {
   private keys = new Set<string>();
   private keyboardThrottle = 0;
   private resetWasDown = false;
+  private specialWasDown = false;
   private readonly rawScratch: { axes: number[]; buttons: number[] } = { axes: [], buttons: [] };
 
   constructor() {
@@ -107,6 +111,7 @@ export class InputManager {
     const profile = pad ? this.profileFor(pad) : null;
 
     let resetDown: boolean;
+    let specialDown: boolean;
     if (pad && profile) {
       this.readPad(pad, profile);
       this.source = pad.mapping === 'standard' && !(pad.id in this.profiles) ? 'gamepad' : 'radio';
@@ -114,6 +119,7 @@ export class InputManager {
       this.uncalibratedId = null;
       resetDown = readSwitch(profile.reset, this.rawScratch) || this.keys.has('KeyR');
       this.state.fire = readSwitch(profile.fire ?? null, this.rawScratch) || this.keys.has('Space');
+      specialDown = readSwitch(profile.special ?? null, this.rawScratch) || this.keys.has('KeyE');
     } else {
       this.readKeyboard(dt);
       this.source = 'keyboard';
@@ -121,10 +127,13 @@ export class InputManager {
       this.uncalibratedId = pad ? pad.id : null;
       resetDown = this.keys.has('KeyR');
       this.state.fire = this.keys.has('Space');
+      specialDown = this.keys.has('KeyE');
     }
 
     this.state.resetPressed = resetDown && !this.resetWasDown;
     this.resetWasDown = resetDown;
+    this.state.specialPressed = specialDown && !this.specialWasDown;
+    this.specialWasDown = specialDown;
     return this.state;
   }
 

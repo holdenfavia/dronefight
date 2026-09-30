@@ -74,7 +74,8 @@ type El =
   | 'hitmark'
   | 'damage'
   | 'banner'
-  | 'lead';
+  | 'lead'
+  | 'special';
 
 /** On-screen display, styled after a Betaflight OSD. Updates text only when it changes. */
 export class Hud {
@@ -98,6 +99,7 @@ export class Hud {
         <div class="osd-item"><span class="osd-label">THR</span><span data-thr></span></div>
         <div class="osd-item"><span class="osd-label">SPD</span><span data-spd></span></div>
         <div class="osd-item"><span class="osd-label">ALT</span><span data-alt></span></div>
+        <div class="osd-item" data-special-item><span class="osd-label">COBRA</span><span data-special></span></div>
       </div>`;
     const q = (sel: string) => {
       const found = root.querySelector<HTMLElement>(sel);
@@ -121,6 +123,7 @@ export class Hud {
       damage: q('[data-damage]'),
       banner: q('[data-banner]'),
       lead: q('[data-lead]'),
+      special: q('[data-special]'),
     };
   }
 
@@ -139,6 +142,10 @@ export class Hud {
     this.set(this.el.thr, `${Math.round(info.throttle * 100)}%`);
     this.set(this.el.spd, `${Math.round(drone.speed * 3.6)} km/h`);
     this.set(this.el.alt, `${Math.max(0, drone.currPos.y).toFixed(0)} m`);
+    // Wing only: Cobra readiness (ADR-0014).
+    const wing = drone.classId === 'wing';
+    (this.el.special.parentElement as HTMLElement).hidden = !wing;
+    if (wing) this.set(this.el.special, drone.cobraTime !== null ? 'GO' : drone.cobraCooldown > 0 ? `${Math.ceil(drone.cobraCooldown)}s` : 'READY');
 
     let status = '';
     const combat = info.combat;
