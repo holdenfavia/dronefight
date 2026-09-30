@@ -1,4 +1,5 @@
 import { CAMERA_DEFAULTS, DEFAULT_RATES, type Rates } from './config';
+import { DEFAULT_MAP, isMapId, type MapId } from '../../shared/maps';
 import { loadJson, saveJson } from './storage';
 
 export type CameraView = 'fpv' | 'chase';
@@ -8,6 +9,8 @@ export interface Settings {
   camera: { uptiltDeg: number; fovHorizontalDeg: number; view: CameraView };
   graphics: { shadows: boolean; showDebug: boolean };
   audio: { volume: number; muted: boolean };
+  /** Map for solo play and for rooms you create (ADR-0012). */
+  map: MapId;
 }
 
 const KEY = 'settings';
@@ -22,6 +25,7 @@ export function defaultSettings(): Settings {
     },
     graphics: { shadows: true, showDebug: true },
     audio: { volume: 0.7, muted: false },
+    map: DEFAULT_MAP,
   };
 }
 
@@ -38,6 +42,7 @@ export function loadSettings(): Settings {
     camera: { ...d.camera, ...saved.camera },
     graphics: { ...d.graphics, ...saved.graphics },
     audio: { ...d.audio, ...saved.audio },
+    map: isMapId(saved.map) ? saved.map : d.map,
   };
 }
 

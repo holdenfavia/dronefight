@@ -51,7 +51,10 @@ export interface HudInfo {
   showDebug: boolean;
   autoResetIn: number | null;
   net: NetHudInfo | null;
+  /** Edge arrow for a pilot who is off screen or behind you. */
   marker: MarkerInfo | null;
+  /** Lead indicator: where to aim so your rounds meet them (ADR-0011). Screen px. */
+  lead: { x: number; y: number } | null;
   combat: CombatHudInfo | null;
 }
 
@@ -70,7 +73,8 @@ type El =
   | 'hpText'
   | 'hitmark'
   | 'damage'
-  | 'banner';
+  | 'banner'
+  | 'lead';
 
 /** On-screen display, styled after a Betaflight OSD. Updates text only when it changes. */
 export class Hud {
@@ -85,6 +89,7 @@ export class Hud {
       <div class="osd-score" data-score></div>
       <div class="osd-cross"></div>
       <div class="osd-hitmark" data-hitmark></div>
+      <div class="osd-lead" data-lead></div>
       <div class="osd-banner" data-banner></div>
       <div class="osd-marker" data-marker><span class="osd-marker-diamond"></span><span class="osd-marker-label" data-marker-label></span></div>
       <div class="osd-status" data-status></div>
@@ -115,6 +120,7 @@ export class Hud {
       hitmark: q('[data-hitmark]'),
       damage: q('[data-damage]'),
       banner: q('[data-banner]'),
+      lead: q('[data-lead]'),
     };
   }
 
@@ -160,6 +166,9 @@ export class Hud {
 
     this.updateNet(info.net);
     this.updateMarker(info.marker);
+    const lead = this.el.lead;
+    lead.hidden = !info.lead;
+    if (info.lead) lead.style.transform = `translate(${info.lead.x.toFixed(1)}px, ${info.lead.y.toFixed(1)}px)`;
     this.updateCombat(combat);
   }
 

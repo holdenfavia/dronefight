@@ -1,9 +1,19 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ARENA, ARENA_BOXES, type ArenaBox, type ArenaMaterial } from '../../../shared/arena';
+import type { ArenaBox, ArenaMaterial, MapDef } from '../../../shared/maps';
+import { buildScenery } from './scenery';
 import {
+  asphaltTexture,
+  BUILDING_TILE_M,
+  brickTexture,
   CONCRETE_TILE_M,
   concreteGroundTexture,
+  facadeTexture,
+  foliageTexture,
+  glassTexture,
+  roofTexture,
+  SIDEWALK_TILE_M,
+  sidewalkTexture,
   concreteWallTexture,
   GROUND_TILE_M,
   PAINT_TILE_M,
@@ -13,8 +23,8 @@ import {
 
 // Art direction per ADR-0007: bright sky, clean light, orange / black / white on concrete.
 export const PALETTE = {
-  skyZenith: new THREE.Color('#2f86e0'),
-  skyHorizon: new THREE.Color('#d9ecfb'),
+  skyZenith: new THREE.Color('#2a78d6'),
+  skyHorizon: new THREE.Color('#e4f0f8'),
   fog: new THREE.Color('#cfe4f5'),
   sun: new THREE.Color('#fff4e2'),
   hemiSky: new THREE.Color('#bcdcff'),
@@ -32,6 +42,8 @@ export interface World {
   scene: THREE.Scene;
   sun: THREE.DirectionalLight;
   setShadows(enabled: boolean): void;
+  /** Swap in a map's ground, structures and decor (ADR-0012). Environment and lights stay. */
+  setMap(map: MapDef): void;
 }
 
 export function buildWorld(renderer: THREE.WebGPURenderer): World {
@@ -40,61 +52,83 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
 
   scene.fog = new THREE.Fog(PALETTE.fog, 250, 1100);
   scene.add(buildSky());
+  scene.add(buildScenery(SUN_DIRECTION));
 
   const hemi = new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 1.15);
   scene.add(hemi);
 
   const sun = new THREE.DirectionalLight(PALETTE.sun, 3.2);
-  sun.position.copy(SUN_DIRECTION).multiplyScalar(300);
-  sun.target.position.set(0, 0, 0);
-  const shadowCam = sun.shadow.camera;
-  const extent = ARENA.halfSize + 10;
-  shadowCam.left = -extent;
-  shadowCam.right = extent;
-  shadowCam.top = extent;
-  shadowCam.bottom = -extent;
-  shadowCam.near = 100;
-  shadowCam.far = 600;
   sun.shadow.mapSize.set(4096, 4096);
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.05;
-  // The arena never moves, so the shadow map is rendered once and reused: baked, effectively free per frame.
+  // The arena never moves, so the shadow map is rendered once per map and reused: baked, effectively free per frame.
   sun.shadow.autoUpdate = false;
-  sun.shadow.needsUpdate = true;
   scene.add(sun, sun.target);
 
-  // Ground.
-  const groundTex = concreteGroundTexture(aniso);
-  groundTex.repeat.set(GROUND_SIZE / GROUND_TILE_M, GROUND_SIZE / GROUND_TILE_M);
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
-    new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.92, metalness: 0 }),
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  // Arena structures: one merged mesh (one draw call) per material.
   const materials = arenaMaterials(aniso);
-  const byMaterial = new Map<VisibleMaterial, ArenaBox[]>();
-  for (const box of ARENA_BOXES) {
-    const mat = box.mat;
-    if (mat === 'invisible') continue;
-    const list = byMaterial.get(mat) ?? [];
-    list.push(box);
-    byMaterial.set(mat, list);
-  }
-  for (const [mat, boxes] of byMaterial) {
-    const def = materials[mat];
-    const mesh = new THREE.Mesh(mergeBoxes(boxes, def.tileM), def.material);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    scene.add(mesh);
+  const grounds = {
+    concrete: groundMaterial(concreteGroundTexture(aniso)),
+    asphalt: groundMaterial(asphaltTexture(aniso)),
+  };
+  const groundGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
+  let arena: THREE.Group | null = null;
+
+  function setMap(map: MapDef): void {
+    if (arena) {
+      scene.remove(arena);
+      arena.traverse((o) => {
+        if (o instanceof THREE.Mesh && o.geometry !== groundGeo) o.geometry.dispose();
+      });
+    }
+    arena = new THREE.Group();
+
+    const ground = new THREE.Mesh(groundGeo, grounds[map.ground]);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    arena.add(ground);
+
+    // Structures and decor: one merged mesh (one draw call) per material each.
+    for (const [boxes, solid] of [
+      [map.boxes, true],
+      [map.decor, false],
+    ] as const) {
+      const byMaterial = new Map<VisibleMaterial, ArenaBox[]>();
+      for (const box of boxes) {
+        const mat = box.mat;
+        if (mat === 'invisible') continue;
+        const list = byMaterial.get(mat) ?? [];
+        list.push(box);
+        byMaterial.set(mat, list);
+      }
+      for (const [mat, list] of byMaterial) {
+        const def = materials[mat];
+        const mesh = new THREE.Mesh(mergeBoxes(list, def.tileM), def.material);
+        mesh.castShadow = solid;
+        mesh.receiveShadow = true;
+        arena.add(mesh);
+      }
+    }
+    scene.add(arena);
+
+    // Fit the shadow camera to this map and re-bake it.
+    const extent = map.halfSize + 20;
+    sun.position.copy(SUN_DIRECTION).multiplyScalar(500);
+    sun.target.position.set(0, 0, 0);
+    const cam = sun.shadow.camera;
+    cam.left = -extent;
+    cam.right = extent;
+    cam.top = extent;
+    cam.bottom = -extent;
+    cam.near = 200;
+    cam.far = 900;
+    cam.updateProjectionMatrix();
+    sun.shadow.needsUpdate = true;
   }
 
   return {
     scene,
     sun,
+    setMap,
     setShadows(enabled: boolean) {
       if (renderer.shadowMap.enabled === enabled && sun.castShadow === enabled) return;
       renderer.shadowMap.enabled = enabled;
@@ -106,6 +140,11 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
       });
     },
   };
+}
+
+function groundMaterial(tex: THREE.Texture): THREE.MeshStandardMaterial {
+  tex.repeat.set(GROUND_SIZE / GROUND_TILE_M, GROUND_SIZE / GROUND_TILE_M);
+  return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92, metalness: 0 });
 }
 
 function buildSky(): THREE.Mesh {
@@ -177,6 +216,34 @@ function arenaMaterials(aniso: number): Record<VisibleMaterial, MaterialDef> {
     },
     pad: {
       material: new THREE.MeshStandardMaterial({ map: padTexture(aniso), roughness: 0.6 }),
+      tileM: 0,
+    },
+    facade: {
+      material: new THREE.MeshStandardMaterial({ map: facadeTexture(aniso), roughness: 0.7, metalness: 0.05 }),
+      tileM: BUILDING_TILE_M,
+    },
+    glass: {
+      material: new THREE.MeshStandardMaterial({ map: glassTexture(aniso), roughness: 0.2, metalness: 0.5 }),
+      tileM: BUILDING_TILE_M,
+    },
+    brick: {
+      material: new THREE.MeshStandardMaterial({ map: brickTexture(aniso), roughness: 0.85 }),
+      tileM: BUILDING_TILE_M,
+    },
+    roof: {
+      material: new THREE.MeshStandardMaterial({ map: roofTexture(aniso), roughness: 0.95 }),
+      tileM: BUILDING_TILE_M,
+    },
+    sidewalk: {
+      material: new THREE.MeshStandardMaterial({ map: sidewalkTexture(aniso), roughness: 0.9 }),
+      tileM: SIDEWALK_TILE_M,
+    },
+    foliage: {
+      material: new THREE.MeshStandardMaterial({ map: foliageTexture(aniso), roughness: 0.9 }),
+      tileM: 2,
+    },
+    paint: {
+      material: new THREE.MeshStandardMaterial({ color: '#f2f1ec', roughness: 0.7 }),
       tileM: 0,
     },
   };

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { ARENA_BOXES, SPAWNS, type SpawnPoint } from '../../../shared/arena';
+import { DEFAULT_MAP, getMap, type MapDef, type SpawnPoint } from '../../../shared/maps';
 import { COMBAT, TEAM_COLORS, TEAM_NAMES } from '../../../shared/combat';
 import type { MatchPlayer } from '../../../shared/protocol';
 import { buildColliders, raycastArena } from '../../../shared/raycast';
@@ -26,7 +26,8 @@ export interface CombatSounds {
 }
 
 export class CombatClient {
-  private readonly colliders = buildColliders(ARENA_BOXES);
+  private map: MapDef = getMap(DEFAULT_MAP);
+  private colliders = buildColliders(this.map.boxes);
   private fireCooldown = 0;
   private toast: { text: string; until: number } | null = null;
   private respawnDeadline: number | null = null;
@@ -34,6 +35,11 @@ export class CombatClient {
   private lastCountdown = 0;
   private readonly origin = new THREE.Vector3();
   private readonly dir = new THREE.Vector3();
+  private readonly right = new THREE.Vector3();
+  private readonly up = new THREE.Vector3();
+  private readonly converge = new THREE.Vector3();
+  /** Twin guns alternate: -1 left, +1 right (ADR-0011). */
+  private barrel = -1;
   private readonly hudInfo: CombatHudInfo = {
     phase: 'waiting',
     myTeam: 0,
@@ -53,11 +59,17 @@ export class CombatClient {
     private readonly drone: Drone,
     private readonly tracers: Tracers,
     private readonly hud: Hud,
-    /** Where rounds leave from and which way they go: the FPV camera's view (ADR-0009). */
-    private readonly aim: (origin: THREE.Vector3, dir: THREE.Vector3) => void,
+    /** The FPV camera's position and axes, which the guns are mounted around (ADR-0009, ADR-0011). */
+    private readonly aim: (origin: THREE.Vector3, forward: THREE.Vector3, right: THREE.Vector3, up: THREE.Vector3) => void,
     private readonly onRespawn: (spawn: SpawnPoint) => void,
     private readonly sounds: CombatSounds,
   ) {}
+
+  /** Rounds stop at this map's walls; respawns use its spawn list (ADR-0012). */
+  setMap(map: MapDef): void {
+    this.map = map;
+    this.colliders = buildColliders(map.boxes);
+  }
 
   /** A match is running: the server owns deaths and respawns. */
   get inMatch(): boolean {
@@ -135,8 +147,15 @@ export class CombatClient {
   }
 
   private fire(): void {
-    this.aim(this.origin, this.dir);
-    this.origin.addScaledVector(this.dir, COMBAT.muzzleForward);
+    this.aim(this.origin, this.dir, this.right, this.up);
+    // Both guns converge on a point straight ahead of the camera.
+    this.converge.copy(this.origin).addScaledVector(this.dir, COMBAT.convergence);
+    this.origin
+      .addScaledVector(this.dir, COMBAT.muzzleForward)
+      .addScaledVector(this.right, COMBAT.gunSide * this.barrel)
+      .addScaledVector(this.up, -COMBAT.gunDrop);
+    this.dir.subVectors(this.converge, this.origin).normalize();
+    this.barrel = -this.barrel;
     const o = this.origin;
     const d = this.dir;
     const maxDist = raycastArena(this.colliders, o.x, o.y, o.z, d.x, d.y, d.z, COMBAT.range);
@@ -186,7 +205,7 @@ export class CombatClient {
         case 'respawn':
           if (ev.id === you) {
             this.respawnDeadline = null;
-            this.onRespawn(SPAWNS[ev.spawn] ?? SPAWNS[0]!);
+            this.onRespawn(this.map.spawns[ev.spawn] ?? this.map.spawns[0]!);
             if (this.toast) this.toast = null;
           }
           break;

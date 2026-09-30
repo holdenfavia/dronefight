@@ -22,6 +22,8 @@ export interface SampledState {
   mode: SampleMode;
   pos: Vector3;
   rot: Quaternion;
+  /** World velocity (m/s), for the lead indicator. */
+  vel: Vector3;
   armed: boolean;
   crashed: boolean;
   motor: number;
@@ -30,7 +32,7 @@ export interface SampledState {
 }
 
 export function createSampledState(): SampledState {
-  return { mode: 'empty', pos: new Vector3(), rot: new Quaternion(), armed: false, crashed: false, motor: 0, sourceTs: 0 };
+  return { mode: 'empty', pos: new Vector3(), rot: new Quaternion(), vel: new Vector3(), armed: false, crashed: false, motor: 0, sourceTs: 0 };
 }
 
 const qa = new Quaternion();
@@ -104,6 +106,7 @@ export class SnapshotBuffer {
     qa.set(a.s.q[0], a.s.q[1], a.s.q[2], a.s.q[3]);
     qb.set(b.s.q[0], b.s.q[1], b.s.q[2], b.s.q[3]);
     out.rot.slerpQuaternions(qa, qb, t);
+    out.vel.set(a.s.v[0], a.s.v[1], a.s.v[2]).lerp(tmpB.set(b.s.v[0], b.s.v[1], b.s.v[2]), t);
     const nearer = t < 0.5 ? a.s : b.s;
     out.armed = nearer.armed;
     out.crashed = nearer.crashed;
@@ -119,6 +122,7 @@ const tmpB = new Vector3();
 function copyState(s: DroneState, out: SampledState): void {
   out.pos.set(s.p[0], s.p[1], s.p[2]);
   out.rot.set(s.q[0], s.q[1], s.q[2], s.q[3]);
+  out.vel.set(s.v[0], s.v[1], s.v[2]);
   out.armed = s.armed;
   out.crashed = s.crashed;
   out.motor = s.m;

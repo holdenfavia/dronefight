@@ -1,4 +1,4 @@
-import { ARENA_BOXES } from '../../shared/arena.js';
+import { getMap, pickSpawn, type MapDef, type MapId } from '../../shared/maps/index.js';
 import { COMBAT } from '../../shared/combat.js';
 import {
   NET,
@@ -19,7 +19,6 @@ import { buildColliders, raycastArena, segmentPointDistance } from '../../shared
  * rewinding at most MAX_REWIND_MS.
  */
 
-const COLLIDERS = buildColliders(ARENA_BOXES);
 /** Position history kept per pilot for lag compensation. Bounded by time. */
 const HISTORY_MS = 1500;
 const MAX_REWIND_MS = NET.maxDisplayDelayMs;
@@ -45,6 +44,8 @@ interface Pilot {
   lastDamagedAt: number;
   lastCrashed: boolean;
   lastShotAt: number;
+  /** Index of the last spawn used, so the next one differs (ADR-0012). */
+  lastSpawn: number | null;
   history: HistoryEntry[];
 }
 
@@ -69,8 +70,17 @@ export class Match {
   private bullets: Bullet[] = [];
   private now = 0;
   private protectedAnnounced = new Set<string>();
+  private readonly map: MapDef;
+  private readonly colliders: ReturnType<typeof buildColliders>;
 
-  constructor(private readonly emit: Emit) {}
+  constructor(
+    mapId: MapId,
+    private readonly emit: Emit,
+    private readonly random: () => number = Math.random,
+  ) {
+    this.map = getMap(mapId);
+    this.colliders = buildColliders(this.map.boxes);
+  }
 
   addPlayer(id: string, now: number): void {
     this.now = now;
@@ -89,6 +99,7 @@ export class Match {
       lastDamagedAt: 0,
       lastCrashed: false,
       lastShotAt: -Infinity,
+      lastSpawn: null,
       history: [],
     });
     if (this.pilots.size >= TEAMS) this.startMatch(now);
@@ -153,7 +164,7 @@ export class Match {
 
     const [px, py, pz] = shot.p;
     const [dx, dy, dz] = shot.d;
-    const maxDist = raycastArena(COLLIDERS, px, py, pz, dx, dy, dz, COMBAT.range);
+    const maxDist = raycastArena(this.colliders, px, py, pz, dx, dy, dz, COMBAT.range);
     const seen = shot.ts - NET.interpDelayMs;
     const t0 = Math.min(st, Math.max(seen, st - MAX_REWIND_MS));
     this.bullets.push({ shooter: id, p: shot.p, d: shot.d, maxDist, t0, traveled: 0 });
@@ -178,6 +189,7 @@ export class Match {
 
   state(): MatchState {
     return {
+      map: this.map.id,
       phase: this.phase,
       winner: this.winner,
       killsToWin: COMBAT.killsToWin,
@@ -260,13 +272,23 @@ export class Match {
   }
 
   private respawn(pilot: Pilot, now: number): void {
+    // Anti spawn-camping (ADR-0012): random spawn away from every living opponent.
+    const opponents = [...this.pilots.values()]
+      .filter((p) => p !== pilot && p.alive)
+      .map((p) => p.history[p.history.length - 1]?.p ?? this.map.spawns[p.lastSpawn ?? 0]?.pos)
+      .filter((p): p is Vec3 => !!p);
+    const spawn = pickSpawn(this.map.spawns, opponents, pilot.lastSpawn, this.random);
+    pilot.lastSpawn = spawn;
+    // Until the next state arrives, the pilot is at the spawn: later spawns must avoid it too.
+    const at = this.map.spawns[spawn]!.pos;
+    pilot.history = [{ st: now, p: [at[0], at[1], at[2]], v: [0, 0, 0] }];
     pilot.alive = true;
     pilot.hp = COMBAT.maxHp;
     pilot.respawnAt = null;
     pilot.protectedUntil = now + COMBAT.spawnProtectionMs;
     pilot.lastDamagedBy = null;
     this.protectedAnnounced.add(pilot.id);
-    this.emit({ t: 'respawn', id: pilot.id, spawn: pilot.team });
+    this.emit({ t: 'respawn', id: pilot.id, spawn });
     this.broadcastState();
   }
 

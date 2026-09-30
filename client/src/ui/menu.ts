@@ -1,6 +1,7 @@
 import { DEFAULT_RATES, type AxisRates } from '../config';
 import { CalibrationScreen } from '../input/calibrationScreen';
 import type { InputManager } from '../input/inputManager';
+import { getMap, MAP_ORDER } from '../../../shared/maps';
 import type { NetClient } from '../net/netClient';
 import { maxRate } from '../sim/rates';
 import { defaultSettings, saveSettings, type Settings } from '../settings';
@@ -11,6 +12,8 @@ export interface MenuCallbacks {
   onFly(): void;
   /** Camera or graphics settings changed and need re-applying. */
   onSettingsChanged(): void;
+  /** The chosen map changed (solo play switches immediately). */
+  onMapChanged(): void;
 }
 
 /** Pause menu with main, settings and controller-setup screens. */
@@ -74,6 +77,7 @@ export class Menu {
       <div class="panel main-menu">
         <button class="btn big" data-fly>${this.net.inRoom ? 'Fly' : 'Fly solo'}</button>
         <button class="btn ghost" data-online>${this.net.inRoom ? `Room ${this.net.room}` : 'Play online'}</button>
+        ${this.net.inRoom ? '' : `<button class="btn ghost" data-map>Map: ${getMap(this.settings.map).name} ▸</button>`}
         <button class="btn ghost" data-controller>Controller setup</button>
         <button class="btn ghost" data-settings>Settings</button>
         <div class="controller-status" data-status></div>
@@ -81,6 +85,13 @@ export class Menu {
       <div class="keys">ESC menu · R reset · C camera · M mute · keyboard: W/S throttle, A/D yaw, arrows pitch/roll, Space fire</div>`;
     this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.callbacks.onFly());
     this.root.querySelector('[data-online]')?.addEventListener('click', () => this.show('online'));
+    this.root.querySelector('[data-map]')?.addEventListener('click', () => {
+      const i = MAP_ORDER.indexOf(this.settings.map);
+      this.settings.map = MAP_ORDER[(i + 1) % MAP_ORDER.length] ?? MAP_ORDER[0]!;
+      saveSettings(this.settings);
+      this.callbacks.onMapChanged();
+      this.renderMain();
+    });
     this.root.querySelector('[data-controller]')?.addEventListener('click', () => this.show('controller'));
     this.root.querySelector('[data-settings]')?.addEventListener('click', () => this.show('settings'));
     this.updateControllerStatus();
@@ -112,6 +123,7 @@ export class Menu {
         <div class="panel online">
           <div class="panel-head"><span class="kicker">Play online</span><h2>Your room</h2></div>
           <div class="room-code">${net.room}</div>
+          <div class="room-map">${net.map ? getMap(net.map).name : ''}</div>
           <div class="room-hint">read this code to your friend</div>
           <div class="peer-status ${peerCount > 0 ? 'ok' : ''}">${peerCount > 0 ? '✓ Friend connected' : 'Waiting for your friend…'}</div>
           <div class="actions">
@@ -139,7 +151,7 @@ export class Menu {
     this.root.innerHTML = `
       <div class="panel online">
         <div class="panel-head"><span class="kicker">Play online</span><h2>1v1 room</h2></div>
-        <button class="btn big" data-create ${busy ? 'disabled' : ''}>${busy ? 'Connecting…' : 'Create room'}</button>
+        <button class="btn big" data-create ${busy ? 'disabled' : ''}>${busy ? 'Connecting…' : `Create room · ${getMap(this.settings.map).name}`}</button>
         <div class="divider">or join a friend</div>
         <form class="join-row" data-join>
           <input maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false" data-code ${busy ? 'disabled' : ''}>
@@ -148,7 +160,7 @@ export class Menu {
         <div class="net-error">${net.error ? escapeText(net.error) : ''}</div>
         <div class="actions"><button class="btn ghost" data-back>Back</button></div>
       </div>`;
-    this.root.querySelector('[data-create]')?.addEventListener('click', () => net.createRoom());
+    this.root.querySelector('[data-create]')?.addEventListener('click', () => net.createRoom(this.settings.map));
     this.root.querySelector('[data-join]')?.addEventListener('submit', (e) => {
       e.preventDefault();
       const code = this.root.querySelector<HTMLInputElement>('[data-code]')?.value ?? '';
@@ -241,7 +253,7 @@ export class Menu {
       this.commit();
     });
     this.root.querySelector('[data-defaults]')?.addEventListener('click', () => {
-      Object.assign(s, defaultSettings(), { rates: structuredClone(DEFAULT_RATES) });
+      Object.assign(s, defaultSettings(), { rates: structuredClone(DEFAULT_RATES), map: s.map });
       this.commit();
       this.renderSettings();
     });

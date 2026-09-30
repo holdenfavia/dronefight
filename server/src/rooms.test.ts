@@ -24,7 +24,7 @@ function setup() {
   const b = new FakeConn();
   rooms.connect(a);
   rooms.connect(b);
-  rooms.handle(a, { t: 'create' });
+  rooms.handle(a, { t: 'create', map: 'yard' });
   const code = a.last('joined')?.room ?? '';
   return { rooms, a, b, code, advance: (ms: number) => (time += ms) };
 }
@@ -113,7 +113,7 @@ describe('server over real WebSockets', () => {
 
     const a = await open();
     const b = await open();
-    a.ws.send(JSON.stringify({ t: 'create' }));
+    a.ws.send(JSON.stringify({ t: 'create', map: 'yard' }));
     const joined = (await a.waitFor('joined')) as Extract<ServerMessage, { t: 'joined' }>;
     b.ws.send(JSON.stringify({ t: 'join', room: joined.room.toLowerCase() }));
     await b.waitFor('joined');

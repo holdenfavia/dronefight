@@ -1,4 +1,4 @@
-// Combat tuning shared by client and server (ADR-0009). Rules live in the ADR; numbers are tunable here.
+// Combat tuning shared by client and server (ADR-0009, ADR-0011). Rules live in the ADRs; numbers are tunable here.
 
 export const COMBAT = {
   fireRate: 12,
@@ -6,10 +6,10 @@ export const COMBAT = {
   bulletSpeed: 350,
   /** Max round travel (m). */
   range: 300,
-  damage: 12,
+  damage: 20,
   maxHp: 100,
-  /** Hit sphere around a drone (m). Generous: the quad is small and there is lag. */
-  hitRadius: 0.45,
+  /** Hit sphere around a drone (m): half the ~1.5 m drawn width, so the hitbox matches what you see (ADR-0012). */
+  hitRadius: 0.75,
   /** Invulnerable this long after respawn, unless you fire. */
   spawnProtectionMs: 2000,
   respawnMs: 3000,
@@ -20,8 +20,13 @@ export const COMBAT = {
   resultsMs: 6000,
   /** Server rejects shots that start further than this from the shooter's last known position. */
   maxMuzzleOffset: 4,
-  /** Rounds leave the nose this far in front of the camera. */
+  /** Rounds leave this far in front of the camera. */
   muzzleForward: 0.2,
+  /** Twin guns (ADR-0011): sideways offset of each gun from the camera, and how far below it (m). */
+  gunSide: 0.3,
+  gunDrop: 0.1,
+  /** Both gun streams are angled to cross this far ahead of the camera (m). */
+  convergence: 40,
 } as const;
 
 /** Team 0 orange, team 1 lime (ADR-0009). */

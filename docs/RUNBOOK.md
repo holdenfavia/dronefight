@@ -66,8 +66,19 @@ Every physics and feel constant lives in `client/src/config.ts` (thrust-to-weigh
 Rules are in ADR-0009. Tunable numbers (fire rate, round speed, damage, HP, respawn and protection times, hit radius, kills to win) are in `shared/combat.ts`, used by both client and server. Restart the server after changing them.
 
 - Controller profiles saved before combat have no **Fire** binding. Run **Controller setup** again to map one (keyboard Space always works).
-- Rounds fire along the FPV camera's view (uptilt included), even in chase view.
+- Rounds alternate between twin guns beside the camera and converge 40 m ahead along the FPV view (uptilt included), even in chase view.
+- **Aim at the lead circle**, not the drone: it shows where your rounds will meet them (ADR-0011). Other drones are drawn ~1.5 m across with a glow and a fading trail. Your own physics stay a real 5".
+- Visual size, glow size and trail length/width are in `DRONE_VISUAL` in `client/src/config.ts`.
 - Tracers show instantly, but only the server decides hits. You'll see the hit marker when the server confirms, one round trip later.
+
+### Maps
+
+Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, so the server needs a restart after editing them.
+
+- `downtown.ts`, `yard.ts`: layout. Everything is boxes (`ArenaBox`); `boxes` collide, `decor` is scenery only.
+- Each map needs exactly 8 spawns. `shared/maps/maps.test.ts` checks every spawn has open space around and above it. Run `npm test` after moving things.
+- Pick the map with **Map: … ▸** on the main menu. It applies to solo flying and to rooms you create; people joining get the room's map.
+- Mountains, clouds and the sun glow are in `client/src/world/scenery.ts`; building textures in `textures.ts`.
 
 ### Sound
 

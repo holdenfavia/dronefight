@@ -1,3 +1,5 @@
+import { isMapId, type MapId } from './maps/index.js';
+
 // Network protocol shared by client and server (ADR-0002, ADR-0004, ADR-0005).
 // JSON over WebSocket. Times are milliseconds on the server's clock unless noted.
 
@@ -80,6 +82,8 @@ export interface MatchPlayer {
 }
 
 export interface MatchState {
+  /** The room's map (ADR-0012). */
+  map: MapId;
   phase: MatchPhase;
   players: MatchPlayer[];
   winner: string | null;
@@ -89,7 +93,7 @@ export interface MatchState {
 // ---- Client -> server
 
 export type ClientMessage =
-  | { t: 'create' }
+  | { t: 'create'; map: MapId }
   | { t: 'join'; room: string }
   | { t: 'leave' }
   | { t: 'state'; s: DroneState }
@@ -102,7 +106,7 @@ export type ErrorCode = 'room-not-found' | 'room-full' | 'bad-message' | 'protoc
 
 export type ServerMessage =
   | { t: 'hello'; protocol: number; st: number }
-  | { t: 'joined'; room: string; you: string; peers: string[] }
+  | { t: 'joined'; room: string; you: string; peers: string[]; map: MapId }
   | { t: 'peer-joined'; id: string }
   | { t: 'peer-left'; id: string }
   /** A peer's state, stamped with the server receive time `st`. */
@@ -151,8 +155,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   const m = msg as Record<string, unknown>;
   switch (m.t) {
     case 'create':
+      return { t: 'create', map: isMapId(m.map) ? m.map : 'downtown' };
     case 'leave':
-      return { t: m.t };
+      return { t: 'leave' };
     case 'join':
       return typeof m.room === 'string' ? { t: 'join', room: normalizeRoomCode(m.room) } : null;
     case 'state':

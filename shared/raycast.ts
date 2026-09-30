@@ -1,4 +1,4 @@
-import type { ArenaBox } from './arena.js';
+import type { ArenaBox } from './maps/types.js';
 
 /**
  * Ray tests against the arena, with no rendering library, so the server can use it too.

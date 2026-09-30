@@ -1,10 +1,11 @@
 import * as THREE from 'three/webgpu';
-import { CRASH, SIM } from './config';
+import { CRASH, DRONE_VISUAL, SIM } from './config';
 import { AudioEngine } from './audio/audioEngine';
 import { MotorVoice } from './audio/motorVoice';
 import { RemoteAudio } from './audio/remoteAudio';
 import { Sfx } from './audio/sfx';
 import { CombatClient } from './combat/combatClient';
+import { interceptTime } from '../../shared/lead';
 import type { DroneState } from '../../shared/protocol';
 import { InputManager } from './input/inputManager';
 import { defaultServerUrl, NetClient } from './net/netClient';
@@ -12,12 +13,14 @@ import { CameraRig } from './render/cameraRig';
 import { createDroneModel, setDronePropColor } from './render/droneModel';
 import { RemoteDrones } from './render/remoteDrones';
 import { Tracers } from './render/tracers';
+import { Trails } from './render/trails';
+import { COMBAT, TEAM_COLORS } from '../../shared/combat';
 import { loadSettings, saveSettings } from './settings';
 import { Drone } from './sim/drone';
-import { addArenaColliders, createPhysics } from './sim/physics';
+import { addGround, ArenaColliders, createPhysics } from './sim/physics';
 import { Hud, type MarkerInfo, type NetHudInfo } from './ui/hud';
 import { Menu } from './ui/menu';
-import { ARENA, ARENA_BOXES } from '../../shared/arena';
+import { getMap, type MapDef, type MapId } from '../../shared/maps';
 import { buildWorld, type World } from './world/scene';
 
 const STEP = 1 / SIM.hz;
@@ -37,21 +40,29 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   world.setShadows(settings.graphics.shadows);
 
   const physics = await createPhysics();
-  addArenaColliders(physics, ARENA_BOXES, 1200);
-  const drone = new Drone(physics, ARENA.spawn);
+  addGround(physics, 1200);
+  const arenaColliders = new ArenaColliders(physics);
+  let currentMap: MapDef = getMap(settings.map);
+  world.setMap(currentMap);
+  arenaColliders.set(currentMap.boxes);
+  const randomSpawn = (map: MapDef) => map.spawns[Math.floor(Math.random() * map.spawns.length)] ?? map.spawns[0]!;
+  const drone = new Drone(physics, randomSpawn(currentMap));
   const droneModel = createDroneModel();
+  // Same drawn size others see you at (ADR-0011).
+  droneModel.scale.setScalar(DRONE_VISUAL.scale);
   world.scene.add(droneModel);
 
   const input = new InputManager();
   if (import.meta.env.DEV) {
     // Handy for poking at the game from the browser console while developing.
-    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; } } });
+    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; } } });
   }
   const rig = new CameraRig(settings);
   const hud = new Hud(hudRoot);
   const remotes = new RemoteDrones(world.scene);
   const net = new NetClient(defaultServerUrl(), () => menu.onNetChange());
   const tracers = new Tracers(world.scene);
+  const trails = new Trails(world.scene);
   const audio = new AudioEngine();
   const sfx = new Sfx(audio);
   const motorSound = new MotorVoice(audio, audio.motors);
@@ -70,10 +81,12 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     drone,
     tracers,
     hud,
-    (origin, dir) => {
+    (origin, forward, right, up) => {
       uptiltQuat.setFromAxisAngle(uptiltAxis, (settings.camera.uptiltDeg * Math.PI) / 180);
       aimRot.copy(drone.currRot).multiply(uptiltQuat);
-      dir.set(0, 0, -1).applyQuaternion(aimRot);
+      forward.set(0, 0, -1).applyQuaternion(aimRot);
+      right.set(1, 0, 0).applyQuaternion(aimRot);
+      up.set(0, 1, 0).applyQuaternion(aimRot);
       origin.set(0, 0.03, -0.05).applyQuaternion(drone.currRot).add(drone.currPos);
     },
     (spawn) => {
@@ -82,6 +95,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     },
     sfx,
   );
+  combat.setMap(currentMap);
 
   let paused = true;
   const menu = new Menu(menuRoot, input, settings, net, {
@@ -91,7 +105,21 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       renderer.domElement.focus();
     },
     onSettingsChanged: applySettings,
+    onMapChanged: () => {
+      if (!net.inRoom) switchMap(settings.map);
+    },
   });
+
+  /** Load a different map: scenery, colliders, bullet walls, and a fresh spawn (ADR-0012). */
+  function switchMap(id: MapId): void {
+    if (currentMap.id === id) return;
+    currentMap = getMap(id);
+    world.setMap(currentMap);
+    arenaColliders.set(currentMap.boxes);
+    combat.setMap(currentMap);
+    drone.respawnAt(randomSpawn(currentMap));
+    input.resetKeyboardThrottle();
+  }
 
   function applySettings(): void {
     world.setShadows(settings.graphics.shadows);
@@ -140,8 +168,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     }
   });
 
+  /** Solo reset: a random spawn on the current map. */
   function respawn(): void {
-    drone.respawn();
+    drone.respawnAt(randomSpawn(currentMap));
     input.resetKeyboardThrottle();
   }
 
@@ -195,6 +224,27 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     return marker;
   }
 
+  const leadPoint = new THREE.Vector3();
+  const toTargetLead = new THREE.Vector3();
+  const lead = { x: 0, y: 0 };
+
+  /** Lead indicator (ADR-0011): where the target will be when a round fired now reaches it. */
+  function leadFor(target: THREE.Vector3, velocity: THREE.Vector3): { x: number; y: number } | null {
+    toTargetLead.subVectors(target, drone.currPos);
+    const d = toTargetLead;
+    const t = interceptTime(d.x, d.y, d.z, velocity.x, velocity.y, velocity.z, COMBAT.bulletSpeed);
+    if (t === null || t * COMBAT.bulletSpeed > COMBAT.range) return null;
+    leadPoint.copy(target).addScaledVector(velocity, t);
+    const cam = rig.camera;
+    cam.getWorldDirection(camForward);
+    if (toTarget.subVectors(leadPoint, cam.position).dot(camForward) <= 0) return null;
+    projected.copy(leadPoint).project(cam);
+    if (Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) return null;
+    lead.x = ((projected.x + 1) / 2) * container.clientWidth;
+    lead.y = ((1 - projected.y) / 2) * container.clientHeight;
+    return lead;
+  }
+
   const netInfo: NetHudInfo = { status: 'offline', room: null, pingMs: 0, peer: null };
   function netHud(): NetHudInfo | null {
     if (net.status === 'offline' || net.status === 'error') return null;
@@ -226,6 +276,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     fps += (1 / Math.max(frameDt, 1e-3) - fps) * 0.05;
 
     const control = input.poll(frameDt);
+    // Rooms decide the map; follow it when joining one.
+    if (net.map && net.map !== currentMap.id) switchMap(net.map);
     menu.tick();
     hudRoot.hidden = menu.visible;
 
@@ -259,6 +311,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     const remote = remotes.views[0];
     combat.update(frameDt, control, !paused);
     tracers.update();
+    trails.update(remotes.views, rig.camera, (team) => TEAM_COLORS[team ?? 1] ?? TEAM_COLORS[1]);
     setDronePropColor(droneModel, combat.myColor);
 
     // Audio: ears at the camera, motors follow the quad (ADR-0010).
@@ -285,7 +338,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       autoResetIn: drone.crashed && !combat.inMatch ? Math.max(0, CRASH.autoResetSeconds - drone.crashTime) : null,
       net: netHud(),
       combat: combat.hudState(),
-      marker: remote ? markerFor(remote.position) : null,
+      // Edge arrow only when they're off screen; on screen, the trail and glow show them.
+      marker: remote && !markerFor(remote.position).onScreen ? marker : null,
+      lead: remote && !paused && remote.mode !== 'hold' && !remote.crashed ? leadFor(remote.position, remote.velocity) : null,
     });
 
     renderer.render(world.scene, rig.camera);

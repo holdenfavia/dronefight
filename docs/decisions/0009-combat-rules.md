@@ -1,6 +1,6 @@
 # ADR-0009: Combat rules
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0011 (weapon origin, hit radius, damage, how the other pilot is shown) and ADR-0012 (spawns)
 - **Date:** 2026-09-29
 
 ## Context

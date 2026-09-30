@@ -1,6 +1,6 @@
 import { Euler, Matrix4 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { ARENA_BOXES } from './arena.js';
+import { MAPS } from './maps/index.js';
 import { buildColliders, eulerXYZMatrix, raycastArena, segmentPointDistance } from './raycast.js';
 
 describe('raycast', () => {
@@ -31,7 +31,7 @@ describe('raycast', () => {
   });
 
   it('is blocked by the overpass in the real arena', () => {
-    const arena = buildColliders(ARENA_BOXES);
+    const arena = buildColliders(MAPS.yard.boxes);
     // From above the overpass deck straight down: hits the deck top (y = 12.6), not the ground.
     expect(raycastArena(arena, 0, 30, -45, 0, -1, 0, 100)).toBeCloseTo(30 - 12.6, 1);
   });

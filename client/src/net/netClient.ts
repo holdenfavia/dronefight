@@ -1,4 +1,5 @@
 import { DEFAULT_SERVER_PORT, PROTOCOL_VERSION } from '../../../shared/constants';
+import type { MapId } from '../../../shared/maps';
 import {
   NET,
   normalizeRoomCode,
@@ -48,6 +49,8 @@ export class NetClient {
   error: string | null = null;
   readonly peers = new Map<string, Peer>();
   readonly clock = new ClockSync();
+  /** The room's map, set by the server (ADR-0012). */
+  map: MapId | null = null;
   /** Latest match state from the server (ADR-0009), or null outside a room. */
   match: MatchState | null = null;
   readonly events: CombatEvent[] = [];
@@ -59,7 +62,7 @@ export class NetClient {
   private pingId = 0;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private wantRoom: { kind: 'create' } | { kind: 'join'; code: string } | null = null;
+  private wantRoom: { kind: 'create'; map: MapId } | { kind: 'join'; code: string } | null = null;
 
   constructor(
     private readonly url: string,
@@ -75,8 +78,8 @@ export class NetClient {
     return this.clock.serverNow(performance.now());
   }
 
-  createRoom(): void {
-    this.wantRoom = { kind: 'create' };
+  createRoom(map: MapId): void {
+    this.wantRoom = { kind: 'create', map };
     this.ensureConnected();
   }
 
@@ -98,6 +101,7 @@ export class NetClient {
   leave(): void {
     this.wantRoom = null;
     this.match = null;
+    this.map = null;
     this.send({ t: 'leave' });
     this.clearReconnect();
     this.socket?.close();
@@ -167,7 +171,7 @@ export class NetClient {
   private requestRoom(): void {
     const want = this.wantRoom;
     if (!want) return;
-    this.send(want.kind === 'create' ? { t: 'create' } : { t: 'join', room: want.code });
+    this.send(want.kind === 'create' ? { t: 'create', map: want.map } : { t: 'join', room: want.code });
   }
 
   private scheduleReconnect(): void {
@@ -208,6 +212,7 @@ export class NetClient {
       case 'joined':
         this.room = msg.room;
         this.you = msg.you;
+        this.map = msg.map;
         this.reconnectAttempt = 0;
         // Rejoin the same room if the connection drops.
         this.wantRoom = { kind: 'join', code: msg.room };
@@ -230,6 +235,7 @@ export class NetClient {
       }
       case 'match':
         this.match = msg.m;
+        this.map = msg.m.map;
         this.onChange();
         break;
       case 'hit':

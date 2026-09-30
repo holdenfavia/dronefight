@@ -148,6 +148,37 @@ body {
   background: var(--orange);
 }
 
+.osd-lead {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow:
+    0 0 2px #000,
+    inset 0 0 2px #000;
+  will-change: transform;
+}
+
+.osd-lead::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.osd-lead[hidden] {
+  display: none;
+}
+
 .osd-hitmark {
   position: absolute;
   top: 50%;
@@ -617,6 +648,15 @@ body {
   line-height: 1;
   text-align: center;
   margin: 6px 0 4px;
+}
+
+.room-map {
+  text-align: center;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 4px;
 }
 
 .room-hint {

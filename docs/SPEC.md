@@ -35,11 +35,18 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 
 ## Combat (ADR-0009)
 
-- Tracer rounds fired along the camera view. Rounds stop at walls.
-- 100 HP; each hit does damage. Server decides hits, with limited lag compensation (≤ 250 ms rewind).
+- Tracer rounds from twin guns beside the camera, converging along the camera view. Rounds stop at walls.
+- 100 HP, 20 per hit. Server decides hits (0.75 m hit radius, matching the drawn drone), with limited lag compensation (≤ 250 ms rewind).
+- Other pilots are drawn ~1.5 m across with a glow and a fading trail; a lead indicator shows where to aim (ADR-0011). Physics stay real 5".
 - Crash = death. The kill goes to the other pilot if they damaged you in the last 5 s.
-- Respawn after 3 s at your side's pad. First to 5 kills wins, then a new match starts.
+- Respawn after 3 s at a random spawn away from your opponent (8 per map, ADR-0012). First to 5 kills wins, then a new match starts.
 - Solo mode has no combat.
+
+## Maps (ADR-0012)
+
+- **Downtown** (default): city blocks, towers, streets, parking garage, skybridge, construction crane.
+- **Yard**: the original industrial arena.
+- The room creator picks the map. Distant mountains, clouds and sun glow on every map.
 
 ## Art direction (ADR-0007)
 

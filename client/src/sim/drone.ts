@@ -3,7 +3,7 @@ import { Quaternion, Vector3 } from 'three';
 import { CRASH, INPUT, QUAD, type Rates } from '../config';
 import type { ControlState } from '../input/inputManager';
 import { createFlightOutput, stepFlight, type FlightState } from './flightModel';
-import type { SpawnPoint } from '../../../shared/arena';
+import type { SpawnPoint } from '../../../shared/maps';
 import type { Physics } from './physics';
 
 /**

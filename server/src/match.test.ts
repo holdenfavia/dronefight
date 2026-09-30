@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { COMBAT } from '../../shared/combat.js';
 import type { DroneState, ServerMessage, Vec3 } from '../../shared/protocol.js';
+import { interceptTime } from '../../shared/lead.js';
+import { MAPS, SPAWN_SAFE_DISTANCE } from '../../shared/maps/index.js';
 import { Match, sampleHistory } from './match.js';
 
 function droneAt(p: Vec3, v: Vec3 = [0, 0, 0], crashed = false): DroneState {
@@ -10,7 +12,8 @@ function droneAt(p: Vec3, v: Vec3 = [0, 0, 0], crashed = false): DroneState {
 /** Two pilots in open air, A at z=0 facing B 20 m away along -Z, clear of arena geometry. */
 function setup() {
   const log: ServerMessage[] = [];
-  const match = new Match((msg) => log.push(msg));
+  // The Yard: tests below use its overpass pillars as cover.
+  const match = new Match('yard', (msg) => log.push(msg));
   let now = 10_000;
   match.addPlayer('A', now);
   match.addPlayer('B', now);
@@ -140,6 +143,27 @@ describe('Match (ADR-0009)', () => {
     expect(t.hp('B')).toBe(COMBAT.maxHp - COMBAT.damage);
   });
 
+  it('aiming at the lead indicator hits a fast crossing target (ADR-0011)', () => {
+    const t = setup();
+    t.advance(afterProtection);
+    // B crosses at 30 m/s, 40 m away. A sees B 100 ms in the past and aims at the lead point.
+    t.setB([-100 - 20, 30, -40], [30, 0, 0]);
+    t.advance(300);
+    let hits = 0;
+    for (let i = 0; i < 5; i++) {
+      const b = t.posB();
+      const seen: Vec3 = [b[0] - 30 * 0.1, b[1], b[2]];
+      const d = [seen[0] - t.posA[0], seen[1] - t.posA[1], seen[2] - t.posA[2]] as const;
+      const tt = interceptTime(d[0], d[1], d[2], 30, 0, 0, COMBAT.bulletSpeed) ?? 0;
+      const before = t.hp('B') ?? 0;
+      t.fireAt([seen[0] + 30 * tt, seen[1], seen[2]]);
+      t.advance(shotInterval + 1);
+      t.advance(150);
+      if ((t.hp('B') ?? 0) < before) hits++;
+    }
+    expect(hits).toBe(5);
+  });
+
   it('crash after being hit credits the attacker; a clean crash scores for no one', () => {
     const t = setup();
     t.advance(afterProtection);
@@ -170,6 +194,30 @@ describe('Match (ADR-0009)', () => {
     t.advance(COMBAT.resultsMs + 100);
     expect(t.match.state().phase).toBe('playing');
     expect(t.score('A')).toBe(0);
+  });
+
+  it('respawns away from the opponent, never on the same spawn twice in a row (ADR-0012)', () => {
+    const spawns = MAPS.yard.spawns;
+    for (let round = 0; round < 20; round++) {
+      const log: ServerMessage[] = [];
+      const match = new Match('yard', (msg) => log.push(msg));
+      match.addPlayer('A', 0);
+      match.addPlayer('B', 0);
+      const first = log.filter((m) => m.t === 'respawn');
+      const [a, b] = first.map((m) => (m.t === 'respawn' ? spawns[m.spawn]!.pos : [0, 0, 0]));
+      expect(Math.hypot(a![0] - b![0], a![2] - b![2])).toBeGreaterThanOrEqual(SPAWN_SAFE_DISTANCE);
+
+      // A camps B's spawn; B dies and must come back somewhere else, far from A.
+      const bSpawn = first.find((m) => m.t === 'respawn' && m.id === 'B');
+      const bIndex = bSpawn?.t === 'respawn' ? bSpawn.spawn : -1;
+      match.onState('A', droneAt(b as Vec3), 100);
+      match.onState('B', droneAt(b as Vec3, [0, 0, 0], true), 100);
+      match.tick(100 + COMBAT.respawnMs + 1);
+      const again = log.filter((m) => m.t === 'respawn' && m.id === 'B').pop();
+      expect(again?.t === 'respawn' && again.spawn).not.toBe(bIndex);
+      const at = again?.t === 'respawn' ? spawns[again.spawn]!.pos : [0, 0, 0];
+      expect(Math.hypot(at[0] - b![0], at[2] - b![2])).toBeGreaterThanOrEqual(SPAWN_SAFE_DISTANCE);
+    }
   });
 
   it('drops back to waiting when a pilot leaves', () => {

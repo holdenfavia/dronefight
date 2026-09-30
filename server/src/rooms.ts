@@ -5,6 +5,7 @@ import {
   type ClientMessage,
   type ServerMessage,
 } from '../../shared/protocol.js';
+import type { MapId } from '../../shared/maps/index.js';
 import { Match } from './match.js';
 
 /** The slice of a WebSocket the room logic needs. Lets tests use fakes. */
@@ -22,6 +23,7 @@ interface Player {
 
 interface Room {
   code: string;
+  map: MapId;
   players: Map<string, Player>;
   match: Match;
 }
@@ -67,14 +69,14 @@ export class RoomManager {
     switch (msg.t) {
       case 'create':
         this.leaveRoom(player);
-        this.joinRoom(player, this.createRoom());
+        this.joinRoom(player, this.createRoom(msg.map));
         break;
       case 'join': {
         const room = isValidRoomCode(msg.room) ? this.rooms.get(msg.room) : undefined;
         if (!room) {
           send(conn, { t: 'error', code: 'room-not-found', message: `No room called ${msg.room}` });
         } else if (room === player.room) {
-          send(conn, { t: 'joined', room: room.code, you: player.id, peers: this.peerIds(room, player) });
+          send(conn, { t: 'joined', room: room.code, you: player.id, peers: this.peerIds(room, player), map: room.map });
         } else if (room.players.size >= NET.maxPlayersPerRoom) {
           send(conn, { t: 'error', code: 'room-full', message: `Room ${room.code} is full` });
         } else {
@@ -120,12 +122,12 @@ export class RoomManager {
     return { rooms: this.rooms.size, players: this.players.size, droppedSnapshots: this.dropped };
   }
 
-  private createRoom(): Room {
+  private createRoom(map: MapId): Room {
     let code = generateRoomCode(this.random);
     for (let tries = 0; this.rooms.has(code) && tries < 100; tries++) code = generateRoomCode(this.random);
     const players = new Map<string, Player>();
     // Match events are gameplay-critical (unlike snapshots), so they're always sent.
-    const match = new Match((msg, opts) => {
+    const match = new Match(map, (msg, opts) => {
       const data = JSON.stringify(msg);
       for (const p of players.values()) {
         if (opts?.to && p.id !== opts.to) continue;
@@ -133,7 +135,7 @@ export class RoomManager {
         p.conn.send(data);
       }
     });
-    const room: Room = { code, players, match };
+    const room: Room = { code, map, players, match };
     this.rooms.set(code, room);
     return room;
   }
@@ -141,7 +143,7 @@ export class RoomManager {
   private joinRoom(player: Player, room: Room): void {
     room.players.set(player.id, player);
     player.room = room;
-    send(player.conn, { t: 'joined', room: room.code, you: player.id, peers: this.peerIds(room, player) });
+    send(player.conn, { t: 'joined', room: room.code, you: player.id, peers: this.peerIds(room, player), map: room.map });
     for (const other of room.players.values()) {
       if (other !== player) send(other.conn, { t: 'peer-joined', id: player.id });
     }

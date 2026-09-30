@@ -48,7 +48,11 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Match flow: first to 5, results, auto rematch
 - [x] Combat HUD: health, score, hit markers, damage flash
 - [x] Team colors (orange / lime)
-- [ ] Both pilots play a real match and tune combat numbers (`shared/combat.ts`)
+- [x] Both pilots play a real match: too hard to hit (→ ADR-0011)
+- [x] Readability pass (ADR-0011): 1.5 m visuals + hit radius, damage 20, twin guns, trails, glow, lead indicator
+- [x] Replay matches with ADR-0011: much better; hitbox should match drawn size (→ ADR-0012)
+- [x] Maps & polish (ADR-0012): Downtown map, map picker, 8 random anti-camp spawns, 0.75 m hitbox, mountains/clouds/skyline
+- [ ] Play Downtown together and tune (building density, spawn spots, hitbox)
 
 ## Phase 3.5 — Go online
 

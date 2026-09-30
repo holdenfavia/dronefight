@@ -51,6 +51,17 @@ export const CRASH = {
   autoResetSeconds: 2.5,
 } as const;
 
+/** Drones are drawn bigger than their 5" physics body so they're readable targets (ADR-0011). */
+export const DRONE_VISUAL = {
+  /** Model scale. The base model is ~0.31 m across, so 4.8 draws ~1.5 m. */
+  scale: 4.8,
+  /** Glow sprite size as a fraction of screen height, so it stays visible at any distance. */
+  glowScreenSize: 0.05,
+  /** Trail length in seconds, and its width in metres. */
+  trailSeconds: 1.6,
+  trailWidth: 0.9,
+} as const;
+
 export const CAMERA_DEFAULTS = {
   /** FPV camera uptilt in degrees. */
   uptiltDeg: 30,
@@ -59,8 +70,8 @@ export const CAMERA_DEFAULTS = {
   near: 0.05,
   far: 1200,
   /** Chase-camera offset behind and above the quad (metres). Debug/spectate view. */
-  chaseDistance: 2.2,
-  chaseHeight: 0.7,
+  chaseDistance: 7,
+  chaseHeight: 2,
 } as const;
 
 /** Betaflight classic rates (RC rate, super rate, expo) per axis. */
