@@ -39,11 +39,16 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 ## Phase 3 — Combat
 
-- [ ] Decide weapon/health/scoring rules (`/decide`)
-- [ ] Firing + tracers
-- [ ] Server-side hit detection
-- [ ] Health, death, respawn
-- [ ] Match flow: score to win, rematch
+- [x] Decide weapon/health/scoring rules (ADR-0009)
+- [x] Arena layout shared with server
+- [x] Fire control in input layer + Controller setup
+- [x] Firing + tracers (local, instant; remote tracers from server)
+- [x] Server-side hit detection with limited lag compensation
+- [x] Health, crash = death, kill credit, respawn at team pads
+- [x] Match flow: first to 5, results, auto rematch
+- [x] Combat HUD: health, score, hit markers, damage flash
+- [x] Team colors (orange / lime)
+- [ ] Both pilots play a real match and tune combat numbers (`shared/combat.ts`)
 
 ## Phase 3.5 — Go online
 
@@ -55,6 +60,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 - [ ] Art pass on arena per ADR-0007
 - [ ] Additional maps
-- [ ] Sound (motors, hits, UI)
+- [x] Sound (motors, hits, UI): procedural, ADR-0010
+- [ ] Sound tuning pass after real matches
 - [ ] HUD / menus in the target style
 - [ ] Damage effects (video static)

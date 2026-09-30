@@ -25,6 +25,8 @@ export interface ControllerProfile {
   /** Null means no arm switch: the quad arms whenever throttle is low. */
   arm: SwitchBinding | null;
   reset: SwitchBinding | null;
+  /** Optional: profiles saved before combat existed don't have it (ADR-0009). */
+  fire?: SwitchBinding | null;
 }
 
 export interface RawSnapshot {
@@ -128,5 +130,7 @@ export function standardGamepadProfile(id: string, deadband: number): Controller
     deadband: Math.max(deadband, 0.08),
     arm: null,
     reset: { kind: 'button', index: 3 },
+    // Right trigger.
+    fire: { kind: 'button', index: 7 },
   };
 }

@@ -1,17 +1,23 @@
 import * as THREE from 'three/webgpu';
 import { CRASH, SIM } from './config';
+import { AudioEngine } from './audio/audioEngine';
+import { MotorVoice } from './audio/motorVoice';
+import { RemoteAudio } from './audio/remoteAudio';
+import { Sfx } from './audio/sfx';
+import { CombatClient } from './combat/combatClient';
 import type { DroneState } from '../../shared/protocol';
 import { InputManager } from './input/inputManager';
 import { defaultServerUrl, NetClient } from './net/netClient';
 import { CameraRig } from './render/cameraRig';
-import { createDroneModel } from './render/droneModel';
+import { createDroneModel, setDronePropColor } from './render/droneModel';
 import { RemoteDrones } from './render/remoteDrones';
+import { Tracers } from './render/tracers';
 import { loadSettings, saveSettings } from './settings';
 import { Drone } from './sim/drone';
 import { addArenaColliders, createPhysics } from './sim/physics';
 import { Hud, type MarkerInfo, type NetHudInfo } from './ui/hud';
 import { Menu } from './ui/menu';
-import { ARENA, ARENA_BOXES } from './world/arenaLayout';
+import { ARENA, ARENA_BOXES } from '../../shared/arena';
 import { buildWorld, type World } from './world/scene';
 
 const STEP = 1 / SIM.hz;
@@ -39,12 +45,43 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const input = new InputManager();
   if (import.meta.env.DEV) {
     // Handy for poking at the game from the browser console while developing.
-    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; } } });
+    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; } } });
   }
   const rig = new CameraRig(settings);
   const hud = new Hud(hudRoot);
   const remotes = new RemoteDrones(world.scene);
   const net = new NetClient(defaultServerUrl(), () => menu.onNetChange());
+  const tracers = new Tracers(world.scene);
+  const audio = new AudioEngine();
+  const sfx = new Sfx(audio);
+  const motorSound = new MotorVoice(audio, audio.motors);
+  const remoteAudio = new RemoteAudio(audio);
+  // Every menu button clicks.
+  menuRoot.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('button')) sfx.click();
+  });
+
+  // Rounds leave along the FPV camera's view, even when you're watching in chase view (ADR-0009).
+  const uptiltAxis = new THREE.Vector3(1, 0, 0);
+  const uptiltQuat = new THREE.Quaternion();
+  const aimRot = new THREE.Quaternion();
+  const combat = new CombatClient(
+    net,
+    drone,
+    tracers,
+    hud,
+    (origin, dir) => {
+      uptiltQuat.setFromAxisAngle(uptiltAxis, (settings.camera.uptiltDeg * Math.PI) / 180);
+      aimRot.copy(drone.currRot).multiply(uptiltQuat);
+      dir.set(0, 0, -1).applyQuaternion(aimRot);
+      origin.set(0, 0.03, -0.05).applyQuaternion(drone.currRot).add(drone.currPos);
+    },
+    (spawn) => {
+      drone.respawnAt(spawn);
+      input.resetKeyboardThrottle();
+    },
+    sfx,
+  );
 
   let paused = true;
   const menu = new Menu(menuRoot, input, settings, net, {
@@ -58,6 +95,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
   function applySettings(): void {
     world.setShadows(settings.graphics.shadows);
+    audio.setVolume(settings.audio.volume);
+    audio.setMuted(settings.audio.muted);
     rig.applyFov();
     droneModel.visible = settings.camera.view === 'chase';
   }
@@ -83,6 +122,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     if (e.code === 'Escape') {
       menu.back();
       paused = menu.visible;
+    } else if (e.code === 'KeyM' && !(e.target instanceof HTMLInputElement)) {
+      settings.audio.muted = !settings.audio.muted;
+      saveSettings(settings);
+      applySettings();
     } else if (e.code === 'KeyC' && !menu.visible) {
       settings.camera.view = settings.camera.view === 'fpv' ? 'chase' : 'fpv';
       saveSettings(settings);
@@ -170,6 +213,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   let last = performance.now();
   let accumulator = 0;
   let fps = 60;
+  let wasArmed = false;
+  let wasCrashed = false;
+  const camForwardA = new THREE.Vector3();
+  const camUpA = new THREE.Vector3();
 
   renderer.setAnimationLoop(() => {
     const now = performance.now();
@@ -184,8 +231,11 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
     if (!paused) {
       drone.updateArming(control);
-      const autoReset = drone.crashed && drone.crashTime >= CRASH.autoResetSeconds;
-      if (control.resetPressed || autoReset) respawn();
+      // In a match the server decides deaths and respawns (ADR-0009); solo keeps local reset.
+      if (!combat.inMatch) {
+        const autoReset = drone.crashed && drone.crashTime >= CRASH.autoResetSeconds;
+        if (control.resetPressed || autoReset) respawn();
+      }
 
       accumulator += frameDt;
       while (accumulator >= STEP) {
@@ -207,6 +257,22 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     net.update(frameDt, localState);
     remotes.update(net);
     const remote = remotes.views[0];
+    combat.update(frameDt, control, !paused);
+    tracers.update();
+    setDronePropColor(droneModel, combat.myColor);
+
+    // Audio: ears at the camera, motors follow the quad (ADR-0010).
+    const cam = rig.camera;
+    camForwardA.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    camUpA.set(0, 1, 0).applyQuaternion(cam.quaternion);
+    audio.updateListener(cam.position.x, cam.position.y, cam.position.z, camForwardA.x, camForwardA.y, camForwardA.z, camUpA.x, camUpA.y, camUpA.z);
+    audio.setDucked(menu.visible);
+    motorSound.update(drone.state.motorOutput, drone.speed, drone.armed && !drone.crashed);
+    remoteAudio.update(remotes.views);
+    if (drone.crashed && !wasCrashed) sfx.crash();
+    else if (drone.armed !== wasArmed && !drone.crashed) sfx.arm(drone.armed);
+    wasArmed = drone.armed;
+    wasCrashed = drone.crashed;
 
     hud.update({
       drone,
@@ -216,8 +282,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       fps,
       backend: backendName,
       showDebug: settings.graphics.showDebug,
-      autoResetIn: drone.crashed ? Math.max(0, CRASH.autoResetSeconds - drone.crashTime) : null,
+      autoResetIn: drone.crashed && !combat.inMatch ? Math.max(0, CRASH.autoResetSeconds - drone.crashTime) : null,
       net: netHud(),
+      combat: combat.hudState(),
       marker: remote ? markerFor(remote.position) : null,
     });
 

@@ -49,8 +49,10 @@ In the game: **Play online → Create room**, then read the 4-letter code to you
 | Throttle / yaw | Left stick | W/S, A/D |
 | Pitch / roll | Right stick | Arrow keys |
 | Arm | Arm switch (if mapped), else throttle low | Throttle low (auto) |
-| Reset | Mapped reset button | R |
+| Fire | Mapped fire button/switch (Controller setup) | Space |
+| Reset (solo only; in a match the server respawns you) | Mapped reset button | R |
 | Camera FPV / chase | | C |
+| Mute / unmute | | M |
 | Menu / pause | | Esc |
 
 Keyboard flight is for testing only.
@@ -59,9 +61,24 @@ Keyboard flight is for testing only.
 
 Every physics and feel constant lives in `client/src/config.ts` (thrust-to-weight, drag, motor spool, rate tracking, prop wash, crash threshold). Rates and camera are adjustable in-game under **Settings**. Current baseline (guarded by tests in `client/src/sim/flightModel.test.ts`): hover near 25% throttle, idle lift ~5% of weight (zero throttle drops almost like free fall), flat terminal fall ~16 m/s, full-throttle punch ~160 km/h, forward top speed ~170 km/h, full stick reaches max rate in ~25 ms. Gravity is real (9.81 m/s²); fix floatiness with idle thrust and drag, not gravity.
 
+### Combat
+
+Rules are in ADR-0009. Tunable numbers (fire rate, round speed, damage, HP, respawn and protection times, hit radius, kills to win) are in `shared/combat.ts`, used by both client and server. Restart the server after changing them.
+
+- Controller profiles saved before combat have no **Fire** binding. Run **Controller setup** again to map one (keyboard Space always works).
+- Rounds fire along the FPV camera's view (uptilt included), even in chase view.
+- Tracers show instantly, but only the server decides hits. You'll see the hit marker when the server confirms, one round trip later.
+
+### Sound
+
+All sound is synthesized in `client/src/audio/` (ADR-0010); there are no audio files. Motor pitch/level/brightness constants are in `motorVoice.ts`, effects in `sfx.ts`. Volume and mute are in **Settings** (M toggles mute).
+
+- No sound at all? Browsers only start audio after a click or key press, so click **Fly** with the mouse. Gamepad input alone doesn't count.
+- Sound pauses when the tab is in the background and gets quieter while the menu is open.
+
 ### Dev console
 
-In dev builds, `window.dronefight` exposes `renderer`, `world`, `drone`, `settings` and `physics` for poking around in the browser console.
+In dev builds, `window.dronefight` exposes `renderer`, `world`, `drone`, `settings`, `physics`, `net` and `audio` for poking around in the browser console.
 
 ## Connecting a radio
 

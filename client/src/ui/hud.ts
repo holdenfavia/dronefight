@@ -23,6 +23,24 @@ export interface MarkerInfo {
   distance: number;
 }
 
+export interface CombatHudInfo {
+  phase: 'waiting' | 'playing' | 'ended';
+  myTeam: number;
+  /** Score per team index. */
+  scores: [number, number];
+  killsToWin: number;
+  hp: number;
+  maxHp: number;
+  alive: boolean;
+  protected: boolean;
+  /** Seconds until respawn while dead. */
+  respawnIn: number | null;
+  /** Set when the match has ended. */
+  won: boolean | null;
+  /** Short-lived message ("KILL +1", "SHOT DOWN"), or null. */
+  toast: string | null;
+}
+
 export interface HudInfo {
   drone: Drone;
   throttle: number;
@@ -34,9 +52,25 @@ export interface HudInfo {
   autoResetIn: number | null;
   net: NetHudInfo | null;
   marker: MarkerInfo | null;
+  combat: CombatHudInfo | null;
 }
 
-type El = 'thr' | 'spd' | 'alt' | 'status' | 'debug' | 'net' | 'marker' | 'markerLabel';
+type El =
+  | 'thr'
+  | 'spd'
+  | 'alt'
+  | 'status'
+  | 'debug'
+  | 'net'
+  | 'marker'
+  | 'markerLabel'
+  | 'score'
+  | 'hp'
+  | 'hpFill'
+  | 'hpText'
+  | 'hitmark'
+  | 'damage'
+  | 'banner';
 
 /** On-screen display, styled after a Betaflight OSD. Updates text only when it changes. */
 export class Hud {
@@ -45,11 +79,16 @@ export class Hud {
 
   constructor(root: HTMLElement) {
     root.innerHTML = `
+      <div class="osd-damage" data-damage></div>
       <div class="osd-debug" data-debug></div>
       <div class="osd-net" data-net></div>
+      <div class="osd-score" data-score></div>
       <div class="osd-cross"></div>
+      <div class="osd-hitmark" data-hitmark></div>
+      <div class="osd-banner" data-banner></div>
       <div class="osd-marker" data-marker><span class="osd-marker-diamond"></span><span class="osd-marker-label" data-marker-label></span></div>
       <div class="osd-status" data-status></div>
+      <div class="osd-hp" data-hp><span class="osd-label">HP</span><div class="osd-hp-bar"><div class="osd-hp-fill" data-hp-fill></div></div><span data-hp-text></span></div>
       <div class="osd-bottom">
         <div class="osd-item"><span class="osd-label">THR</span><span data-thr></span></div>
         <div class="osd-item"><span class="osd-label">SPD</span><span data-spd></span></div>
@@ -69,7 +108,24 @@ export class Hud {
       net: q('[data-net]'),
       marker: q('[data-marker]'),
       markerLabel: q('[data-marker-label]'),
+      score: q('[data-score]'),
+      hp: q('[data-hp]'),
+      hpFill: q('[data-hp-fill]'),
+      hpText: q('[data-hp-text]'),
+      hitmark: q('[data-hitmark]'),
+      damage: q('[data-damage]'),
+      banner: q('[data-banner]'),
     };
+  }
+
+  /** You hit the other pilot: flash the hit marker. */
+  flashHit(): void {
+    restartAnimation(this.el.hitmark, 'show');
+  }
+
+  /** You took damage: pulse the screen edges. */
+  flashDamage(): void {
+    restartAnimation(this.el.damage, 'show');
   }
 
   update(info: HudInfo): void {
@@ -79,7 +135,14 @@ export class Hud {
     this.set(this.el.alt, `${Math.max(0, drone.currPos.y).toFixed(0)} m`);
 
     let status = '';
-    if (drone.crashed) {
+    const combat = info.combat;
+    if (combat && combat.phase !== 'waiting') {
+      if (combat.phase === 'ended') status = '';
+      else if (!combat.alive) status = combat.respawnIn !== null ? `respawn in ${Math.ceil(combat.respawnIn)}` : '';
+      else if (combat.protected) status = 'spawn protected';
+      else if (drone.armBlocked) status = 'LOWER THROTTLE TO ARM';
+      else if (!drone.armed && !drone.crashed) status = 'DISARMED · throttle down to arm';
+    } else if (drone.crashed) {
       status = info.autoResetIn !== null ? `CRASHED · respawn in ${Math.ceil(info.autoResetIn)}` : 'CRASHED';
     } else if (drone.armBlocked) {
       status = 'LOWER THROTTLE TO ARM';
@@ -97,6 +160,30 @@ export class Hud {
 
     this.updateNet(info.net);
     this.updateMarker(info.marker);
+    this.updateCombat(combat);
+  }
+
+  private updateCombat(c: CombatHudInfo | null): void {
+    const active = !!c && c.phase !== 'waiting';
+    this.el.hp.hidden = !active;
+    this.el.score.hidden = !active;
+    if (!c || !active) {
+      this.set(this.el.banner, c?.toast ?? '');
+      return;
+    }
+    const pct = Math.max(0, c.hp / c.maxHp);
+    this.el.hpFill.style.transform = `scaleX(${pct.toFixed(3)})`;
+    this.el.hp.classList.toggle('low', pct <= 0.3);
+    this.set(this.el.hpText, String(Math.round(c.hp)));
+
+    const [orange, lime] = c.scores;
+    const you = (team: number) => (team === c.myTeam ? ' (you)' : '');
+    this.set(this.el.score, `Orange${you(0)} ${orange} : ${lime} Lime${you(1)} · first to ${c.killsToWin}`);
+
+    let banner = c.toast ?? '';
+    if (c.phase === 'ended') banner = c.won ? 'VICTORY' : 'DEFEAT';
+    this.set(this.el.banner, banner);
+    this.el.banner.classList.toggle('big', c.phase === 'ended');
   }
 
   private updateNet(net: NetHudInfo | null): void {
@@ -142,4 +229,11 @@ export class Hud {
     this.cache.set(el, text);
     el.textContent = text;
   }
+}
+
+function restartAnimation(el: HTMLElement, cls: string): void {
+  el.classList.remove(cls);
+  // Force a reflow so the animation restarts even if it is already running.
+  void el.offsetWidth;
+  el.classList.add(cls);
 }

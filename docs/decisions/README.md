@@ -12,3 +12,5 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0006](0006-controller-gamepad-calibration.md) | Radios via Gamepad API behind a mapping/calibration layer | Accepted |
 | [0007](0007-art-direction.md) | Art direction: bright industrial, orange/black/white, inspired by Flight Division's feel only | Accepted |
 | [0008](0008-rapier-integrates-flight-forces.md) | Custom flight model computes forces; Rapier applies all forces (incl. real gravity) and integrates motion | Accepted |
+| [0009](0009-combat-rules.md) | Combat: tracer rounds, 100 HP, server-decided hits with limited lag compensation, crash = death, first to 5; lime second color | Accepted |
+| [0010](0010-procedural-audio.md) | Procedural audio (Web Audio): throttle-following motors, positional other pilots, synthesized effects; no audio files | Accepted |

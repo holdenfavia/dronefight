@@ -3,12 +3,8 @@ import { Quaternion, Vector3 } from 'three';
 import { CRASH, INPUT, QUAD, type Rates } from '../config';
 import type { ControlState } from '../input/inputManager';
 import { createFlightOutput, stepFlight, type FlightState } from './flightModel';
+import type { SpawnPoint } from '../../../shared/arena';
 import type { Physics } from './physics';
-
-export interface SpawnPoint {
-  pos: [number, number, number];
-  yawDeg: number;
-}
 
 /**
  * The local quad: a Rapier rigid body driven by our flight model (ADR-0008).
@@ -43,7 +39,7 @@ export class Drone {
 
   constructor(
     physics: Physics,
-    private readonly spawn: SpawnPoint,
+    private spawn: SpawnPoint,
   ) {
     const { rapier, world } = physics;
     const bodyDesc = rapier.RigidBodyDesc.dynamic().setCcdEnabled(true).setCanSleep(false).setAngularDamping(0.3);
@@ -52,6 +48,20 @@ export class Drone {
     const collider = rapier.ColliderDesc.cuboid(e.x, e.y, e.z).setMass(QUAD.massKg).setRestitution(0.2).setFriction(0.6);
     world.createCollider(collider, this.body);
     this.respawn();
+  }
+
+  /** Respawn at a different pad (match spawns, ADR-0009). Later plain respawns use it too. */
+  respawnAt(spawn: SpawnPoint): void {
+    this.spawn = spawn;
+    this.respawn();
+  }
+
+  /** Shot down: same as a crash, the quad loses power and falls. */
+  kill(): void {
+    if (this.crashed) return;
+    this.crashed = true;
+    this.armed = false;
+    this.crashTime = 0;
   }
 
   respawn(): void {

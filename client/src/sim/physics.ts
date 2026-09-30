@@ -1,7 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Euler, Quaternion } from 'three';
 import { SIM } from '../config';
-import type { ArenaBox } from '../world/arenaLayout';
+import type { ArenaBox } from '../../../shared/arena';
 
 export type Rapier = typeof RAPIER;
 

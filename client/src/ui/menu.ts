@@ -78,7 +78,7 @@ export class Menu {
         <button class="btn ghost" data-settings>Settings</button>
         <div class="controller-status" data-status></div>
       </div>
-      <div class="keys">ESC menu · R reset · C camera · keyboard: W/S throttle, A/D yaw, arrows pitch/roll</div>`;
+      <div class="keys">ESC menu · R reset · C camera · M mute · keyboard: W/S throttle, A/D yaw, arrows pitch/roll, Space fire</div>`;
     this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.callbacks.onFly());
     this.root.querySelector('[data-online]')?.addEventListener('click', () => this.show('online'));
     this.root.querySelector('[data-controller]')?.addEventListener('click', () => this.show('controller'));
@@ -183,6 +183,8 @@ export class Menu {
         <label class="field">View
           <select data-view><option value="fpv" ${s.camera.view === 'fpv' ? 'selected' : ''}>FPV</option><option value="chase" ${s.camera.view === 'chase' ? 'selected' : ''}>Chase</option></select>
         </label>
+        <label class="field">Volume <input type="range" min="0" max="1" step="0.05" value="${s.audio.volume}" data-volume><span>${Math.round(s.audio.volume * 100)}%</span></label>
+        <label class="field check"><input type="checkbox" data-mute ${s.audio.muted ? 'checked' : ''}> Mute (M)</label>
         <label class="field check"><input type="checkbox" data-gfx="shadows" ${s.graphics.shadows ? 'checked' : ''}> Shadows</label>
         <label class="field check"><input type="checkbox" data-gfx="showDebug" ${s.graphics.showDebug ? 'checked' : ''}> Debug readout (FPS, renderer)</label>
         <div class="actions">
@@ -227,6 +229,17 @@ export class Menu {
         this.commit();
       }),
     );
+    this.root.querySelector<HTMLInputElement>('[data-volume]')?.addEventListener('input', (e) => {
+      const el = e.target as HTMLInputElement;
+      s.audio.volume = Number(el.value);
+      const label = el.nextElementSibling;
+      if (label) label.textContent = `${Math.round(s.audio.volume * 100)}%`;
+      this.commit();
+    });
+    this.root.querySelector<HTMLInputElement>('[data-mute]')?.addEventListener('change', (e) => {
+      s.audio.muted = (e.target as HTMLInputElement).checked;
+      this.commit();
+    });
     this.root.querySelector('[data-defaults]')?.addEventListener('click', () => {
       Object.assign(s, defaultSettings(), { rates: structuredClone(DEFAULT_RATES) });
       this.commit();

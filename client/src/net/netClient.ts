@@ -1,5 +1,14 @@
 import { DEFAULT_SERVER_PORT, PROTOCOL_VERSION } from '../../../shared/constants';
-import { NET, normalizeRoomCode, parseServerMessage, type ClientMessage, type DroneState } from '../../../shared/protocol';
+import {
+  NET,
+  normalizeRoomCode,
+  parseServerMessage,
+  type ClientMessage,
+  type DroneState,
+  type MatchState,
+  type ServerMessage,
+  type Shot,
+} from '../../../shared/protocol';
 import { ClockSync } from './clockSync';
 import { SnapshotBuffer } from './snapshotBuffer';
 
@@ -18,6 +27,12 @@ export interface Peer {
 }
 
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
+/** Incoming tracers are cosmetic: if frames stall, only the newest are kept. */
+const MAX_PENDING_SHOTS = 64;
+
+/** Gameplay events from the server, drained by the game each frame. Never dropped. */
+export type CombatEvent = Extract<ServerMessage, { t: 'hit' | 'death' | 'respawn' }>;
+export type RemoteShot = Extract<ServerMessage, { t: 'shot' }>;
 
 export function defaultServerUrl(): string {
   const configured = import.meta.env.VITE_SERVER_URL as string | undefined;
@@ -33,6 +48,10 @@ export class NetClient {
   error: string | null = null;
   readonly peers = new Map<string, Peer>();
   readonly clock = new ClockSync();
+  /** Latest match state from the server (ADR-0009), or null outside a room. */
+  match: MatchState | null = null;
+  readonly events: CombatEvent[] = [];
+  readonly remoteShots: RemoteShot[] = [];
 
   private socket: WebSocket | null = null;
   private sendAccumulator = 0;
@@ -66,8 +85,19 @@ export class NetClient {
     this.ensureConnected();
   }
 
+  /** Send one round to the server, which decides whether it hits (ADR-0009). */
+  sendShot(shot: Shot): void {
+    if (this.inRoom) this.send({ t: 'shot', s: shot });
+  }
+
+  /** This pilot's team (0 orange, 1 lime), once the server has placed us. */
+  get team(): number | null {
+    return this.match?.players.find((p) => p.id === this.you)?.team ?? null;
+  }
+
   leave(): void {
     this.wantRoom = null;
+    this.match = null;
     this.send({ t: 'leave' });
     this.clearReconnect();
     this.socket?.close();
@@ -125,6 +155,7 @@ export class NetClient {
       if (this.socket !== socket) return;
       this.socket = null;
       this.peers.clear();
+      this.match = null;
       if (this.wantRoom) this.scheduleReconnect();
       else this.setStatus('offline');
     };
@@ -197,6 +228,19 @@ export class NetClient {
         if (peer.buffer.push({ st: msg.st, s: msg.s })) peer.lastRecv = performance.now();
         break;
       }
+      case 'match':
+        this.match = msg.m;
+        this.onChange();
+        break;
+      case 'hit':
+      case 'death':
+      case 'respawn':
+        this.events.push(msg);
+        break;
+      case 'shot':
+        this.remoteShots.push(msg);
+        if (this.remoteShots.length > MAX_PENDING_SHOTS) this.remoteShots.shift();
+        break;
       case 'error':
         this.error = msg.message;
         if (msg.code === 'room-not-found' || msg.code === 'room-full') this.wantRoom = null;

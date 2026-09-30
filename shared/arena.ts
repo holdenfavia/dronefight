@@ -1,5 +1,6 @@
-// The test arena as plain data. Rendering and collisions are both generated from this list,
-// so what you see is exactly what you hit. Deterministic, so every client builds the same map.
+// The test arena as plain data, shared by client and server. Rendering, flight collisions and
+// server-side bullet checks are all generated from this list, so what you see is exactly what you hit.
+// Deterministic, so every client builds the same map.
 
 export type ArenaMaterial = 'orange' | 'concrete' | 'steel' | 'white' | 'pad' | 'invisible';
 
@@ -13,12 +14,24 @@ export interface ArenaBox {
   mat: ArenaMaterial;
 }
 
+export interface SpawnPoint {
+  pos: [number, number, number];
+  yawDeg: number;
+}
+
+/** One launch pad per side, at opposite ends, facing each other (ADR-0009). Index = team. */
+export const SPAWNS: readonly SpawnPoint[] = [
+  { pos: [0, 0.1, 70], yawDeg: 0 },
+  { pos: [0, 0.1, -95], yawDeg: 180 },
+];
+
 export const ARENA = {
   halfSize: 120,
   wallHeight: 6,
   /** Invisible collision walls extend this high so you can't fly out over the visible wall. */
   boundaryHeight: 250,
-  spawn: { pos: [0, 0.1, 70] as [number, number, number], yawDeg: 0 },
+  /** Solo spawn. */
+  spawn: SPAWNS[0] as SpawnPoint,
 } as const;
 
 const BEAM = 0.35;
@@ -101,8 +114,10 @@ function buildArena(): ArenaBox[] {
   }
 
   // Launch pad.
-  const [sx, , sz] = ARENA.spawn.pos;
-  out.push({ pos: [sx, 0.05, sz], size: [4, 0.1, 4], mat: 'pad' });
+  for (const spawn of SPAWNS) {
+    const [sx, , sz] = spawn.pos;
+    out.push({ pos: [sx, 0.05, sz], size: [4, 0.1, 4], mat: 'pad' });
+  }
 
   // Central scaffolding cluster.
   tower(out, -8, 0, 6, 20);

@@ -20,6 +20,8 @@ export interface ControlState extends FlightInput {
   armSwitch: boolean | null;
   /** True for one poll when reset is pressed. */
   resetPressed: boolean;
+  /** Fire held (ADR-0009). */
+  fire: boolean;
 }
 
 export type InputSource = 'radio' | 'gamepad' | 'keyboard';
@@ -44,6 +46,7 @@ export class InputManager {
     yaw: 0,
     armSwitch: null,
     resetPressed: false,
+    fire: false,
   };
   source: InputSource = 'keyboard';
   /** Gamepad.id of a connected controller with no profile yet, if that's all we have. */
@@ -110,12 +113,14 @@ export class InputManager {
       this.activeId = pad.id;
       this.uncalibratedId = null;
       resetDown = readSwitch(profile.reset, this.rawScratch) || this.keys.has('KeyR');
+      this.state.fire = readSwitch(profile.fire ?? null, this.rawScratch) || this.keys.has('Space');
     } else {
       this.readKeyboard(dt);
       this.source = 'keyboard';
       this.activeId = null;
       this.uncalibratedId = pad ? pad.id : null;
       resetDown = this.keys.has('KeyR');
+      this.state.fire = this.keys.has('Space');
     }
 
     this.state.resetPressed = resetDown && !this.resetWasDown;

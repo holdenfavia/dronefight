@@ -7,6 +7,7 @@ export interface Settings {
   rates: Rates;
   camera: { uptiltDeg: number; fovHorizontalDeg: number; view: CameraView };
   graphics: { shadows: boolean; showDebug: boolean };
+  audio: { volume: number; muted: boolean };
 }
 
 const KEY = 'settings';
@@ -20,6 +21,7 @@ export function defaultSettings(): Settings {
       view: 'fpv',
     },
     graphics: { shadows: true, showDebug: true },
+    audio: { volume: 0.7, muted: false },
   };
 }
 
@@ -35,6 +37,7 @@ export function loadSettings(): Settings {
     },
     camera: { ...d.camera, ...saved.camera },
     graphics: { ...d.graphics, ...saved.graphics },
+    audio: { ...d.audio, ...saved.audio },
   };
 }
 

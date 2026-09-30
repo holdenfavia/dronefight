@@ -56,6 +56,36 @@ export interface DroneState {
   crashed: boolean;
 }
 
+/** One round fired (ADR-0009). */
+export interface Shot {
+  /** Sender's estimate of server time at the moment of firing. */
+  ts: number;
+  /** Muzzle position. */
+  p: Vec3;
+  /** Normalized direction. */
+  d: Vec3;
+}
+
+export type MatchPhase = 'waiting' | 'playing' | 'ended';
+
+export interface MatchPlayer {
+  id: string;
+  /** 0 = orange, 1 = lime. Also the spawn pad index. */
+  team: number;
+  score: number;
+  hp: number;
+  alive: boolean;
+  /** Spawn protection active. */
+  protected: boolean;
+}
+
+export interface MatchState {
+  phase: MatchPhase;
+  players: MatchPlayer[];
+  winner: string | null;
+  killsToWin: number;
+}
+
 // ---- Client -> server
 
 export type ClientMessage =
@@ -63,6 +93,7 @@ export type ClientMessage =
   | { t: 'join'; room: string }
   | { t: 'leave' }
   | { t: 'state'; s: DroneState }
+  | { t: 'shot'; s: Shot }
   | { t: 'ping'; id: number; ct: number };
 
 // ---- Server -> client
@@ -77,7 +108,13 @@ export type ServerMessage =
   /** A peer's state, stamped with the server receive time `st`. */
   | { t: 'snap'; id: string; st: number; s: DroneState }
   | { t: 'pong'; id: number; ct: number; st: number }
-  | { t: 'error'; code: ErrorCode; message: string };
+  | { t: 'error'; code: ErrorCode; message: string }
+  /** Another pilot fired (for drawing their tracers). */
+  | { t: 'shot'; id: string; s: Shot }
+  | { t: 'hit'; shooter: string; target: string; hp: number }
+  | { t: 'death'; id: string; killer: string | null; cause: 'shot' | 'crash' }
+  | { t: 'respawn'; id: string; spawn: number }
+  | { t: 'match'; m: MatchState };
 
 // ---- Validation (never trust the wire)
 
@@ -122,6 +159,14 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isDroneState(m.s) ? { t: 'state', s: m.s } : null;
     case 'ping':
       return isNum(m.id) && isNum(m.ct) ? { t: 'ping', id: m.id, ct: m.ct } : null;
+    case 'shot': {
+      const s = m.s as Record<string, unknown> | null;
+      if (typeof s !== 'object' || s === null || !isNum(s.ts) || !isVec(s.p, 3) || !isVec(s.d, 3)) return null;
+      const d = s.d as Vec3;
+      const len = Math.hypot(d[0], d[1], d[2]);
+      if (len < 0.5 || len > 1.5) return null;
+      return { t: 'shot', s: { ts: s.ts, p: s.p as Vec3, d: [d[0] / len, d[1] / len, d[2] / len] } };
+    }
     default:
       return null;
   }

@@ -5,6 +5,7 @@ import {
   type ClientMessage,
   type ServerMessage,
 } from '../../shared/protocol.js';
+import { Match } from './match.js';
 
 /** The slice of a WebSocket the room logic needs. Lets tests use fakes. */
 export interface Connection {
@@ -22,6 +23,7 @@ interface Player {
 interface Room {
   code: string;
   players: Map<string, Player>;
+  match: Match;
 }
 
 export interface RoomStats {
@@ -96,12 +98,22 @@ export class RoomManager {
           }
           other.conn.send(snap);
         }
+        room.match.onState(player.id, msg.s, this.now());
         break;
       }
+      case 'shot':
+        player.room?.match.onShot(player.id, msg.s, this.now());
+        break;
       case 'ping':
         send(conn, { t: 'pong', id: msg.id, ct: msg.ct, st: this.now() });
         break;
     }
+  }
+
+  /** Advance timers and in-flight rounds in every room. Call at a fixed rate. */
+  tick(): void {
+    const now = this.now();
+    for (const room of this.rooms.values()) room.match.tick(now);
   }
 
   stats(): RoomStats {
@@ -111,7 +123,17 @@ export class RoomManager {
   private createRoom(): Room {
     let code = generateRoomCode(this.random);
     for (let tries = 0; this.rooms.has(code) && tries < 100; tries++) code = generateRoomCode(this.random);
-    const room: Room = { code, players: new Map() };
+    const players = new Map<string, Player>();
+    // Match events are gameplay-critical (unlike snapshots), so they're always sent.
+    const match = new Match((msg, opts) => {
+      const data = JSON.stringify(msg);
+      for (const p of players.values()) {
+        if (opts?.to && p.id !== opts.to) continue;
+        if (opts?.except && p.id === opts.except) continue;
+        p.conn.send(data);
+      }
+    });
+    const room: Room = { code, players, match };
     this.rooms.set(code, room);
     return room;
   }
@@ -123,6 +145,7 @@ export class RoomManager {
     for (const other of room.players.values()) {
       if (other !== player) send(other.conn, { t: 'peer-joined', id: player.id });
     }
+    room.match.addPlayer(player.id, this.now());
   }
 
   private leaveRoom(player: Player): void {
@@ -131,6 +154,7 @@ export class RoomManager {
     room.players.delete(player.id);
     player.room = null;
     for (const other of room.players.values()) send(other.conn, { t: 'peer-left', id: player.id });
+    room.match.removePlayer(player.id, this.now());
     if (room.players.size === 0) this.rooms.delete(room.code);
   }
 

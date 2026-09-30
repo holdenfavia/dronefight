@@ -7,6 +7,8 @@ import { parseClientMessage, type ServerMessage } from '../../shared/protocol.js
 import { RoomManager } from './rooms.js';
 
 const HEARTBEAT_MS = 10_000;
+/** Match timers and in-flight rounds advance at this rate. */
+const TICK_HZ = 60;
 const MAX_MESSAGE_BYTES = 2048;
 
 export function startServer(port: number): { wss: WebSocketServer; rooms: RoomManager } {
@@ -43,7 +45,11 @@ export function startServer(port: number): { wss: WebSocketServer; rooms: RoomMa
       socket.ping();
     }
   }, HEARTBEAT_MS);
-  wss.on('close', () => clearInterval(heartbeat));
+  const tick = setInterval(() => rooms.tick(), 1000 / TICK_HZ);
+  wss.on('close', () => {
+    clearInterval(heartbeat);
+    clearInterval(tick);
+  });
 
   return { wss, rooms };
 }

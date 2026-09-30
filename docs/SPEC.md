@@ -33,18 +33,28 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 - Server decides hits.
 - On-screen network readout: ping and remote-player delay.
 
-## Combat (Phase 3, details TBD via `/decide`)
+## Combat (ADR-0009)
 
-- Forward-firing weapon with visible tracers, health, respawn, score to win.
+- Tracer rounds fired along the camera view. Rounds stop at walls.
+- 100 HP; each hit does damage. Server decides hits, with limited lag compensation (≤ 250 ms rewind).
+- Crash = death. The kill goes to the other pilot if they damaged you in the last 5 s.
+- Respawn after 3 s at your side's pad. First to 5 kills wins, then a new match starts.
+- Solo mode has no combat.
 
 ## Art direction (ADR-0007)
 
 Inspired by the *feel* of Flight Division, never its assets:
 - Bright sunny blue skies, soft clean lighting.
 - Orange / black / white palette. Orange steel scaffolding, concrete, platforms, ramps, gaps to thread.
+- Pilot colors: orange and lime `#b6f000` (ADR-0009).
 - Stylized-realistic and clean, not gritty.
 - UI: bold condensed all-caps type, with occasional hand-written accent notes.
 - Performance beats fidelity: baked lighting, instancing, compressed textures.
+
+## Audio (ADR-0010)
+
+- All sound synthesized in the browser (no audio files). Motor whine follows throttle; the other pilot's motors and shots are positional.
+- Master volume in Settings; M mutes.
 
 ## Hard rules
 

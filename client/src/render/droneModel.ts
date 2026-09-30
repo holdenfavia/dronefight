@@ -3,7 +3,7 @@ import { PALETTE } from '../world/scene';
 
 /**
  * A 5" freestyle quad built from primitives. Forward is -Z, matching the flight model.
- * Used for the chase view now and for the other pilot's drone in Phase 2.
+ * Used for the chase view and for other pilots' drones.
  */
 export function createDroneModel(propColor: string = PALETTE.orange): THREE.Group {
   const group = new THREE.Group();
@@ -54,5 +54,12 @@ export function createDroneModel(propColor: string = PALETTE.orange): THREE.Grou
   group.traverse((o) => {
     if (o instanceof THREE.Mesh) o.castShadow = true;
   });
+  group.userData.propMaterial = propMat;
   return group;
+}
+
+/** Recolor a drone's props, e.g. to its team color (ADR-0009). */
+export function setDronePropColor(model: THREE.Group, color: string): void {
+  const mat = model.userData.propMaterial as THREE.MeshStandardMaterial | undefined;
+  if (mat && `#${mat.color.getHexString()}` !== color.toLowerCase()) mat.color.set(color);
 }

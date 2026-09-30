@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ARENA, ARENA_BOXES, type ArenaBox, type ArenaMaterial } from './arenaLayout';
+import { ARENA, ARENA_BOXES, type ArenaBox, type ArenaMaterial } from '../../../shared/arena';
 import {
   CONCRETE_TILE_M,
   concreteGroundTexture,
