@@ -1,6 +1,6 @@
 # ADR-0003: Custom acro flight model; Rapier only for collisions
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0008 (2026-09-29)
 - **Date:** 2026-09-29
 
 ## Context

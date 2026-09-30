@@ -16,7 +16,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 
 - Acro (rate) mode only: sticks command rotation rates, no self-levelling.
 - Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable.
-- Custom flight model: thrust along the body up-axis, gravity, drag, basic prop wash feel. Tuned by feel (ADR-0003).
+- Custom flight model computes thrust, drag, prop wash and rate commands. Rapier applies all forces, with real gravity (9.81 m/s²), and handles motion and collisions. Tuned by feel (ADR-0008).
 - Adjustable FPV camera tilt (uptilt) and FOV.
 
 ## Controls
