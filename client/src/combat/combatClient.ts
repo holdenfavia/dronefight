@@ -11,7 +11,7 @@ import type { Drone } from '../sim/drone';
 import type { CombatHudInfo, Hud } from '../ui/hud';
 import { SMOKE } from '../../../shared/abilities';
 import { MISSILE, refillPod, type AimRay } from '../../../shared/missile';
-import type { Missiles, SmokeClouds } from './effects';
+import type { Missiles, SmokeTrails } from './effects';
 import type { PropField } from '../../../shared/props';
 import type { V3 } from '../../../shared/maps/movers';
 
@@ -82,7 +82,7 @@ export class CombatClient {
   private missilePodAt = performance.now();
   private nextMissileId = 1;
   private readonly aimRay: AimRay = { o: [0, 0, 0], d: [0, 0, -1] };
-  /** 3D quad: when the smoke screen is ready again (performance.now() ms). */
+  /** 3D quad: when the smoke trail is ready again (performance.now() ms). */
   private smokeReadyAt = 0;
   private readonly hudInfo: CombatHudInfo = {
     phase: 'waiting',
@@ -108,7 +108,7 @@ export class CombatClient {
     /** Server respawned us: at this spawn, flying this class (ADR-0012, ADR-0013). */
     private readonly onRespawn: (spawn: SpawnPoint, drone: DroneClassId) => void,
     private readonly sounds: CombatSounds,
-    private readonly effects: { smoke: SmokeClouds; missiles: Missiles },
+    private readonly effects: { smoke: SmokeTrails; missiles: Missiles },
   ) {}
 
   /** Round speed for the lead indicator; null with guided missiles selected (you steer them, no lead). */
@@ -160,9 +160,14 @@ export class CombatClient {
     return null;
   }
 
-  /** True if smoke hides `target` from `eye` (ADR-0016). */
-  conceals(eye: THREE.Vector3, target: THREE.Vector3): boolean {
-    return this.effects.smoke.conceals(eye, target);
+  /** True while pilot `id` is smoking: draw only their frame (ADR-0024). */
+  smoking(id: string): boolean {
+    return this.effects.smoke.smoking(id);
+  }
+
+  /** Our id for effects (ours are keyed by it in and out of rooms). */
+  get selfId(): string {
+    return this.myId;
   }
 
   /** Tap-Special abilities: Freestyle weapon switch, 3D smoke. (The wing's maneuver mode is a hold, handled by the drone.) */
@@ -177,7 +182,7 @@ export class CombatClient {
       if (!alive || this.drone.crashed || now < this.smokeReadyAt) return;
       this.smokeReadyAt = now + SMOKE.cooldownMs;
       const p = this.drone.currPos;
-      this.effects.smoke.deploy(p);
+      this.effects.smoke.start(this.myId);
       this.sounds.smoke();
       const r = (x: number) => Math.round(x * 100) / 100;
       this.net.sendAbility([r(p.x), r(p.y), r(p.z)]);
@@ -393,7 +398,7 @@ export class CombatClient {
           }
           break;
         case 'ability':
-          this.effects.smoke.deploy(ev.p);
+          this.effects.smoke.start(ev.id);
           this.sounds.smoke(this.shotOrigin.set(ev.p[0], ev.p[1], ev.p[2]));
           break;
         case 'boom':

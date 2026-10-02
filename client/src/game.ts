@@ -6,7 +6,7 @@ import { CannonVoice } from './audio/cannonVoice';
 import { RemoteAudio } from './audio/remoteAudio';
 import { Sfx } from './audio/sfx';
 import { CombatClient } from './combat/combatClient';
-import { Missiles, SmokeClouds } from './combat/effects';
+import { Missiles, SmokeTrails } from './combat/effects';
 import { buildColliders } from '../../shared/raycast';
 import { Particles } from './render/particles';
 import { TrainingGround } from './training/trainingGround';
@@ -85,7 +85,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   let mapColliders = buildColliders(currentMap.boxes);
   // Smoke screens and rockets (ADR-0016); explosions are positional sounds.
   const combatEffects = {
-    smoke: new SmokeClouds(particles),
+    smoke: new SmokeTrails(particles),
     missiles: new Missiles(world.scene, particles, () => mapColliders, (at: THREE.Vector3) => {
       sfx.explosion(at);
       training.splash(at);
@@ -206,6 +206,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     }, travelMs);
   };
   let wasInRoom = false;
+  const smokeSources: { id: string; position: THREE.Vector3 }[] = [];
 
   let paused = true;
   const menu = new Menu(menuRoot, input, settings, net, {
@@ -486,7 +487,12 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
     // Networking runs even while paused, so your friend still sees where you are.
     net.update(frameDt, localState);
-    remotes.update(net, (pos) => combat.conceals(rig.camera.position, pos));
+    // Smoking pilots show only their frame (ADR-0024), and leave a thin trail.
+    remotes.update(net, (id) => combat.smoking(id));
+    smokeSources.length = 0;
+    if (!drone.crashed) smokeSources.push({ id: combat.selfId, position: drone.currPos });
+    for (const v of remotes.views) if (!v.crashed) smokeSources.push(v);
+    combatEffects.smoke.update(smokeSources);
     const remote = remotes.views[0];
     combat.update(frameDt, control, !paused);
     tracers.update();

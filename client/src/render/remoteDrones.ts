@@ -59,7 +59,7 @@ export class RemoteDrones {
   constructor(private readonly scene: THREE.Scene) {}
 
   /** `isConcealed` hides a pilot's glow (and flags the view) when smoke is in the way. */
-  update(net: NetClient, isConcealed: (pos: THREE.Vector3) => boolean = () => false): void {
+  update(net: NetClient, isConcealed: (id: string) => boolean = () => false): void {
     const serverNow = net.serverNow();
     const renderTime = serverNow - NET.interpDelayMs;
     const now = performance.now();
@@ -151,7 +151,7 @@ export class RemoteDrones {
       view.armed = s.armed;
       view.crashed = s.crashed;
       view.droneClass = cls;
-      view.concealed = isConcealed(model.position);
+      view.concealed = isConcealed(peer.id);
       if (glow && view.concealed) glow.visible = false;
       this.views.push(view);
     }

@@ -87,7 +87,7 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 | Class | Special (E / mapped button) |
 |---|---|
 | FPV wing | **Hold** (or flip a switch mapped to Special) for **maneuver mode**: pitch ×2, roll ×1.3, sharper when slow, weaker nose-into-wind pull, so a hard pull stalls you. HUD shows MANEUVER OFF / ON / STALL |
-| 3D quad | **Tap** for a smoke screen: hides you (glow, trail, marker, lead) for 6 s; 10 s cooldown |
+| 3D quad | **Tap** for a smoke trail (ADR-0024): for 6 s the other pilot sees only your frame (no glow, trail, marker or lead dot); you leave a thin smoke trail; 10 s cooldown |
 | Freestyle 5" | **Tap** to switch Guns / **guided missile**. Fire launches it; keep your crosshair on the target to steer (TOW-style). 2.5 s burn, self-destructs at 5 s, one in flight (firing again replaces it), pod of 3. **One-shot kill** if it detonates within 3 m (ADR-0018) |
 
 Numbers: `shared/abilities.ts` (smoke), `shared/missile.ts` (missile physics, shared by server and client), `MANEUVER` in `client/src/sim/wingModel.ts`.

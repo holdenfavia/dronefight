@@ -1,67 +1,48 @@
 import * as THREE from 'three/webgpu';
-import { SMOKE, smokeRadius } from '../../../shared/abilities';
+import { SMOKE } from '../../../shared/abilities';
 import { launchMissile, MISSILE, missileImpact, stepMissile, type AimRay, type MissileState, type Vec3 } from '../../../shared/missile';
 import type { BoxCollider } from '../../../shared/raycast';
 import type { Particles } from '../render/particles';
 
 /**
- * Visuals for the class specials (ADR-0016): smoke clouds (which also decide concealment),
- * guided missiles with smoke trails, and explosions. The server decides damage; these only show it.
+ * Visuals for the class specials: smoke trails (which also decide concealment, ADR-0024), guided
+ * missiles with smoke trails, and explosions (ADR-0016). The server decides damage; these only show it.
  */
 
-interface Cloud {
-  x: number;
-  y: number;
-  z: number;
-  born: number;
-}
-
-export class SmokeClouds {
-  private readonly clouds: Cloud[] = [];
+/** 3D quad smoke (ADR-0024): who is smoking, and the thin trail they leave. */
+export class SmokeTrails {
+  /** Pilot id -> when their smoke ends (performance.now() ms). */
+  private readonly until = new Map<string, number>();
+  private readonly lastPuff = new Map<string, number>();
 
   constructor(private readonly particles: Particles) {}
 
-  deploy(p: THREE.Vector3 | readonly [number, number, number]): void {
-    const [x, y, z] = Array.isArray(p) ? p : [(p as THREE.Vector3).x, (p as THREE.Vector3).y, (p as THREE.Vector3).z];
-    this.clouds.push({ x, y, z, born: performance.now() });
-    // A thick cluster of big, slow puffs that swell to the cloud's full size.
-    for (let i = 0; i < 26; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = Math.random() * SMOKE.maxRadius * 0.55;
-      const h = (Math.random() - 0.4) * SMOKE.maxRadius * 0.6;
-      this.particles.emit(x + Math.cos(a) * r * 0.3, y + h * 0.3, z + Math.sin(a) * r * 0.3, {
-        startSize: SMOKE.startRadius,
-        endSize: SMOKE.maxRadius * (0.55 + Math.random() * 0.3),
-        lifeMs: SMOKE.durationMs * (0.85 + Math.random() * 0.15),
-        color: i % 3 === 0 ? '#d8dcde' : '#b9bec2',
-        alpha: 0.92,
-        vx: Math.cos(a) * r * 0.6,
-        vy: 0.4 + h * 0.2,
-        vz: Math.sin(a) * r * 0.6,
-      });
-    }
+  start(id: string): void {
+    this.until.set(id, performance.now() + SMOKE.durationMs);
   }
 
-  /** True if any cloud hides `target` from `eye`: target inside a cloud, or the line of sight crosses one. */
-  conceals(eye: THREE.Vector3, target: THREE.Vector3): boolean {
+  /** True while `id` is smoking: the other pilot sees only their frame. */
+  smoking(id: string): boolean {
+    return (this.until.get(id) ?? 0) > performance.now();
+  }
+
+  /** Leave puffs behind every smoking pilot, once per frame. */
+  update(pilots: Iterable<{ id: string; position: THREE.Vector3 }>): void {
     const now = performance.now();
-    for (let i = this.clouds.length - 1; i >= 0; i--) {
-      const c = this.clouds[i]!;
-      const radius = smokeRadius(now - c.born);
-      if (radius === 0) {
-        if (now - c.born > SMOKE.durationMs) this.clouds.splice(i, 1);
-        continue;
-      }
-      // Distance from the cloud center to the segment eye -> target.
-      const dx = target.x - eye.x;
-      const dy = target.y - eye.y;
-      const dz = target.z - eye.z;
-      const len2 = dx * dx + dy * dy + dz * dz;
-      const t = len2 > 0 ? Math.max(0, Math.min(1, ((c.x - eye.x) * dx + (c.y - eye.y) * dy + (c.z - eye.z) * dz) / len2)) : 0;
-      const d = Math.hypot(eye.x + dx * t - c.x, eye.y + dy * t - c.y, eye.z + dz * t - c.z);
-      if (d < radius * 0.85) return true;
+    for (const { id, position: p } of pilots) {
+      if (!this.smoking(id) || now - (this.lastPuff.get(id) ?? 0) < SMOKE.puffEveryMs) continue;
+      this.lastPuff.set(id, now);
+      this.particles.emit(p.x, p.y, p.z, {
+        startSize: SMOKE.puffStart,
+        endSize: SMOKE.puffEnd * (0.8 + Math.random() * 0.4),
+        lifeMs: SMOKE.puffLifeMs * (0.8 + Math.random() * 0.4),
+        color: Math.random() < 0.5 ? '#c9cdd0' : '#b3b8bc',
+        alpha: 0.75,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: 0.3,
+        vz: (Math.random() - 0.5) * 0.4,
+      });
     }
-    return false;
   }
 }
 
