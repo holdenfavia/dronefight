@@ -1,4 +1,4 @@
-import { boundary, gate, pads, spawnFacingCenter, tower } from './builders.js';
+import { boundary, cubeFrame, gate, pads, spawnFacingCenter, tower } from './builders.js';
 import type { ArenaBox, MapDef, SpawnPoint } from './types.js';
 
 /**
@@ -50,6 +50,26 @@ function build(): ArenaBox[] {
   gate(out, 0, 70, 14, 10, 0);
   gate(out, -60, -60, 10, 8, 30);
   gate(out, 60, -115, 10, 8, -20);
+
+  // Flight drills on the flanks, clear of the central lanes.
+  // West: a slalom of poles running down the field.
+  for (let i = 0; i < 6; i++) {
+    const x = i % 2 === 0 ? -84 : -96;
+    const z = 100 - i * 14;
+    out.push({ pos: [x, 7, z], size: [0.8, 14, 0.8], mat: 'orange' });
+    out.push({ pos: [x, 14.4, z], size: [1.2, 0.8, 1.2], mat: 'white' });
+  }
+  // East: floating cube hoops climbing as they go.
+  for (const [i, z] of [95, 70, 45, 20].entries()) cubeFrame(out, i % 2 === 0 ? 90 : 80, 10 + i * 6, z, 8);
+  // A ladder: two tall posts with bars to thread between.
+  for (const px of [45, 70]) {
+    out.push({ pos: [px, 20, -40], size: [1, 40, 1], mat: 'orange' });
+    out.push({ pos: [px, 0.12, -40], size: [2.4, 0.24, 2.4], mat: 'concrete' });
+  }
+  for (const y of [8, 16, 24, 32, 39.7]) out.push({ pos: [57.5, y, -40], size: [26, 0.6, 0.6], mat: 'white' });
+  // A low tunnel at the far west end.
+  for (const s of [-1, 1]) out.push({ pos: [-55 + s * 4.6, 3, -108], size: [0.8, 6, 20], mat: 'concrete' });
+  out.push({ pos: [-55, 6.4, -108], size: [10, 0.8, 20], mat: 'orange' });
   return out;
 }
 

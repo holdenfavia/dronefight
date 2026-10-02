@@ -1,4 +1,4 @@
-import { boundary, cubeFrame, gate, mulberry32, pads, spawnFacingCenter, tower } from './builders.js';
+import { boundary, cubeFrame, gate, mulberry32, pads, spawnFacingCenter, strut, tower } from './builders.js';
 import { routeFromPoints, roundedRect } from './movers.js';
 import type { ArenaBox, ArenaMaterial, MapDef, SpawnPoint } from './types.js';
 
@@ -95,6 +95,60 @@ function build(): ArenaBox[] {
   // Jersey barriers along a lane.
   for (let i = 0; i < 10; i++) {
     out.push({ pos: [90, 0.5, -40 + i * 9], size: [0.6, 1, 3], mat: 'concrete' });
+  }
+
+  // Gantry crane over the south-east lot, with a container hanging from the hook: fly under or between.
+  for (const gx of [25, 55]) {
+    for (const gz of [-82, -98]) out.push({ pos: [gx, 10, gz], size: [1.4, 20, 1.4], mat: 'orange' });
+    out.push({ pos: [gx, 20.7, -90], size: [1.6, 1.4, 17.4], mat: 'orange' });
+  }
+  for (const gz of [-82, -98]) out.push({ pos: [40, 22.1, gz], size: [31.6, 1.4, 1.4], mat: 'orange' });
+  out.push({ pos: [40, 23.4, -90], size: [4, 1.2, 17.4], mat: 'steel' });
+  strut(out, [40, 22.8, -90], [40, 9.9, -90], 0.2, 'steel');
+  out.push({ pos: [40, 9, -90], size: [1.6, 2, 1.6], mat: 'steel' });
+  out.push({ pos: [40, 6.7, -90], size: [6, 2.6, 2.4], mat: 'orange' });
+
+  // Pipe rack along the west side: frames every 10 m carrying three long pipes.
+  for (let z = -95; z <= -45; z += 10) {
+    for (const px of [-99, -91]) out.push({ pos: [px, 4.5, z], size: [0.8, 9, 0.8], mat: 'steel' });
+    out.push({ pos: [-95, 9.5, z], size: [8.8, 1, 0.8], mat: 'steel' });
+  }
+  const pipeMats: ArenaMaterial[] = ['steel', 'orange', 'white'];
+  pipeMats.forEach((mat, i) => out.push({ pos: [-97 + i * 2, 10.6, -70], size: [1.2, 1.2, 50.8], mat }));
+
+  // Water tower in the north-east corner: braced legs, platform, tank, roof.
+  const wx = 85;
+  const wz = 85;
+  for (const dx of [-4, 4]) for (const dz of [-4, 4]) out.push({ pos: [wx + dx, 9, wz + dz], size: [0.8, 18, 0.8], mat: 'steel' });
+  for (const s of [-4, 4]) {
+    strut(out, [wx - 4, 0, wz + s], [wx + 4, 18, wz + s], 0.3, 'steel');
+    strut(out, [wx + s, 0, wz - 4], [wx + s, 18, wz + 4], 0.3, 'steel');
+  }
+  out.push({ pos: [wx, 18.3, wz], size: [10, 0.6, 10], mat: 'steel' });
+  out.push({ pos: [wx, 22.6, wz], size: [8, 8, 8], mat: 'white' });
+  out.push({ pos: [wx, 27.1, wz], size: [9, 1, 9], mat: 'orange' });
+
+  // Radio mast with guy wires: thread the wires or climb the mast.
+  const mx = 105;
+  const mz = -55;
+  out.push({ pos: [mx, 25, mz], size: [1.2, 50, 1.2], mat: 'steel' });
+  out.push({ pos: [mx, 50.8, mz], size: [1.6, 1.6, 1.6], mat: 'orange' });
+  for (const deg of [0, 120, 240]) {
+    const a = (deg * Math.PI) / 180;
+    const ax = mx + 13 * Math.cos(a);
+    const az = mz + 13 * Math.sin(a);
+    out.push({ pos: [ax, 0.5, az], size: [1.5, 1, 1.5], mat: 'concrete' });
+    strut(out, [mx, 40, mz], [ax, 1, az], 0.2, 'steel');
+  }
+
+  // A cable from the tall central tower's deck to the top of the west stack.
+  strut(out, [6, 28.3, -6], [-60, 44.5, -60], 0.25, 'steel');
+
+  // Slalom poles east of the gates.
+  for (const [i, x] of [45, 55, 65, 75].entries()) {
+    const z = i % 2 === 0 ? -26 : -32;
+    out.push({ pos: [x, 8, z], size: [1, 16, 1], mat: 'orange' });
+    out.push({ pos: [x, 16.5, z], size: [1.4, 1, 1.4], mat: 'white' });
   }
 
   return out;

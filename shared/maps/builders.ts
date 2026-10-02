@@ -109,3 +109,22 @@ export function cubeFrame(out: ArenaBox[], x: number, y: number, z: number, size
     }
   }
 }
+
+/**
+ * A straight member from point a to point b (a cable, guy wire, brace), with a square cross-section.
+ * Length runs along local X; rotation is yaw about Y then pitch about Z (Euler XYZ with X = 0).
+ */
+export function strut(out: ArenaBox[], a: readonly [number, number, number], b: readonly [number, number, number], thickness: number, mat: ArenaMaterial): void {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const dz = b[2] - a[2];
+  const flat = Math.hypot(dx, dz);
+  const len = Math.hypot(flat, dy);
+  const deg = 180 / Math.PI;
+  out.push({
+    pos: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2],
+    size: [len, thickness, thickness],
+    rot: [0, Math.atan2(-dz, dx) * deg, Math.atan2(dy, flat) * deg],
+    mat,
+  });
+}

@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current focus:** Phase 3 — Combat (deploy moved after combat by choice; Phase 1 open items: real-controller check and feel sign-off)
+**Current focus:** Phase 3.5 — Go online (Fly.io, ADR-0021). Open play-test items remain in Phases 1, 3 and 3.6.
 
 Check items off as they land. Add items as they're discovered. Moving to a new phase updates **Current focus**.
 
@@ -72,7 +72,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 ## Phase 3.5 — Go online
 
-- [ ] Choose hosting and record it (`/decide`)
+- [x] Choose hosting and record it (ADR-0021: Fly.io)
 - [ ] Deploy server + client; play from two houses
 - [ ] Phone-call test: callouts match what you see
 
@@ -84,6 +84,8 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Playground map: giant park in solid-color grid style (ADR-0019)
 - [x] Moving props (ADR-0020): Downtown traffic, Playground roller coaster, Yard tractor; Settings option for grid textures on every map
 - [ ] Eyeball the coaster, tractor and grid toggle in play
+- [x] More obstacles on Yard (gantry crane, pipe rack, water tower, guyed mast, cable, slalom), Playground (rope bridge + lookout, rocket climber, rainbow arches, spring riders), Training (slalom, rising cube hoops, ladder, tunnel)
+- [ ] Eyeball the new obstacles in play
 - [ ] Additional maps
 - [x] Sound (motors, hits, UI): procedural, ADR-0010
 - [ ] Sound tuning pass after real matches

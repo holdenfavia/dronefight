@@ -42,8 +42,8 @@ describe('wing model (ADR-0013)', () => {
 
   it('has a sensible stall speed and cruise speed', () => {
     const stallSpeed = levelFlightSpeed(liftCoefficient((WING.stallDeg * Math.PI) / 180));
-    expect(stallSpeed).toBeGreaterThan(6);
-    expect(stallSpeed).toBeLessThan(11);
+    expect(stallSpeed).toBeGreaterThan(9);
+    expect(stallSpeed).toBeLessThan(11.5);
   });
 
   it("can't hover: at zero airspeed it just falls", () => {

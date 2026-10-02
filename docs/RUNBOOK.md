@@ -39,7 +39,7 @@ npm run dev
 In the game: **Play online → Create room**, then read the 4-letter code to your friend (or **Copy invite link**; `?room=CODE` joins automatically).
 
 - **Same Wi-Fi:** start the client with `npm run dev -- --host`, then your friend opens `http://<your-computer's-IP>:5173`. The client connects to the server on the same host, port 8787.
-- **Different houses:** needs the server deployed (Phase 2 roadmap item).
+- **Different houses:** use the deployed game (see **Deploy**).
 - **Custom server address:** set `VITE_SERVER_URL=wss://your-server.example` when running or building the client.
 
 ### In-game controls
@@ -78,7 +78,7 @@ Rules are in ADR-0009. Tunable numbers (fire rate, round speed, damage, HP, resp
 Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on the main menu. Solo switches now; in a match it applies at your next respawn.
 
 - **3D quad:** throttle center is zero thrust. Push up for normal thrust, pull below center to reverse the motors (hover inverted, back up). It arms with the throttle **centered**. On the keyboard, throttle starts at center on respawn.
-- **FPV wing:** can't hover. It spawns in the air at flying speed, facing along a street/lane. Keep your speed up: when slow, the nose drops. Camera uptilt is fixed for the wing (`WING.cameraUptiltDeg`).
+- **FPV wing:** can't hover; stalls below ~35 km/h in level flight (`clAlpha`, `stallDeg` in `WING`). It spawns in the air at flying speed, facing along a street/lane. Keep your speed up: when slow, the nose drops. Camera uptilt is fixed for the wing (`WING.cameraUptiltDeg`).
 - Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s) plus the **Cobra** while holding Special (E): physics-based, stronger the faster you enter it, costs speed, no cooldown (ADR-0015); 3D quad double-barrel shotgun (2 blasts/s, 8 pellets). To put Special (or Fire) on your radio without redoing the sticks, use **Map buttons** on the main menu. There, Skip keeps a button's current binding.
 - Combat stats per class are in `shared/drones.ts` (server and client). Quad flight tuning is in `client/src/config.ts` (`QUAD`, `QUAD_3D`); wing tuning in `client/src/sim/wingModel.ts` (`WING`).
 
@@ -101,6 +101,7 @@ Pick **Map: Training** and **Fly solo**. Bots: **white** stationary (40/80/130/1
 Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, so the server needs a restart after editing them.
 
 - `downtown.ts`, `yard.ts`, `playground.ts`, `training.ts`: layout. The Playground uses the `grid*` materials (flat colors with a baked 1 m / 4 m grid, ADR-0019); other maps use the textured materials. Everything is boxes (`ArenaBox`); `boxes` collide, `decor` is scenery only.
+- Thin members (cables, guy wires, braces, arches) use `strut(out, a, b, thickness, mat)` from `builders.ts`. Keep new obstacles 15 m+ from spawns, off the mover routes, and on Training off the central lanes (|x| < 28).
 - Each map needs exactly 8 spawns. `shared/maps/maps.test.ts` checks every spawn has open space around and above it. Run `npm test` after moving things.
 - Pick the map with **Map: … ▸** on the main menu. It applies to solo flying and to rooms you create; people joining get the room's map.
 - Mountains, clouds and the sun glow are in `client/src/world/scenery.ts`; building textures in `textures.ts`.
@@ -147,6 +148,20 @@ Check the network HUD (top right). It shows ping and **delay**: how far behind r
 - "Pilot signal lost" means no update for 0.6 s (their tab is in the background, or their connection stalled). When updates resume, the drone snaps to its current position. Missed time is never replayed.
 - Browsers pause background tabs. If your friend switches away from the game, their drone freezes for you until they come back.
 
-## Deploy
+## Deploy (Fly.io, ADR-0021)
 
-_To be filled in during Phase 2._
+One container serves the game page and the room server on one URL. Config: `Dockerfile`, `fly.toml`, `.dockerignore`.
+
+First time:
+
+1. Make a Fly.io account (needs a card; this app costs about $2/month).
+2. `brew install flyctl`, then `fly auth login` (opens the browser).
+3. `fly apps create <name>` (the name becomes `<name>.fly.dev`; if `dronefight` is taken, pick another and put it in `fly.toml` as `app`).
+4. `npm run deploy`.
+
+After that, every update is just `npm run deploy` (it builds in Fly's builder; no local Docker needed). Restart isn't needed separately: deploy replaces the machine. Active matches drop during a deploy.
+
+- **Always deploy with `npm run deploy`** (`--ha=false`). Plain `fly deploy` on a new app creates two machines, which splits rooms between them. Fix with `fly scale count 1`.
+- Logs: `fly logs`. Status: `fly status`. Health: `https://<name>.fly.dev/healthz` returns `ok`.
+- Try the production setup locally: `npm run build && PORT=8080 npm start`, then open http://localhost:8080.
+- Region is `primary_region` in `fly.toml` (`ord` = Chicago). Pick one between the two pilots (`fly platform regions` lists them); after changing it, run `fly scale count 1 --region <new>` and remove the old machine.

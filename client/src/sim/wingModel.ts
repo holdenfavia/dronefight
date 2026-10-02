@@ -25,11 +25,11 @@ export const WING = {
   /** Air density (kg/m^3) and wing area (m^2). */
   rho: 1.225,
   area: 0.22,
-  /** Lift coefficient at zero angle of attack, and slope per radian. */
+  /** Lift coefficient at zero angle of attack, and slope per radian. Level stall speed ~9.7 m/s (35 km/h). */
   cl0: 0.15,
-  clAlpha: 4.5,
+  clAlpha: 3.0,
   /** Stall angle (deg) and the lift left over once fully stalled. */
-  stallDeg: 14,
+  stallDeg: 12,
   clPostStall: 0.45,
   /** Drag: parasitic, induced factor, and extra flat-plate drag when the air hits the wing broadside. */
   cd0: 0.035,

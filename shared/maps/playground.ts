@@ -1,4 +1,4 @@
-import { boundary, pads, spawnFacingCenter } from './builders.js';
+import { boundary, pads, spawnFacingCenter, strut } from './builders.js';
 import { coasterTiming, routeFromPoints, type MoverDef, type V3 } from './movers.js';
 import type { ArenaBox, ArenaMaterial, MapDef, SpawnPoint } from './types.js';
 
@@ -276,6 +276,54 @@ function build(): ArenaBox[] {
       box(out, [110 + x + jitter, y, -10 + dz], [1.4, 1.1, 0.6], holds[h % holds.length]!, [wallTilt, 0, 0]);
       h++;
     }
+  }
+
+  // --- Rope bridge from the playhouse's open (-Z) doorway to a lookout tower, sagging in the middle.
+  const lz = -45;
+  for (const sx of [-4, 4]) for (const sz of [-4, 4]) box(out, [sx, deckY / 2, lz + sz], [1.2, deckY, 1.2], 'gridOrange');
+  box(out, [0, deckY + 0.5, lz], [10, 1, 10], 'gridGreen');
+  for (const s of [-1, 1]) box(out, [s * 4.6, deckY + 2, lz], [0.8, 3, 10], 'gridWhite');
+  box(out, [0, deckY + 2, lz - 4.6], [10, 3, 0.8], 'gridWhite');
+  const bridgeAt = (t: number): [number, number] => [deckY + 1 - 3 * Math.sin(Math.PI * t), -10 - 30 * t];
+  const segs = 10;
+  for (let i = 0; i < segs; i++) {
+    const [y1, z1] = bridgeAt(i / segs);
+    const [y2, z2] = bridgeAt((i + 1) / segs);
+    const len = Math.hypot(y2 - y1, z2 - z1) + 0.2;
+    const tilt = Math.atan2(-(y2 - y1), z2 - z1) * DEG;
+    box(out, [0, (y1 + y2) / 2 - 0.2, (z1 + z2) / 2], [4, 0.4, len], 'gridYellow', [tilt, 0, 0]);
+    // Rope handrails 1.5 m above the planks.
+    for (const s of [-1, 1]) strut(out, [s * 2, y1 + 1.5, z1], [s * 2, y2 + 1.5, z2], 0.25, 'gridWhite');
+  }
+
+  // --- Rocket climber: a tall column with platform rings, fins and a nose cone.
+  const rx = -75;
+  const rz = -25;
+  box(out, [rx, 14, rz], [2, 28, 2], 'gridWhite');
+  for (const [i, y] of [6, 13, 20].entries()) octagon(out, rx, y, rz, 11 - i * 1.5, 0.8, i % 2 === 0 ? 'gridRed' : 'gridBlue');
+  for (const [w, h, y] of [[4, 2, 29], [2.6, 2, 31], [1.2, 2, 33]] as const) box(out, [rx, y, rz], [w, h, w], 'gridRed');
+  for (const deg of [0, 120, 240]) {
+    const a = (deg * Math.PI) / 180;
+    box(out, [rx + 3.5 * Math.cos(a), 2.5, rz + 3.5 * Math.sin(a)], [5, 5, 0.6], 'gridOrange', [0, -deg, 0]);
+  }
+
+  // --- Rainbow arch climbers east of the house: three hoops to string together.
+  const archMats: Mat[] = ['gridRed', 'gridYellow', 'gridGreen'];
+  for (const [i, ax] of [68, 76, 84].entries()) {
+    const r = 14 - i * 2;
+    const n = 12;
+    for (let k = 0; k < n; k++) {
+      const t1 = (k / n) * Math.PI;
+      const t2 = ((k + 1) / n) * Math.PI;
+      strut(out, [ax, r * Math.sin(t1), -10 - r * Math.cos(t1)], [ax, r * Math.sin(t2), -10 - r * Math.cos(t2)], 0.9, archMats[i]!);
+    }
+  }
+
+  // --- Spring riders beside the sandbox.
+  for (const [x, z, mat] of [[-32, -86, 'gridPurple'], [-30, -100, 'gridYellow']] as const) {
+    box(out, [x, 1.5, z], [0.6, 3, 0.6], 'gridWhite');
+    box(out, [x, 4, z], [2.4, 2, 5], mat);
+    box(out, [x, 5.6, z - 2], [2, 2.2, 1.6], mat);
   }
 
   coaster(out);
