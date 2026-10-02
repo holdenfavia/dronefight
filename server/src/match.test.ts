@@ -6,6 +6,7 @@ import { DRONE_CLASSES } from '../../shared/drones.js';
 import type { DroneState, ServerMessage, Vec3 } from '../../shared/protocol.js';
 import { interceptTime } from '../../shared/lead.js';
 import { MAPS, SPAWN_SAFE_DISTANCE } from '../../shared/maps/index.js';
+import { mapProps, PROPS } from '../../shared/props.js';
 import { Match, sampleHistory, takeRound } from './match.js';
 
 function droneAt(p: Vec3, v: Vec3 = [0, 0, 0], crashed = false): DroneState {
@@ -410,6 +411,62 @@ describe('guided missiles and smoke (ADR-0016)', () => {
     const smokes = log.filter((m) => m.t === 'ability');
     expect(smokes).toHaveLength(2);
     expect(smokes.every((m) => m.t === 'ability' && m.id === 'A')).toBe(true);
+  });
+});
+
+describe('destructible props (ADR-0023)', () => {
+  // The Yard's propane tank in the open at (-20, 1.2, 20).
+  const tank = mapProps(MAPS.yard).findIndex((p) => p.explosive?.kind === 'propane' && p.explosive.pos[0] === -20);
+  const tankPos: Vec3 = [-20, 1.2, 20];
+
+  it('rounds blow up a prop, everyone is told, and it comes back later', () => {
+    const t = setup();
+    expect(tank).toBeGreaterThanOrEqual(0);
+    t.setB([100, 30, 100]);
+    t.advance(afterProtection);
+    for (let i = 0; i < 3; i++) {
+      t.fireAt(tankPos);
+      t.advance(shotInterval + 1);
+    }
+    t.advance(500);
+    expect(t.log.some((m) => m.t === 'prop' && m.i === tank && m.by === 'A')).toBe(true);
+    expect(t.match.state().props).toContain(tank);
+    t.advance(PROPS.respawnMs);
+    expect(t.match.state().props).not.toContain(tank);
+  });
+
+  it('the blast hurts a pilot nearby, credited to whoever set it off', () => {
+    const t = setup();
+    t.advance(afterProtection);
+    t.setB([-20, 1.5, 25]);
+    t.advance(200);
+    for (let i = 0; i < 3; i++) {
+      t.fireAt(tankPos);
+      t.advance(shotInterval + 1);
+    }
+    t.advance(500);
+    expect(t.hp('B')).toBeLessThan(FS.maxHp);
+    expect(t.log.some((m) => m.t === 'hit' && m.target === 'B' && m.shooter === 'A')).toBe(true);
+  });
+
+  it('props can be shot before the match starts, but blasts only hurt during it', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match('yard', (msg) => log.push(msg));
+    match.addPlayer('A', 0);
+    const p: Vec3 = [-100, 30, 0];
+    let now = 0;
+    for (let i = 0; i < 4; i++) {
+      now += 200;
+      match.onState('A', droneAt(p), now);
+      const d: Vec3 = [tankPos[0] - p[0], tankPos[1] - p[1], tankPos[2] - p[2]];
+      const len = Math.hypot(...d);
+      match.onShot('A', { ts: now, p, d: [d[0] / len, d[1] / len, d[2] / len] }, now);
+      match.tick(now);
+    }
+    match.tick(now + 1000);
+    expect(match.state().phase).toBe('waiting');
+    expect(log.some((m) => m.t === 'prop' && m.i === tank)).toBe(true);
+    expect(log.some((m) => m.t === 'hit')).toBe(false);
   });
 });
 

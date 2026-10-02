@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildColliders, raycastArena } from '../raycast.js';
+import { explosiveBoxes } from '../props.js';
 import { MAP_ORDER, MAPS, pickSpawn, SPAWN_SAFE_DISTANCE } from './index.js';
 
 describe('maps', () => {
@@ -15,7 +16,7 @@ describe('maps', () => {
       });
 
       it('leaves room to take off from every spawn (nothing solid within 4 m above the pad)', () => {
-        const colliders = buildColliders(map.boxes.filter((b) => b.mat !== 'pad'));
+        const colliders = buildColliders([...map.boxes.filter((b) => b.mat !== 'pad'), ...explosiveBoxes(map)]);
         for (const s of map.spawns) {
           const up = raycastArena(colliders, s.pos[0], 0.5, s.pos[2], 0, 1, 0, 20);
           expect(up, `spawn at ${s.pos}`).toBeGreaterThan(4);
@@ -23,7 +24,7 @@ describe('maps', () => {
       });
 
       it('does not start any spawn inside geometry', () => {
-        const colliders = buildColliders(map.boxes.filter((b) => b.mat !== 'pad' && b.mat !== 'sidewalk'));
+        const colliders = buildColliders([...map.boxes.filter((b) => b.mat !== 'pad' && b.mat !== 'sidewalk'), ...explosiveBoxes(map)]);
         for (const s of map.spawns) {
           // Cast in four directions from pad height: something inside a box would report 0.
           for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {

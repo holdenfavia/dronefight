@@ -1,5 +1,5 @@
 import { boundary, cubeFrame, gate, pads, spawnFacingCenter, tower } from './builders.js';
-import type { ArenaBox, MapDef, SpawnPoint } from './types.js';
+import type { ArenaBox, ExplosiveDef, MapDef, SpawnPoint } from './types.js';
 
 /**
  * Training ground (ADR-0017): a shooting range. Spawns line up at the south end (+Z) facing down
@@ -73,6 +73,20 @@ function build(): ArenaBox[] {
   return out;
 }
 
+/** Practice targets that blow up (ADR-0023): drums at the cover walls, propane, water tanks on the towers. */
+const drums = (x: number, z: number): ExplosiveDef[] =>
+  [[0, 0], [1.4, 0], [0.7, 1.2]].map(([dx, dz]) => ({ kind: 'fuel' as const, pos: [x + dx!, 0.8, z + dz!], size: [1.2, 1.6, 1.2] }));
+const EXPLOSIVES: ExplosiveDef[] = [
+  ...drums(-50, 57.6),
+  ...drums(53, 57.6),
+  ...drums(-80, -17.4),
+  ...drums(78, -27.4),
+  { kind: 'propane', pos: [0, 1.2, 13], size: [2.4, 2.4, 6], yawDeg: 90 },
+  { kind: 'propane', pos: [-25, 1.2, -67], size: [2.4, 2.4, 6], yawDeg: 90 },
+  { kind: 'water', pos: [-100, 32.475 + 1.5, -80], size: [3, 3, 3], color: '#e9e9e6' },
+  { kind: 'water', pos: [100, 22.475 + 1.5, -70], size: [3, 3, 3], color: '#e9e9e6' },
+];
+
 export const TRAINING: MapDef = {
   id: 'training',
   name: 'Training',
@@ -81,4 +95,5 @@ export const TRAINING: MapDef = {
   decor: [],
   spawns: SPAWNS,
   ground: 'concrete',
+  explosives: EXPLOSIVES,
 };

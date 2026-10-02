@@ -13,6 +13,7 @@ import {
   type Vec3,
 } from '../../shared/protocol.js';
 import { buildColliders, raycastArena, segmentPointDistance } from '../../shared/raycast.js';
+import { blastDamage, PropField, type Blast } from '../../shared/props.js';
 
 /**
  * One room's combat (ADR-0009). The server is the referee: it decides hits, damage, deaths and score.
@@ -88,6 +89,8 @@ interface Bullet {
   /** Server time on the target's timeline that matches the moment of firing. */
   t0: number;
   traveled: number;
+  /** The prop this round hits at maxDist, if it gets that far (ADR-0023). */
+  prop: number | null;
 }
 
 export type Emit = (msg: ServerMessage, opts?: { to?: string; except?: string }) => void;
@@ -104,6 +107,8 @@ export class Match {
   private protectedAnnounced = new Set<string>();
   private readonly map: MapDef;
   private readonly colliders: ReturnType<typeof buildColliders>;
+  /** Cars, barrels, tanks: shot, blown up and respawned here (ADR-0023). */
+  private readonly props: PropField;
 
   constructor(
     mapId: MapId,
@@ -112,6 +117,7 @@ export class Match {
   ) {
     this.map = getMap(mapId);
     this.colliders = buildColliders(this.map.boxes);
+    this.props = new PropField(this.map);
   }
 
   addPlayer(id: string, now: number, drone: DroneClassId = DEFAULT_DRONE): void {
@@ -220,12 +226,13 @@ export class Match {
 
     // Everyone else sees the tracers, whatever the match phase.
     this.emit({ t: 'shot', id, s: shot }, { except: id });
-    if (this.phase !== 'playing' || !pilot.alive) return;
+    // Rounds fly in every phase (props can be shot any time, ADR-0023); they hit pilots only in a match.
+    if (!pilot.alive) return;
     // Allow jitter in arrival times, but not a faster gun.
     const gun = droneClass(pilot.drone);
     if (!takeRound(pilot, gun, st) || !muzzleOk) return;
 
-    if (pilot.protectedUntil > st) {
+    if (this.phase === 'playing' && pilot.protectedUntil > st) {
       // Firing ends your own spawn protection.
       pilot.protectedUntil = 0;
       this.broadcastState();
@@ -233,18 +240,22 @@ export class Match {
 
     const [px, py, pz] = shot.p;
     const [dx, dy, dz] = shot.d;
-    const maxDist = raycastArena(this.colliders, px, py, pz, dx, dy, dz, gun.range);
+    const wall = raycastArena(this.colliders, px, py, pz, dx, dy, dz, gun.range);
     const seen = shot.ts - NET.interpDelayMs;
     const t0 = Math.min(st, Math.max(seen, st - MAX_REWIND_MS));
+    // Props move on the shared clock, which the shooter sees live: test them at the claimed fire time.
+    const fired = Math.min(st, Math.max(shot.ts, st - MAX_REWIND_MS));
+    const prop = this.props.bulletHit(shot.p, shot.d, wall, fired, gun.bulletSpeed);
     this.bullets.push({
       shooter: id,
       speed: gun.bulletSpeed,
       damage: gun.damage,
       p: shot.p,
       d: shot.d,
-      maxDist,
+      maxDist: prop ? prop.dist : wall,
       t0,
       traveled: 0,
+      prop: prop ? prop.i : null,
     });
     this.stepBullets(st);
   }
@@ -309,6 +320,8 @@ export class Match {
           const pos = sampleHistory(target.history, now);
           if (pos) targets.push(pos);
         }
+        // The fuse also reacts to cars, barrels and tanks (ADR-0023).
+        targets.push(...this.props.centers(now));
         const impact = missileImpact(a, b, this.colliders, targets);
         let at: Vec3 | null = null;
         if (impact !== null) at = [a[0] + (b[0] - a[0]) * impact, a[1] + (b[1] - a[1]) * impact, a[2] + (b[2] - a[2]) * impact];
@@ -342,11 +355,33 @@ export class Match {
     }
     this.stepBullets(now);
     this.stepMissiles(now);
+    this.stepProps(now);
+  }
+
+  /** Set off due prop explosions and bring back old ones (ADR-0023). */
+  private stepProps(now: number): void {
+    const { blasts, respawned } = this.props.tick(now);
+    for (const b of blasts) this.propBlast(b, now);
+    if (blasts.length > 0 || respawned.length > 0) this.broadcastState();
+  }
+
+  /** A prop exploded: everyone draws it; in a match, pilots nearby take blast damage. */
+  private propBlast(b: Blast, now: number): void {
+    this.emit({ t: 'prop', i: b.i, p: b.p, by: b.by });
+    if (this.phase !== 'playing') return;
+    for (const target of [...this.pilots.values()]) {
+      if (!target.alive || target.protectedUntil > now) continue;
+      const pos = sampleHistory(target.history, now);
+      if (!pos) continue;
+      const damage = blastDamage(b.kind, Math.hypot(pos[0] - b.p[0], pos[1] - b.p[1], pos[2] - b.p[2]));
+      if (damage > 0 && this.phase === 'playing') this.hit(b.by && this.pilots.has(b.by) ? b.by : null, damage, target, now);
+    }
   }
 
   state(): MatchState {
     return {
       map: this.map.id,
+      props: this.props.downList(),
       phase: this.phase,
       winner: this.winner,
       killsToWin: COMBAT.killsToWin,
@@ -384,6 +419,7 @@ export class Match {
         const bz = b.p[2] + b.d[2] * next;
 
         for (const target of this.pilots.values()) {
+          if (this.phase !== 'playing') break;
           if (target.id === b.shooter || !target.alive || target.protectedUntil > now) continue;
           const pos = sampleHistory(target.history, targetTime);
           if (!pos) continue;
@@ -396,7 +432,8 @@ export class Match {
         }
         b.traveled = next;
       }
-      if (!done && b.traveled < b.maxDist && this.phase === 'playing') remaining.push(b);
+      if (!done && b.traveled >= b.maxDist && b.prop !== null) this.props.damage(b.prop, b.damage, now, b.shooter);
+      else if (!done && b.traveled < b.maxDist) remaining.push(b);
     }
     this.bullets = remaining;
   }
@@ -404,7 +441,9 @@ export class Match {
   /** Missile detonation (ADR-0016): splash everyone nearby (not the shooter), and tell every client where. */
   private explode(shooter: string, rid: number, at: Vec3, now: number): void {
     this.emit({ t: 'boom', id: shooter, rid, p: at });
-    // Outside a running match missiles still fly and explode, but do no damage.
+    // Props take the blast in any phase (ADR-0023); they go off on the next tick.
+    this.props.splash(at, now, shooter, splashDamage);
+    // Outside a running match missiles still fly and explode, but don't hurt pilots.
     if (this.phase !== 'playing') return;
     for (const target of this.pilots.values()) {
       if (target.id === shooter || !target.alive || target.protectedUntil > now) continue;
@@ -415,13 +454,22 @@ export class Match {
     }
   }
 
-  private hit(shooterId: string, damage: number, target: Pilot, now: number): void {
+  /**
+   * Damage a pilot. `shooterId` null (or the target themselves, e.g. their own prop blast) gives no
+   * credit: a recent attacker keeps theirs (ADR-0023).
+   */
+  private hit(shooterId: string | null, damage: number, target: Pilot, now: number): void {
     target.hp = Math.max(0, target.hp - damage);
-    target.lastDamagedBy = shooterId;
-    target.lastDamagedAt = now;
-    this.emit({ t: 'hit', shooter: shooterId, target: target.id, hp: target.hp });
-    if (target.hp <= 0) this.kill(target, shooterId, 'shot', now);
-    else this.broadcastState();
+    const credited = shooterId !== null && shooterId !== target.id;
+    if (credited) {
+      target.lastDamagedBy = shooterId;
+      target.lastDamagedAt = now;
+    }
+    this.emit({ t: 'hit', shooter: credited ? shooterId : '', target: target.id, hp: target.hp });
+    if (target.hp <= 0) {
+      const recent = target.lastDamagedBy && now - target.lastDamagedAt <= COMBAT.killCreditMs && this.pilots.has(target.lastDamagedBy) ? target.lastDamagedBy : null;
+      this.kill(target, credited ? shooterId : recent, 'shot', now);
+    } else this.broadcastState();
   }
 
   private kill(pilot: Pilot, killerId: string | null, cause: 'shot' | 'crash', now: number): void {

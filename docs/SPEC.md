@@ -23,8 +23,8 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 
 - **Freestyle 5"** (default), **3D quad** (reversible thrust; throttle center = zero), **FPV wing** (fixed-wing; can't hover; spawns airborne).
 - Full classes: health, damage, fire rate, round speed and size differ per class. Picked in the menu; in a match it applies at your next respawn.
-- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s, BRRRT) plus a physics-based **Cobra** while holding Special (E or a mapped radio button, ADR-0015); 3D quad choked double-barrel shotgun (2/s, 8 pellets).
-- Specials (ADR-0015/0016): wing **Cobra** (hold), 3D quad **smoke screen** (tap: hides you and blocks the enemy's lead indicator), Freestyle **guided missile** (tap to switch guns/missile; steer it with your crosshair; 5 s max flight; **one-shot kill** within 3 m, ADR-0018).
+- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s, BRRRT); 3D quad choked double-barrel shotgun (2/s, 8 pellets).
+- Specials (ADR-0016/0022): wing **maneuver mode** (hold Special or flip a switch: much more pitch, a bit more roll, easier to stall), 3D quad **smoke screen** (tap: hides you and blocks the enemy's lead indicator), Freestyle **guided missile** (tap to switch guns/missile; steer it with your crosshair; 5 s max flight; **one-shot kill** within 3 m, ADR-0018).
 
 ## Controls
 
@@ -56,7 +56,8 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 - **Downtown** (default): city blocks, towers, streets, parking garage, skybridge, construction crane.
 - **Yard**: the original industrial arena.
 - **Playground** (ADR-0019): a giant playground park in solid colors with grid lines, plus a roller coaster.
-- Moving props (ADR-0020): Downtown traffic you can chase, the Playground coaster, a Yard tractor. Solid to fly into; rounds pass through. Settings can switch every map to grid textures.
+- Moving props (ADR-0020): Downtown traffic you can chase, the Playground coaster, a Yard tractor. Solid to fly into. Settings can switch every map to grid textures.
+- Destructible props (ADR-0023): moving props, parked cars, barrels, propane and water tanks explode when shot (chain reactions; blasts hurt pilots in matches); back after 30 s. Server-decided online.
 - **Training** (ADR-0017): solo practice with bots (white stationary, blue fixed paths, yellow random, red evasive), hits/kills/accuracy.
 - The room creator picks the map. Distant mountains, clouds and sun glow on every map.
 

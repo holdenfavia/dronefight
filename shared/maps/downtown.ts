@@ -1,6 +1,11 @@
 import { BEAM, boundary, cubeFrame, gate, mulberry32, pads, spawnFacingCenter, tower } from './builders.js';
 import { routeFromPoints, roundedRect, type MoverDef, type V3 } from './movers.js';
-import type { ArenaBox, ArenaMaterial, MapDef, SpawnPoint } from './types.js';
+import type { ArenaBox, ArenaMaterial, ExplosiveDef, MapDef, SpawnPoint } from './types.js';
+
+/** Things that blow up when shot (ADR-0023), collected while building: parked cars, rooftop water tanks, barrels. */
+const EXPLOSIVES: ExplosiveDef[] = [];
+/** Parked-car paint, picked like the old box materials so the layout (random sequence) stays the same. */
+const PARKED_COLORS: Record<string, string> = { white: '#e9e9e6', steel: '#8d949b', orange: '#ff8a2a', glass: '#2f6fb8' };
 
 /**
  * Downtown (ADR-0012): a 5x5 grid of city blocks with 16 m streets between them.
@@ -66,7 +71,8 @@ function building(out: ArenaBox[], rand: Rand, x: number, z: number, w: number, 
     for (const [lx, lz] of [[-1.2, -1.2], [1.2, -1.2], [-1.2, 1.2], [1.2, 1.2]] as const) {
       out.push({ pos: [tx + lx, top + 1.5, tz + lz], size: [0.25, 3, 0.25], mat: 'steel' });
     }
-    out.push({ pos: [tx, top + 4.8, tz], size: [3.4, 3.6, 3.4], mat: 'brick' });
+    // The tank itself bursts when shot (ADR-0023); its legs stay.
+    EXPLOSIVES.push({ kind: 'water', pos: [tx, top + 4.8, tz], size: [3.4, 3.6, 3.4], color: '#8a5a3c' });
   }
   // Rooftop billboard: a white panel in an orange frame.
   if (rand() < 0.22) {
@@ -124,13 +130,19 @@ function garage(out: ArenaBox[], rand: Rand, cx: number, cz: number): void {
   for (const y of [0, ...levels]) {
     for (let i = 0; i < 5; i++) {
       const x = cx - 15 + i * 7;
-      out.push({ pos: [x, y + (y === 0 ? 0 : 0.25) + 0.75, cz + 12], size: [2, 1.5, 4.4], mat: pick(rand, ['white', 'steel', 'orange', 'glass'] as const) });
+      const paint = pick(rand, ['white', 'steel', 'orange', 'glass'] as const);
+      EXPLOSIVES.push({ kind: 'car', pos: [x, y + (y === 0 ? 0 : 0.25) + 0.75, cz + 12], size: [2, 1.5, 4.4], color: PARKED_COLORS[paint] });
     }
   }
 }
 
 /** Construction site: an unfinished frame, scaffolding and a tower crane. */
 function constructionSite(out: ArenaBox[], cx: number, cz: number): void {
+  // Fuel drums and a propane tank on the site (ADR-0023).
+  for (const [dx, dz] of [[-8, -16], [-6.6, -16], [-7.3, -14.8], [-8, -13.6]] as const) {
+    EXPLOSIVES.push({ kind: 'fuel', pos: [cx + dx, 0.8, cz + dz], size: [1.2, 1.6, 1.2] });
+  }
+  EXPLOSIVES.push({ kind: 'propane', pos: [cx + 8, 1.2, cz - 16], size: [2.4, 2.4, 6], yawDeg: 90 });
   // Unfinished concrete frame: columns and a few floor slabs, some missing.
   for (const x of [-14, 0, 14]) {
     for (const z of [-14, 0, 14]) out.push({ pos: [cx + x, 12, cz + z], size: [1, 24, 1], mat: 'concrete' });
@@ -203,14 +215,18 @@ function streetLamps(out: ArenaBox[]): void {
 }
 
 /** Cars parked along the curbs, mid-block. */
-function parkedCars(out: ArenaBox[], rand: Rand): void {
+function parkedCars(rand: Rand): void {
   const colors = ['white', 'steel', 'orange', 'glass', 'white'] as const;
   for (const street of STREETS) {
     for (const t of BLOCKS) {
       if (rand() < 0.4) continue;
       const side = rand() < 0.5 ? -1 : 1;
-      out.push({ pos: [street + side * 4.5, 0.75, t + (rand() - 0.5) * 20], size: [2, 1.5, 4.4], mat: pick(rand, colors) });
-      if (rand() < 0.5) out.push({ pos: [t + (rand() - 0.5) * 20, 0.75, street + side * 4.5], size: [4.4, 1.5, 2], mat: pick(rand, colors) });
+      const z = t + (rand() - 0.5) * 20;
+      EXPLOSIVES.push({ kind: 'car', pos: [street + side * 4.5, 0.75, z], size: [2, 1.5, 4.4], color: PARKED_COLORS[pick(rand, colors)] });
+      if (rand() < 0.5) {
+        const x = t + (rand() - 0.5) * 20;
+        EXPLOSIVES.push({ kind: 'car', pos: [x, 0.75, street + side * 4.5], size: [2, 1.5, 4.4], yawDeg: 90, color: PARKED_COLORS[pick(rand, colors)] });
+      }
     }
   }
 }
@@ -244,7 +260,7 @@ function build(): ArenaBox[] {
   }
   skybridgePair(out, rand);
   streetLamps(out);
-  parkedCars(out, rand);
+  parkedCars(rand);
   return out;
 }
 
@@ -307,4 +323,5 @@ export const DOWNTOWN: MapDef = {
   spawns: SPAWNS,
   ground: 'asphalt',
   movers: traffic(),
+  explosives: EXPLOSIVES,
 };

@@ -33,7 +33,7 @@ const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
 const MAX_PENDING_SHOTS = 64;
 
 /** Gameplay events from the server, drained by the game each frame. Never dropped. */
-export type CombatEvent = Extract<ServerMessage, { t: 'hit' | 'death' | 'respawn' | 'ability' | 'boom' | 'missile' }>;
+export type CombatEvent = Extract<ServerMessage, { t: 'hit' | 'death' | 'respawn' | 'ability' | 'boom' | 'missile' | 'prop' }>;
 export type RemoteShot = Extract<ServerMessage, { t: 'shot' }>;
 
 export function defaultServerUrl(): string {
@@ -261,6 +261,7 @@ export class NetClient {
       case 'ability':
       case 'boom':
       case 'missile':
+      case 'prop':
         this.events.push(msg);
         break;
       case 'shot':

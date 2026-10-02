@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { eulerXYZMatrix } from '../raycast.js';
+import { explosiveBoxes } from '../props.js';
 import { MAP_ORDER, MAPS } from './index.js';
 import { moverPose, type V3 } from './movers.js';
 import type { ArenaBox } from './types.js';
@@ -22,7 +23,7 @@ for (const id of MAP_ORDER) {
   const map = MAPS[id];
   if (!map.movers?.length) continue;
   describe(`${map.name} movers`, () => {
-    const solid = map.boxes.filter((b) => b.mat !== 'invisible' && !isTrack(b));
+    const solid = [...map.boxes.filter((b) => b.mat !== 'invisible' && !isTrack(b)), ...explosiveBoxes(map)];
 
     it('never pass through anything solid', () => {
       const pos: V3 = [0, 0, 0];

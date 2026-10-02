@@ -86,6 +86,9 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [ ] Eyeball the coaster, tractor and grid toggle in play
 - [x] More obstacles on Yard (gantry crane, pipe rack, water tower, guyed mast, cable, slalom), Playground (rope bridge + lookout, rocket climber, rainbow arches, spring riders), Training (slalom, rising cube hoops, ladder, tunnel)
 - [ ] Eyeball the new obstacles in play
+- [x] Wing maneuver mode replaces the Cobra (ADR-0022)
+- [x] Destructible props: movers, parked cars, drums, propane, water tanks; server-synced, chains, blast damage (ADR-0023)
+- [ ] Play-test maneuver mode and prop blasts; tune HP and blast radii
 - [ ] Additional maps
 - [x] Sound (motors, hits, UI): procedural, ADR-0010
 - [ ] Sound tuning pass after real matches

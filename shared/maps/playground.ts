@@ -1,6 +1,6 @@
 import { boundary, pads, spawnFacingCenter, strut } from './builders.js';
 import { coasterTiming, routeFromPoints, type MoverDef, type V3 } from './movers.js';
-import type { ArenaBox, ArenaMaterial, MapDef, SpawnPoint } from './types.js';
+import type { ArenaBox, ArenaMaterial, ExplosiveDef, MapDef, SpawnPoint } from './types.js';
 
 /**
  * Playground (ADR-0019): a giant playground park, scaled for drones, built only from solid-color
@@ -353,6 +353,21 @@ function build(): ArenaBox[] {
   return out;
 }
 
+/** Things that burst or blow up when shot (ADR-0023): mostly water barrels, a few fuel drums. */
+const water = (x: number, y: number, z: number, color: string): ExplosiveDef => ({ kind: 'water', pos: [x, y + 1.1, z], size: [1.6, 2.2, 1.6], color });
+const EXPLOSIVES: ExplosiveDef[] = [
+  // On the lookout tower's deck (top at 21).
+  water(-2.5, 21, -47, '#2f7fe0'),
+  water(2.5, 21, -47, '#45b865'),
+  // By the swings, the slide end and the sandbox.
+  water(-34, 0, 90, '#f5c63a'),
+  water(34, 0, 90, '#8a5cd6'),
+  water(58, 0, 9, '#2f7fe0'),
+  water(20, 0, -88, '#e5483e'),
+  // Fuel drums by the tunnel mouth.
+  ...[[-103, 12], [-101.6, 12], [-102.3, 13.2]].map(([x, z]) => ({ kind: 'fuel' as const, pos: [x!, 0.8, z!] as [number, number, number], size: [1.2, 1.6, 1.2] as [number, number, number] })),
+];
+
 /** Painted hopscotch squares: flat, never collided with. */
 function buildDecor(): ArenaBox[] {
   const out: ArenaBox[] = [];
@@ -371,6 +386,7 @@ export const PLAYGROUND: MapDef = {
   boxes: build(),
   decor: buildDecor(),
   spawns: SPAWNS,
+  explosives: EXPLOSIVES,
   ground: 'grid',
   movers: coasterTrain(),
 };

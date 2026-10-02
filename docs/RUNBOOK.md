@@ -50,7 +50,7 @@ In the game: **Play online → Create room**, then read the 4-letter code to you
 | Pitch / roll | Right stick | Arrow keys |
 | Arm | Arm switch (if mapped), else throttle low | Throttle low (auto) |
 | Fire | Mapped fire button/switch (Controller setup) | Space |
-| Special (wing: Cobra) | Mapped Special button (Controller setup), gamepad left trigger | E |
+| Special (wing: maneuver mode, hold) | Mapped Special button or switch (Map buttons), gamepad left trigger | E |
 | Reset (solo only; in a match the server respawns you) | Mapped reset button | R |
 | Camera FPV / chase | | C |
 | Mute / unmute | | M |
@@ -79,18 +79,20 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 
 - **3D quad:** throttle center is zero thrust. Push up for normal thrust, pull below center to reverse the motors (hover inverted, back up). It arms with the throttle **centered**. On the keyboard, throttle starts at center on respawn.
 - **FPV wing:** can't hover; stalls below ~35 km/h in level flight (`clAlpha`, `stallDeg` in `WING`). It spawns in the air at flying speed, facing along a street/lane. Keep your speed up: when slow, the nose drops. Camera uptilt is fixed for the wing (`WING.cameraUptiltDeg`).
-- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s) plus the **Cobra** while holding Special (E): physics-based, stronger the faster you enter it, costs speed, no cooldown (ADR-0015); 3D quad double-barrel shotgun (2 blasts/s, 8 pellets). To put Special (or Fire) on your radio without redoing the sticks, use **Map buttons** on the main menu. There, Skip keeps a button's current binding.
+- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s); 3D quad double-barrel shotgun (2 blasts/s, 8 pellets). To put Special (or Fire) on your radio without redoing the sticks, use **Map buttons** on the main menu. There, Skip keeps a button's current binding.
 - Combat stats per class are in `shared/drones.ts` (server and client). Quad flight tuning is in `client/src/config.ts` (`QUAD`, `QUAD_3D`); wing tuning in `client/src/sim/wingModel.ts` (`WING`).
 
-### Class specials (ADR-0015, ADR-0016)
+### Class specials (ADR-0016, ADR-0022)
 
 | Class | Special (E / mapped button) |
 |---|---|
-| FPV wing | **Hold** for a Cobra: physics-based, stronger the faster you enter, costs speed |
+| FPV wing | **Hold** (or flip a switch mapped to Special) for **maneuver mode**: pitch ×2, roll ×1.3, sharper when slow, weaker nose-into-wind pull, so a hard pull stalls you. HUD shows MANEUVER OFF / ON / STALL |
 | 3D quad | **Tap** for a smoke screen: hides you (glow, trail, marker, lead) for 6 s; 10 s cooldown |
 | Freestyle 5" | **Tap** to switch Guns / **guided missile**. Fire launches it; keep your crosshair on the target to steer (TOW-style). 2.5 s burn, self-destructs at 5 s, one in flight (firing again replaces it), pod of 3. **One-shot kill** if it detonates within 3 m (ADR-0018) |
 
-Numbers: `shared/abilities.ts` (smoke), `shared/missile.ts` (missile physics, shared by server and client), `COBRA` in `client/src/sim/wingModel.ts`.
+Numbers: `shared/abilities.ts` (smoke), `shared/missile.ts` (missile physics, shared by server and client), `MANEUVER` in `client/src/sim/wingModel.ts`.
+
+A switch works as Special: in **Map buttons**, flip the switch on when asked for Special. While it's on, maneuver mode stays on.
 
 ### Training ground (ADR-0017)
 
@@ -112,6 +114,14 @@ Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, s
 - They're solid to fly into (you crash), but **rounds and missiles pass through them**: the server doesn't simulate them.
 - Routes and speeds are in each map file under `movers`; `shared/maps/moverClearance.test.ts` checks every lap stays clear of geometry and spawn pads.
 - **Settings → Simplified grid textures** swaps every realistic texture for flat colors with 1 m grids (Playground style) on any map.
+
+### Destructible props (ADR-0023)
+
+Every moving prop plus each map's **explosives** (`explosives` in the map files: parked cars, fuel drums, propane tanks, water tanks) blow up when shot or hit by a missile. Nearby props chain (0.15 s apart), blasts hurt pilots within 5–9 m during a match (credit to whoever set it off; none for hurting yourself), water tanks just burst. Destroyed props come back after 30 s.
+
+- Rules and HP: `shared/props.ts` (`PROP_STATS`, `PROPS`), run by the server in rooms and by the client in solo.
+- Indices on the wire are movers first, then explosives, in map order: editing either list changes them, so restart the server and redeploy together.
+- Explosives aren't in `boxes`; `shared/props.test.ts` checks they don't overlap geometry or sit near spawns.
 
 ### Sound
 

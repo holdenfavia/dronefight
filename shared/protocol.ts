@@ -92,6 +92,8 @@ export interface MatchPlayer {
 export interface MatchState {
   /** The room's map (ADR-0012). */
   map: MapId;
+  /** Destroyed props, by index into the map's props (ADR-0023). */
+  props: number[];
   phase: MatchPhase;
   players: MatchPlayer[];
   winner: string | null;
@@ -136,7 +138,9 @@ export type ServerMessage =
   /** A missile exploded here (server-decided, ADR-0016). `id` is the shooter, `rid` their missile id. */
   | { t: 'boom'; id: string; rid: number; p: Vec3 }
   /** Where a guided missile is now (sent ~20x/s while it flies). */
-  | { t: 'missile'; id: string; rid: number; p: Vec3; v: Vec3 };
+  | { t: 'missile'; id: string; rid: number; p: Vec3; v: Vec3 }
+  /** Prop `i` exploded at `p`, set off by `by` (ADR-0023). */
+  | { t: 'prop'; i: number; p: Vec3; by: string | null };
 
 // ---- Validation (never trust the wire)
 

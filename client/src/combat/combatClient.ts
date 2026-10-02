@@ -12,6 +12,8 @@ import type { CombatHudInfo, Hud } from '../ui/hud';
 import { SMOKE } from '../../../shared/abilities';
 import { MISSILE, refillPod, type AimRay } from '../../../shared/missile';
 import type { Missiles, SmokeClouds } from './effects';
+import type { PropField } from '../../../shared/props';
+import type { V3 } from '../../../shared/maps/movers';
 
 /**
  * Client side of combat (ADR-0009). Fires rounds and draws tracers instantly; the server decides
@@ -64,6 +66,16 @@ export class CombatClient {
   private readonly lastBlast = new Map<string, number>();
   /** Every round/pellet we fire, for local practice hit checks on the Training map (ADR-0017). */
   onLocalRound: ((origin: THREE.Vector3, dir: THREE.Vector3, speed: number, damage: number, maxDist: number) => void) | null = null;
+  /** Destructible props (ADR-0023): rounds stop at them; `propClock` is the shared time (ms) they move on. */
+  props: PropField | null = null;
+  propClock: () => number = () => performance.now();
+  /** One of our rounds will hit prop `i` after `travelMs` (solo applies the damage; online the server does). */
+  onPropRound: ((i: number, damage: number, travelMs: number, at: THREE.Vector3) => void) | null = null;
+  /** The server says prop `i` exploded (ADR-0023). */
+  onPropBlast: ((i: number, p: V3, by: string | null) => void) | null = null;
+  private readonly propO: V3 = [0, 0, 0];
+  private readonly propD: V3 = [0, 0, 0];
+  private readonly propAt = new THREE.Vector3();
   /** Freestyle: which weapon Special has selected, and the missile pod mirror (ADR-0016). */
   weapon: 'guns' | 'missiles' = 'guns';
   private missilePod: number = MISSILE.pod;
@@ -132,7 +144,7 @@ export class CombatClient {
     return this.aimRay;
   }
 
-  /** HUD readout for this class's special (ADR-0015/0016). The wing's Cobra is reported by the game. */
+  /** HUD readout for this class's special (ADR-0015/0016). The wing's maneuver mode is reported by the game. */
   specialReadout(): { label: string; value: string } | null {
     const now = performance.now();
     if (this.drone.classId === 'freestyle') {
@@ -153,7 +165,7 @@ export class CombatClient {
     return this.effects.smoke.conceals(eye, target);
   }
 
-  /** Tap-Special abilities: Freestyle weapon switch, 3D smoke. (The wing's Cobra is a hold, handled by the drone.) */
+  /** Tap-Special abilities: Freestyle weapon switch, 3D smoke. (The wing's maneuver mode is a hold, handled by the drone.) */
   private handleSpecial(control: ControlState, alive: boolean): void {
     if (!control.specialPressed) return;
     if (this.drone.classId === 'freestyle') {
@@ -319,12 +331,30 @@ export class CombatClient {
         const angle = Math.random() * Math.PI * 2;
         d.addScaledVector(this.right, radius * Math.cos(angle)).addScaledVector(this.up, radius * Math.sin(angle)).normalize();
       }
-      const maxDist = raycastArena(this.colliders, o.x, o.y, o.z, d.x, d.y, d.z, gun.range);
+      let maxDist = raycastArena(this.colliders, o.x, o.y, o.z, d.x, d.y, d.z, gun.range);
+      const prop = this.propHit(o, d, maxDist, gun.bulletSpeed);
+      if (prop) {
+        maxDist = prop.dist;
+        this.propAt.copy(o).addScaledVector(d, prop.dist);
+        this.onPropRound?.(prop.i, gun.damage, (prop.dist / gun.bulletSpeed) * 1000, this.propAt);
+      }
       this.tracers.spawn(o, d, maxDist, this.myColor, gun.bulletSpeed);
       this.onLocalRound?.(o, d, gun.bulletSpeed, gun.damage, maxDist);
       this.net.sendShot({ ts, p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)] });
     }
     if (gun.gunSound !== 'vulcan') this.sounds.shot(gun.gunSound);
+  }
+
+  /** The first standing prop a round from `o` along `d` hits before `maxDist`, if any. */
+  private propHit(o: THREE.Vector3, d: THREE.Vector3, maxDist: number, speed: number, ts = this.propClock()): { i: number; dist: number } | null {
+    if (!this.props) return null;
+    this.propO[0] = o.x;
+    this.propO[1] = o.y;
+    this.propO[2] = o.z;
+    this.propD[0] = d.x;
+    this.propD[1] = d.y;
+    this.propD[2] = d.z;
+    return this.props.bulletHit(this.propO, this.propD, maxDist, ts, speed);
   }
 
   private handleEvents(now: number): void {
@@ -347,7 +377,9 @@ export class CombatClient {
             this.respawnDeadline = now + COMBAT.respawnMs;
             const text =
               ev.cause === 'shot'
-                ? `Shot down by ${this.teamName(ev.killer)}`
+                ? ev.killer
+                  ? `Shot down by ${this.teamName(ev.killer)}`
+                  : 'Caught in a blast'
                 : ev.killer
                   ? `Crashed · kill to ${this.teamName(ev.killer)}`
                   : 'Crashed';
@@ -370,6 +402,9 @@ export class CombatClient {
           break;
         case 'missile':
           if (ev.id !== you) this.effects.missiles.track(ev.id, ev.rid, ev.p, ev.v);
+          break;
+        case 'prop':
+          this.onPropBlast?.(ev.i, ev.p, ev.by);
           break;
         case 'respawn':
           if (ev.id === you) {
@@ -397,8 +432,11 @@ export class CombatClient {
       const shooter = this.net.match?.players.find((p) => p.id === shot.id);
       const team = shooter?.team ?? 1;
       const gun = droneClass(shooter?.drone ?? 'freestyle');
-      const maxDist = raycastArena(this.colliders, px, py, pz, dx, dy, dz, gun.range);
-      this.tracers.spawn(this.shotOrigin.set(px, py, pz), this.shotDir.set(dx, dy, dz), maxDist, TEAM_COLORS[team] ?? TEAM_COLORS[1], gun.bulletSpeed);
+      this.shotOrigin.set(px, py, pz);
+      this.shotDir.set(dx, dy, dz);
+      const wall = raycastArena(this.colliders, px, py, pz, dx, dy, dz, gun.range);
+      const maxDist = this.propHit(this.shotOrigin, this.shotDir, wall, gun.bulletSpeed, shot.s.ts)?.dist ?? wall;
+      this.tracers.spawn(this.shotOrigin, this.shotDir, maxDist, TEAM_COLORS[team] ?? TEAM_COLORS[1], gun.bulletSpeed);
       if (gun.gunSound === 'vulcan') {
         this.sounds.remoteCannon(shot.id);
       } else if (gun.gunSound === 'shotgun') {

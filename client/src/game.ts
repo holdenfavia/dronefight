@@ -31,6 +31,9 @@ import { Hud, type MarkerInfo, type NetHudInfo } from './ui/hud';
 import { Menu } from './ui/menu';
 import { getMap, type MapDef, type MapId } from '../../shared/maps';
 import { buildWorld, type World } from './world/scene';
+import { PROP_STATS, PropField } from '../../shared/props';
+import { splashDamage } from '../../shared/missile';
+import type { V3 } from '../../shared/maps/movers';
 
 const STEP = 1 / SIM.hz;
 
@@ -54,9 +57,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   let currentMap: MapDef = getMap(settings.map);
   world.setMap(currentMap);
   arenaColliders.set(currentMap.boxes);
-  // Traffic, coaster, tractor (ADR-0020): posed from the shared clock.
+  // Traffic, coaster, tractor (ADR-0020), posed from the shared clock, plus explosives; all destructible (ADR-0023).
+  let props = new PropField(currentMap);
   const movingProps = new MovingProps(world.scene, physics);
-  movingProps.setMap(currentMap);
+  movingProps.setMap(currentMap, props);
   const randomSpawn = (map: MapDef) => map.spawns[Math.floor(Math.random() * map.spawns.length)] ?? map.spawns[0]!;
   const drone = new Drone(physics, randomSpawn(currentMap), settings.drone);
   // Your own model (chase view), drawn at the size others see you at (ADR-0011, ADR-0013).
@@ -68,7 +72,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const input = new InputManager();
   if (import.meta.env.DEV) {
     // Handy for poking at the game from the browser console while developing.
-    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get training() { return training; }, get combatEffects() { return combatEffects; } } });
+    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get training() { return training; }, get combatEffects() { return combatEffects; }, get props() { return props; }, get combat() { return combat; } } });
   }
   const rig = new CameraRig(settings);
   rig.uptiltOverride = drone.classId === 'wing' ? WING.cameraUptiltDeg : null;
@@ -85,6 +89,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     missiles: new Missiles(world.scene, particles, () => mapColliders, (at: THREE.Vector3) => {
       sfx.explosion(at);
       training.splash(at);
+      // Solo: our missile damages props here; online the server does (ADR-0023).
+      if (!net.inRoom) props.splash([at.x, at.y, at.z], propClock(), 'me', splashDamage);
     }),
   };
   // Solo practice bots on the Training map (ADR-0017).
@@ -100,12 +106,14 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   });
   // Our missile's predicted proximity fuse: practice bots, or the other pilots in a room (the server
   // decides the real explosion; this just keeps it from visibly flying through them first).
-  const pilotTargets: THREE.Vector3[] = [];
+  // Props set off the fuse too (ADR-0023).
+  const fuseTargets: THREE.Vector3[] = [];
   combatEffects.missiles.fuseTargets = () => {
-    if (training.active) return training.targets();
-    pilotTargets.length = 0;
-    for (const v of remotes.views) if (!v.crashed && v.mode !== 'hold') pilotTargets.push(v.position);
-    return pilotTargets;
+    fuseTargets.length = 0;
+    if (training.active) fuseTargets.push(...training.targets());
+    else for (const v of remotes.views) if (!v.crashed && v.mode !== 'hold') fuseTargets.push(v.position);
+    for (const c of props.centers(propClock())) fuseTargets.push(new THREE.Vector3(c[0], c[1], c[2]));
+    return fuseTargets;
   };
   const trails = new Trails(world.scene);
   const audio = new AudioEngine();
@@ -157,6 +165,48 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   combat.setMap(currentMap);
   combat.onLocalRound = (o, d, speed, damage, maxDist) => training.addRound(o, d, speed, damage, maxDist);
 
+  // Destructible props (ADR-0023): the server decides online; solo runs the same rules here.
+  function propClock(): number {
+    return net.inRoom ? net.serverNow() : performance.now();
+  }
+  combat.props = props;
+  combat.propClock = propClock;
+  const propPoint = new THREE.Vector3();
+  function propBlastEffect(i: number, p: V3): void {
+    const kind = props.props[i]?.kind;
+    if (!kind) return;
+    propPoint.set(p[0], p[1], p[2]);
+    const rnd = (k: number) => (Math.random() - 0.5) * k;
+    if (PROP_STATS[kind].effect === 'water') {
+      for (let k = 0; k < 28; k++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 2 + Math.random() * 5;
+        particles.emit(p[0], p[1], p[2], { startSize: 0.5, endSize: 1.8, lifeMs: 900 + Math.random() * 700, color: k % 3 ? '#9fd3ff' : '#eef8ff', alpha: 0.85, vx: Math.cos(a) * sp, vy: 2 + Math.random() * 6, vz: Math.sin(a) * sp });
+      }
+      sfx.splash(propPoint);
+      return;
+    }
+    combatEffects.missiles.effect(propPoint);
+    for (let k = 0; k < 18; k++) {
+      particles.emit(p[0] + rnd(1.5), p[1] + rnd(1), p[2] + rnd(1.5), { startSize: 1, endSize: 2.6, lifeMs: 500 + Math.random() * 400, color: k % 2 ? '#ff9a2e' : '#ffd25a', alpha: 0.95, vx: rnd(6), vy: 3 + Math.random() * 5, vz: rnd(6) });
+    }
+    for (let k = 0; k < 8; k++) {
+      particles.emit(p[0] + rnd(2), p[1] + 1, p[2] + rnd(2), { startSize: 1.5, endSize: 5, lifeMs: 3500 + Math.random() * 1500, color: '#3a3632', alpha: 0.7, vx: rnd(1), vy: 1.5 + Math.random(), vz: rnd(1) });
+    }
+    sfx.explosion(propPoint);
+  }
+  combat.onPropBlast = (i, p) => propBlastEffect(i, p);
+  combat.onPropRound = (i, damage, travelMs, at) => {
+    const [x, y, z] = [at.x, at.y, at.z];
+    window.setTimeout(() => {
+      for (let k = 0; k < 3; k++) {
+        particles.emit(x, y, z, { startSize: 0.15, endSize: 0.45, lifeMs: 260, color: '#ffd27a', alpha: 1, vx: (Math.random() - 0.5) * 6, vy: Math.random() * 4, vz: (Math.random() - 0.5) * 6 });
+      }
+      if (!net.inRoom) props.damage(i, damage, propClock(), 'me');
+    }, travelMs);
+  };
+  let wasInRoom = false;
+
   let paused = true;
   const menu = new Menu(menuRoot, input, settings, net, {
     onFly: () => {
@@ -203,7 +253,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     currentMap = getMap(id);
     world.setMap(currentMap);
     arenaColliders.set(currentMap.boxes);
-    movingProps.setMap(currentMap);
+    props = new PropField(currentMap);
+    movingProps.setMap(currentMap, props);
+    combat.props = props;
     combat.setMap(currentMap);
   combat.onLocalRound = (o, d, speed, damage, maxDist) => training.addRound(o, d, speed, damage, maxDist);
     mapColliders = buildColliders(currentMap.boxes);
@@ -395,11 +447,19 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
     // Moving props keep moving while the menu is open. In a room everyone uses server time, so both
     // pilots see them in the same place (ADR-0020).
-    movingProps.update((net.inRoom ? net.serverNow() : performance.now()) / 1000);
+    // Destroyed props: mirror the server in a room; in solo, run the rules here (ADR-0023).
+    if (net.inRoom) {
+      props.syncDown(net.match?.props ?? [], propClock());
+    } else {
+      if (wasInRoom) props.reset();
+      for (const b of props.tick(propClock()).blasts) propBlastEffect(b.i, b.p);
+    }
+    wasInRoom = net.inRoom;
+    movingProps.update(propClock() / 1000);
 
     if (!paused) {
       drone.updateArming(control);
-      if (drone.handleSpecial(control)) sfx.cobra();
+      if (drone.handleSpecial(control)) sfx.maneuver();
       // In a match the server decides deaths and respawns (ADR-0009); solo keeps local reset.
       if (!combat.inMatch) {
         const autoReset = drone.crashed && drone.crashTime >= CRASH.autoResetSeconds;
@@ -469,7 +529,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       training: training.active ? training.statsText() : null,
       special:
         drone.classId === 'wing'
-          ? { label: 'COBRA', value: drone.cobraActive ? 'ON' : drone.speed < 15 ? 'LOW SPEED' : 'READY' }
+          ? { label: 'MANEUVER', value: drone.stalled ? 'STALL' : drone.maneuverActive ? 'ON' : 'OFF' }
           : combat.specialReadout(),
     });
 

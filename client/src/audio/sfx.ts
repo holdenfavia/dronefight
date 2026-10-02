@@ -67,12 +67,20 @@ export class Sfx {
     this.noise(out, t + 0.07, 0.025, { type: 'bandpass', freq: 1800 }, 0.6, 0.02);
   }
 
-  /** Wing Cobra (ADR-0014): the airframe slams broadside into the air. */
-  cobra(): void {
+  /** Wing maneuver mode engages (ADR-0022): a short, soft whoosh (it's used a lot). */
+  maneuver(): void {
     const out = this.output();
     const t = this.engine.now;
-    this.noise(out, t, 0.9, { type: 'bandpass', freq: 500, to: 1800 }, 0.55, 0.85);
-    this.tone(out, t, 'sine', 55, 90, 0.5, 0.2);
+    this.noise(out, t, 0.35, { type: 'bandpass', freq: 700, to: 1600 }, 0.25, 0.3);
+  }
+
+  /** A water tank bursts (ADR-0023): a pop, then a sloshing gush. */
+  splash(at: Position): void {
+    const out = this.output(at, 1.1);
+    const t = this.engine.now;
+    this.noise(out, t, 0.05, { type: 'highpass', freq: 2200 }, 0.6, 0.045);
+    this.noise(out, t + 0.02, 1.1, { type: 'bandpass', freq: 1400, to: 500 }, 0.7, 1);
+    this.tone(out, t, 'sine', 160, 70, 0.25, 0.4);
   }
 
   /** Your round hit: a bright double tick. */

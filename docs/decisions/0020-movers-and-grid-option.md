@@ -1,6 +1,6 @@
 # ADR-0020: Moving props (city cars, roller coaster, tractor) and a grid-texture option
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by ADR-0023: rounds and missiles now hit props)
 - **Date:** 2026-09-30
 - **Amends:** ADR-0012 (maps can have moving props), ADR-0019 (grid style available on every map)
 

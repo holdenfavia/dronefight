@@ -41,6 +41,20 @@ export interface SpawnPoint {
   yawDeg: number;
 }
 
+/** Static things that blow up when shot (ADR-0023). Not part of `boxes`: they can disappear. */
+export type ExplosiveKind = 'car' | 'fuel' | 'propane' | 'water';
+
+export interface ExplosiveDef {
+  kind: ExplosiveKind;
+  /** Center of the collision box (m). */
+  pos: [number, number, number];
+  /** Width, height, length (m); length runs along local Z, turned by yawDeg. */
+  size: [number, number, number];
+  yawDeg?: number;
+  /** Body color for cars and tanks; kinds have defaults. */
+  color?: string;
+}
+
 export type MapId = 'downtown' | 'yard' | 'playground' | 'training';
 
 export interface MapDef {
@@ -55,6 +69,8 @@ export interface MapDef {
   /** 8 per map; the server picks one at random away from opponents (ADR-0012). */
   spawns: readonly SpawnPoint[];
   ground: 'concrete' | 'asphalt' | 'grid';
-  /** Moving props: traffic, coaster trains, tractors (ADR-0020). Client-side only. */
+  /** Moving props: traffic, coaster trains, tractors (ADR-0020). Posed from the shared clock. */
   movers?: readonly MoverDef[];
+  /** Static explosives: parked cars, barrels, propane and water tanks (ADR-0023). */
+  explosives?: readonly ExplosiveDef[];
 }
