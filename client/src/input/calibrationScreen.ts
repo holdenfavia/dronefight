@@ -34,7 +34,7 @@ const STEPS: Step[] = [
   { id: 'arm', title: 'Arm switch', body: 'Flip the switch you want to use to <b>ARM</b>. No arm switch? Skip: the quad arms when throttle is low.' },
   { id: 'reset', title: 'Reset button', body: 'Press or flip what you want for <b>RESET</b> (respawn). Or skip and use the R key.' },
   { id: 'fire', title: 'Fire', body: 'Press and hold the button or switch you want to <b>FIRE</b> with. Or skip and use the Space bar.' },
-  { id: 'special', title: 'Special', body: 'Press the button you want for your class <b>SPECIAL</b> (the wing\'s Cobra). Or skip and use the E key.' },
+  { id: 'special', title: 'Special', body: 'Press the button you want for your class <b>SPECIAL</b> (the wing\'s maneuver mode: a button, or a switch to leave it on). Or skip and use the E key.' },
   { id: 'test', title: 'Check it', body: 'Move the sticks. Each bar should follow the right stick in the right direction. Save when it looks good.' },
 ];
 

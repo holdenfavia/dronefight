@@ -1,6 +1,6 @@
 # ADR-0015: Physics-based Cobra (hold Special) and quick button mapping
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0022 (2026-10-01) for the Cobra; Map buttons still stand
 - **Date:** 2026-09-30
 - **Amends:** ADR-0014 (the Cobra part)
 

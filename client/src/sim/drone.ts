@@ -22,8 +22,8 @@ export class Drone {
   crashTime = 0;
   /** Arm switch is on but throttle is too high to arm. */
   armBlocked = false;
-  /** Wing Cobra in progress: Special is held (ADR-0014). */
-  cobraActive = false;
+  /** Wing maneuver mode: Special is held (ADR-0022). */
+  maneuverActive = false;
 
   readonly state: FlightState = {
     rotation: new Quaternion(),
@@ -107,7 +107,7 @@ export class Drone {
     this.armed = false;
     this.crashed = false;
     this.crashTime = 0;
-    this.cobraActive = false;
+    this.maneuverActive = false;
     this.state.motorOutput = 0;
     this.readBody();
     this.prevPos.copy(this.currPos);
@@ -139,13 +139,18 @@ export class Drone {
   }
 
   /**
-   * Class special, once per frame (ADR-0014). The wing's Cobra runs while Special is held; physics
-   * decides how hard it pitches (fast = violent, slow = barely). Returns true when a Cobra starts.
+   * Class special, once per frame. The wing's maneuver mode is on while Special is held, or while a
+   * radio switch mapped to it is on (ADR-0022). Returns true when it switches on.
    */
   handleSpecial(control: ControlState): boolean {
-    const was = this.cobraActive;
-    this.cobraActive = this.droneClass === 'wing' && control.special && this.armed && !this.crashed;
-    return this.cobraActive && !was;
+    const was = this.maneuverActive;
+    this.maneuverActive = this.droneClass === 'wing' && control.special && !this.crashed;
+    return this.maneuverActive && !was;
+  }
+
+  /** Wing past its stall angle right now (for the HUD). */
+  get stalled(): boolean {
+    return this.droneClass === 'wing' && !this.crashed && this.speed > 2 && Math.abs(this.out.alpha) > (WING.stallDeg * Math.PI) / 180;
   }
 
   /** Before world.step(): compute and apply flight forces. */
@@ -162,7 +167,7 @@ export class Drone {
     }
     const out =
       this.droneClass === 'wing'
-        ? stepWing(control, this.state, this.armed, dt, this.out, this.cobraActive)
+        ? stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive)
         : stepFlight(control, this.state, rates, this.armed, dt, this.out, QUAD_PARAMS[this.droneClass]);
     this.state.motorOutput = out.motorOutput;
     this.state.time += dt;

@@ -66,7 +66,7 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
   wing: {
     id: 'wing',
     name: 'FPV wing',
-    blurb: "Fast, can't hover. Rotary cannon, Cobra on Special (E)",
+    blurb: "Fast, can't hover. Rotary cannon, maneuver mode on Special (E)",
     maxHp: 130,
     // Rotary cannon (ADR-0014): very fast, light rounds.
     damage: 5,

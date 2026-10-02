@@ -75,30 +75,18 @@ describe('wing model (ADR-0013)', () => {
   });
 });
 
-describe('Cobra (ADR-0014): physics-based, hold Special', () => {
-  const nose = new Vector3();
-  /** Angle between the nose and the airflow (deg). */
-  const aoa = (s: FlightState) => {
-    nose.set(0, 0, -1).applyQuaternion(s.rotation);
-    const v = s.linvel.length();
-    return v < 0.1 ? 0 : (Math.acos(Math.max(-1, Math.min(1, nose.dot(s.linvel) / v))) * 180) / Math.PI;
-  };
-  /** Nose above the horizon (deg, -90..90). */
-  const pitchUp = (s: FlightState) => {
-    nose.set(0, 0, -1).applyQuaternion(s.rotation);
-    return (Math.asin(Math.max(-1, Math.min(1, nose.y))) * 180) / Math.PI;
-  };
-
-  /** Hold the Cobra for `hold` s at 80% throttle, then fly normally (sticks centered) for `after` s. */
-  function cobra(speed: number, hold: number, after = 0) {
+describe('Maneuver mode (ADR-0022): hold Special for more authority, easier to stall', () => {
+  /** Hold a stick input at 70% throttle for `seconds`; report peak body rates (deg/s) and peak angle of attack (deg). */
+  function hold(speed: number, input: Partial<FlightInput>, maneuver: boolean, seconds: number) {
     const s = flying(speed);
     const out = createFlightOutput();
-    let peakAoa = 0;
-    let aoaAt60ms = 0;
-    let endAoa = 0;
-    const steps = Math.round((hold + after) * SIM.hz);
-    for (let i = 0; i < steps; i++) {
-      stepWing({ ...centered, throttle: 0.8 }, s, true, dt, out, i < hold * SIM.hz);
+    let pitchRate = 0;
+    let rollRate = 0;
+    let aoa = 0;
+    const inv = new Quaternion();
+    const body = new Vector3();
+    for (let i = 0; i < seconds * SIM.hz; i++) {
+      stepWing({ ...centered, throttle: 0.7, ...input }, s, true, dt, out, maneuver);
       s.motorOutput = out.motorOutput;
       s.linvel.addScaledVector(out.force, dt / WING.massKg);
       s.linvel.y -= SIM.gravity * dt;
@@ -106,30 +94,35 @@ describe('Cobra (ADR-0014): physics-based, hold Special', () => {
       const w = s.angvel;
       const angle = w.length() * dt;
       if (angle > 0) s.rotation.premultiply(new Quaternion().setFromAxisAngle(w.clone().normalize(), angle)).normalize();
-      if (i < hold * SIM.hz) peakAoa = Math.max(peakAoa, aoa(s));
-      if (i === Math.round(0.06 * SIM.hz)) aoaAt60ms = aoa(s);
-      endAoa = aoa(s);
+      body.copy(s.angvel).applyQuaternion(inv.copy(s.rotation).invert());
+      pitchRate = Math.max(pitchRate, (Math.abs(body.x) * 180) / Math.PI);
+      rollRate = Math.max(rollRate, (Math.abs(body.z) * 180) / Math.PI);
+      aoa = Math.max(aoa, (Math.abs(out.alpha) * 180) / Math.PI);
     }
-    return { peakAoa, aoaAt60ms, endAoa, pitch: pitchUp(s), speed: s.linvel.length() };
+    return { pitchRate, rollRate, aoa, speed: s.linvel.length() };
   }
 
-  it('builds up over time instead of snapping (under 15° after 60 ms)', () => {
-    for (const v of [12, 20, 30, 40]) expect(cobra(v, 0.5).aoaAt60ms).toBeLessThan(15);
+  it('about doubles the pitch rate at speed', () => {
+    const normal = hold(30, { pitch: -1 }, false, 0.3).pitchRate;
+    const fast = hold(30, { pitch: -1 }, true, 0.3).pitchRate;
+    expect(fast / normal).toBeGreaterThan(1.7);
   });
 
-  it('a fast entry pitches past ~90° to the airflow; a slow one barely can', () => {
-    const fast = cobra(40, 0.5);
-    const slow = cobra(12, 0.5);
-    expect(fast.peakAoa).toBeGreaterThan(85);
-    expect(fast.peakAoa).toBeLessThan(125);
-    expect(slow.peakAoa).toBeLessThan(fast.peakAoa * 0.6);
+  it('adds some roll rate', () => {
+    const normal = hold(30, { roll: 1 }, false, 0.3).rollRate;
+    const fast = hold(30, { roll: 1 }, true, 0.3).rollRate;
+    expect(fast / normal).toBeGreaterThan(1.2);
+    expect(fast / normal).toBeLessThan(1.45);
   });
 
-  it('works as an airbrake: a fast entry loses about half its speed', () => {
-    expect(cobra(40, 0.5).speed).toBeLessThan(40 * 0.6);
+  it('a half-stick pull at 25 m/s stalls the wing in maneuver mode, but not in normal flight', () => {
+    const stall = WING.stallDeg;
+    expect(hold(25, { pitch: -0.5 }, false, 0.6).aoa).toBeLessThan(stall);
+    expect(hold(25, { pitch: -0.5 }, true, 0.6).aoa).toBeGreaterThan(stall);
   });
 
-  it('recovers to normal flight after release', () => {
-    expect(cobra(30, 0.5, 1.5).endAoa).toBeLessThan(15);
+  it('a full pull can swing the nose far past the airflow (post-stall), which normal flight never does', () => {
+    expect(hold(30, { pitch: -1 }, true, 0.6).aoa).toBeGreaterThan(90);
+    expect(hold(30, { pitch: -1 }, false, 0.6).aoa).toBeLessThan(45);
   });
 });

@@ -38,6 +38,8 @@ export interface FlightOutput {
   /** New world-space angular velocity (rad/s). */
   angvel: Vector3;
   motorOutput: number;
+  /** Angle of attack (rad); wings only, 0 for quads. */
+  alpha: number;
 }
 
 const DEG = Math.PI / 180;
@@ -54,7 +56,7 @@ const targetBody = new Vector3();
 const up = new Vector3();
 
 export function createFlightOutput(): FlightOutput {
-  return { force: new Vector3(), angvel: new Vector3(), motorOutput: 0 };
+  return { force: new Vector3(), angvel: new Vector3(), motorOutput: 0, alpha: 0 };
 }
 
 /**

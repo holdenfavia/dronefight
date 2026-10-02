@@ -22,7 +22,7 @@ export interface ControlState extends FlightInput {
   resetPressed: boolean;
   /** Fire held (ADR-0009). */
   fire: boolean;
-  /** Class special held (e.g. the wing's Cobra, ADR-0014). */
+  /** Class special held (e.g. the wing's maneuver mode, ADR-0022). */
   special: boolean;
   /** True for one poll when the class special is pressed. */
   specialPressed: boolean;

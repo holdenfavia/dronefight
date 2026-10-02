@@ -56,7 +56,7 @@ export interface HudInfo {
   /** Lead indicator: where to aim so your rounds meet them (ADR-0011). Screen px. */
   lead: { x: number; y: number } | null;
   combat: CombatHudInfo | null;
-  /** This class's special: Cobra, smoke, or weapon/rockets (ADR-0015/0016). */
+  /** This class's special: maneuver mode, smoke, or weapon/rockets (ADR-0015/0016). */
   special: { label: string; value: string } | null;
   /** Training stats line (ADR-0017), shown where the match score would be. */
   training: string | null;
