@@ -40,6 +40,8 @@ export function defaultServerUrl(): string {
   const configured = import.meta.env.VITE_SERVER_URL as string | undefined;
   if (configured) return configured;
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  // Production builds are served by the room server itself, so connect back to the same origin (ADR-0021).
+  if (import.meta.env.PROD) return `${scheme}://${location.host}`;
   return `${scheme}://${location.hostname}:${DEFAULT_SERVER_PORT}`;
 }
 

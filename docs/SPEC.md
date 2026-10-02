@@ -37,6 +37,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 ## Multiplayer
 
 - Node.js WebSocket server; clients join by short room code (ADR-0005).
+- Hosted on Fly.io: one always-on machine serves the game page and the room server from one URL (ADR-0021).
 - Netcode: **latest state wins**. Remote drones render from a small fixed interpolation buffer (~100 ms). Stale snapshots are dropped, never replayed (ADR-0004).
 - Server decides hits.
 - On-screen network readout: ping and remote-player delay.
