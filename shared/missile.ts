@@ -39,16 +39,16 @@ export const MISSILE = {
   /** Never flies longer than this, whatever the throttle (s). */
   maxFlightSeconds: 10,
   gravity: 9.81,
-  /** Proximity fuse radius (m). */
-  proximity: 2.5,
+  /** Proximity fuse radius (m, ADR-0027). */
+  proximity: 4,
   /**
    * One-shot kill (ADR-0018): anyone within `lethalRadius` of the blast dies, whatever their class.
    * It's larger than the fuse radius, so a missile that fuses on you always kills.
    * Beyond it, splash falls from `damage` to 0 at `splashRadius` (e.g. a wall hit next to you).
    */
-  lethalRadius: 3,
+  lethalRadius: 5,
   damage: 50,
-  splashRadius: 6,
+  splashRadius: 10,
   /** Pod size, time to regenerate one (ms), and how many can fly at once. */
   pod: 3,
   regenMs: 4000,

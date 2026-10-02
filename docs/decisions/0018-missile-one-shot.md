@@ -1,6 +1,6 @@
 # ADR-0018: Guided missile is a one-shot kill
 
-- **Status:** Accepted
+- **Status:** Accepted (numbers superseded by ADR-0027: fuse 4 m, lethal 5 m, splash 10 m)
 - **Date:** 2026-09-30
 - **Amends:** ADR-0016 (missile damage)
 

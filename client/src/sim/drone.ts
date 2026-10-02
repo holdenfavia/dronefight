@@ -1,5 +1,5 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
-import { Quaternion, Vector3 } from 'three';
+import { Euler, Quaternion, Vector3 } from 'three';
 import type { DroneClassId } from '../../../shared/drones';
 import type { SpawnPoint } from '../../../shared/maps';
 import { CRASH, INPUT, QUAD, QUAD_3D, SIM, type QuadParams, type Rates } from '../config';
@@ -15,12 +15,39 @@ const HOVER = {
   brake: 2.5,
   spinDamp: 0.1,
   motorOutput: 0.3,
+  /** Turning to watch the missile: rate per radian of error (1/s), capped (rad/s). */
+  lookRate: 5,
+  maxLookRate: 6,
 } as const;
 const WORLD_UP = new Vector3(0, 1, 0);
 const HOVER_UP = new Vector3();
 const HOVER_AXIS = new Vector3();
 const HOVER_W = new Vector3();
 const HOVER_F = new Vector3();
+const HOVER_Q = new Quaternion();
+const HOVER_QE = new Quaternion();
+const HOVER_QI = new Quaternion();
+const HOVER_E = new Euler();
+const HOVER_DIR = new Vector3();
+
+/**
+ * Angular velocity (world frame) that turns a quad with rotation `rot` at `from` so its FPV camera,
+ * tilted up by `uptiltDeg`, looks at `target` with no roll. Proportional, capped (ADR-0027).
+ */
+export function lookAngvel(rot: Quaternion, from: Vector3, target: Vector3, uptiltDeg: number, out: Vector3): Vector3 {
+  const dir = HOVER_DIR.subVectors(target, from);
+  if (dir.lengthSq() < 1e-4) return out.set(0, 0, 0);
+  dir.normalize();
+  const yaw = Math.atan2(-dir.x, -dir.z);
+  const pitch = Math.asin(Math.max(-1, Math.min(1, dir.y))) - (uptiltDeg * Math.PI) / 180;
+  HOVER_Q.setFromEuler(HOVER_E.set(pitch, yaw, 0, 'YXZ'));
+  // Error rotation from where we are to where we want to be, as axis * angle.
+  HOVER_QE.copy(HOVER_Q).multiply(HOVER_QI.copy(rot).invert());
+  if (HOVER_QE.w < 0) HOVER_QE.set(-HOVER_QE.x, -HOVER_QE.y, -HOVER_QE.z, -HOVER_QE.w);
+  const angle = 2 * Math.acos(Math.min(1, HOVER_QE.w));
+  const s = Math.sqrt(Math.max(1e-9, 1 - HOVER_QE.w * HOVER_QE.w));
+  return out.set(HOVER_QE.x / s, HOVER_QE.y / s, HOVER_QE.z / s).multiplyScalar(Math.min(angle * HOVER.lookRate, HOVER.maxLookRate));
+}
 
 const QUAD_PARAMS: Record<Exclude<DroneClassId, 'wing'>, QuadParams> = { freestyle: QUAD, quad3d: QUAD_3D };
 
@@ -38,8 +65,10 @@ export class Drone {
   armBlocked = false;
   /** Wing maneuver mode: Special is held (ADR-0022). */
   maneuverActive = false;
-  /** Hold a level hover in place, ignoring the sticks (while you fly a missile, ADR-0025). */
+  /** Hold a hover in place, ignoring the sticks (while you fly a missile, ADR-0025). */
   autoHover = false;
+  /** While hovering, turn so the FPV camera (tilted up by `uptiltDeg`) looks at this point (ADR-0027). */
+  hoverLook: { target: Vector3; uptiltDeg: number } | null = null;
 
   readonly state: FlightState = {
     rotation: new Quaternion(),
@@ -201,12 +230,17 @@ export class Drone {
    */
   private hover(): void {
     const rot = this.state.rotation;
-    const up = HOVER_UP.set(0, 1, 0).applyQuaternion(rot);
-    // Rotate the body's up back to world up, and damp any yaw spin.
-    const axis = HOVER_AXIS.crossVectors(up, WORLD_UP);
-    const spin = this.state.angvel;
-    HOVER_W.copy(axis).multiplyScalar(HOVER.levelRate).setY(spin.y * (1 - HOVER.spinDamp));
-    this.body.setAngvel(HOVER_W, true);
+    if (this.hoverLook) {
+      // Turn so the tilted-up FPV camera looks at the target (ADR-0027).
+      this.body.setAngvel(lookAngvel(rot, this.currPos, this.hoverLook.target, this.hoverLook.uptiltDeg, HOVER_W), true);
+    } else {
+      const up = HOVER_UP.set(0, 1, 0).applyQuaternion(rot);
+      // Rotate the body's up back to world up, and damp any yaw spin.
+      const axis = HOVER_AXIS.crossVectors(up, WORLD_UP);
+      const spin = this.state.angvel;
+      HOVER_W.copy(axis).multiplyScalar(HOVER.levelRate).setY(spin.y * (1 - HOVER.spinDamp));
+      this.body.setAngvel(HOVER_W, true);
+    }
     const mass = this.body.mass();
     const v = this.state.linvel;
     HOVER_F.set(-v.x * HOVER.brake * mass, (SIM.gravity - v.y * HOVER.brake) * mass, -v.z * HOVER.brake * mass);

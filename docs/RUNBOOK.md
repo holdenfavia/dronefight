@@ -36,7 +36,7 @@ npm run server
 npm run dev
 ```
 
-In the game: **Play online → Create room**, then read the 2-digit code to your friends (free-for-all, up to 10 pilots, ADR-0026) (or **Copy invite link**; `?room=CODE` joins automatically).
+The start screen is just **Play** and **Settings**. **Play** has your drone and map, then **Solo**, **Create room**, or two boxes for a friend's 2-digit code: typing the second digit joins straight away and shows the room (map, pilots) with **Start**. Free-for-all, up to 10 pilots (ADR-0026). **Copy invite link** shares `?room=CODE`, which joins automatically. Controller setup and Map buttons are under **Settings**.
 
 - **Same Wi-Fi:** start the client with `npm run dev -- --host`, then your friend opens `http://<your-computer's-IP>:5173`. The client connects to the server on the same host, port 8787.
 - **Different houses:** use the deployed game (see **Deploy**).
@@ -70,7 +70,7 @@ Rooms are **free-for-all** for up to 10 pilots (ADR-0026): everyone is an enemy,
 
 Rules are in ADR-0009. Tunable numbers (fire rate, round speed, damage, HP, respawn and protection times, hit radius, kills to win) are in `shared/combat.ts`, used by both client and server. Restart the server after changing them.
 
-- Controller profiles saved before combat have no **Fire** binding. Run **Controller setup** again to map one (keyboard Space always works).
+- Controller profiles saved before combat have no **Fire** binding. Use **Settings → Map buttons** to map one (keyboard Space always works).
 - Rounds alternate between twin guns beside the camera and converge 40 m ahead along the FPV view (uptilt included), even in chase view.
 - **Aim at the lead circle**, not the drone: it shows where your rounds will meet them (ADR-0011). Other drones are drawn ~1.5 m across with a glow and a fading trail. Your own physics stay a real 5".
 - Visual size, glow size and trail length/width are in `DRONE_VISUAL` in `client/src/config.ts`.
@@ -78,11 +78,11 @@ Rules are in ADR-0009. Tunable numbers (fire rate, round speed, damage, HP, resp
 
 ### Drone classes
 
-Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on the main menu. Solo switches now; in a match it applies at your next respawn.
+Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on the Play screen (or the pause menu / room screen while in a room). Solo switches now; in a match it applies at your next respawn.
 
 - **3D quad:** throttle center is zero thrust. Push up for normal thrust, pull below center to reverse the motors (hover inverted, back up). It arms with the throttle **centered**. On the keyboard, throttle starts at center on respawn.
 - **FPV wing:** can't hover; stalls below ~35 km/h in level flight (`clAlpha`, `stallDeg` in `WING`). It spawns in the air at flying speed, facing along a street/lane. Keep your speed up: when slow, the nose drops. Camera uptilt is fixed for the wing (`WING.cameraUptiltDeg`).
-- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s); 3D quad double-barrel shotgun (2 blasts/s, 8 pellets). To put Special (or Fire) on your radio without redoing the sticks, use **Map buttons** on the main menu. There, Skip keeps a button's current binding.
+- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s); 3D quad double-barrel shotgun (2 blasts/s, 8 pellets). To put Special (or Fire) on your radio without redoing the sticks, use **Settings → Map buttons**. There, Skip keeps a button's current binding.
 - Combat stats per class are in `shared/drones.ts` (server and client). Quad flight tuning is in `client/src/config.ts` (`QUAD`, `QUAD_3D`); wing tuning in `client/src/sim/wingModel.ts` (`WING`).
 
 ### Class specials (ADR-0016, ADR-0022)
@@ -91,7 +91,7 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 |---|---|
 | FPV wing | **Hold** (or flip a switch mapped to Special) for **maneuver mode**: pitch ×2, roll ×1.3, sharper when slow, weaker nose-into-wind pull, so a hard pull stalls you. HUD shows MANEUVER OFF / ON / STALL |
 | 3D quad | **Tap** for a smoke trail (ADR-0024): for 6 s the other pilot sees only your frame (no glow, trail, marker or lead dot); you leave a thin smoke trail; 10 s cooldown |
-| Freestyle 5" | **Tap** to switch Guns / **missile**. Fire launches it and **you fly it** from its camera (ADR-0025): sticks steer (roll/pitch/yaw), throttle sets speed (~60–120 m/s) and turn authority (thrust vectoring). Fuel ~6 s at full throttle, up to 10 s slow, then a 1.5 s glide. Fire again or Special detonates. Your drone auto-hovers meanwhile and **can be shot**; if it dies the missile blows. Pod of 3, one in flight. **One-shot kill** within 3 m (ADR-0018) |
+| Freestyle 5" | **Tap** to switch Guns / **missile**. Fire launches it and **you fly it** from its camera (ADR-0025): sticks steer (roll/pitch/yaw), throttle sets speed (~60–120 m/s) and turn authority (thrust vectoring). Fuel ~6 s at full throttle, up to 10 s slow, then a 1.5 s glide. **Fire again or Special detonates** it right there. Your drone auto-hovers meanwhile, turns to watch the missile, then the blast for 1.5 s, and **can be shot**; if it dies the missile blows. Pod of 3, one in flight. Fuse 4 m, **one-shot kill** within 5 m, splash to 10 m (ADR-0027) |
 
 Numbers: `shared/abilities.ts` (smoke), `shared/missile.ts` (missile flight model; the shooter's client flies it, the server validates its reported path and decides hits), `MANEUVER` in `client/src/sim/wingModel.ts`.
 
@@ -108,7 +108,7 @@ Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, s
 - `downtown.ts`, `yard.ts`, `playground.ts`, `training.ts`: layout. The Playground uses the `grid*` materials (flat colors with a baked 1 m / 4 m grid, ADR-0019); other maps use the textured materials. Everything is boxes (`ArenaBox`); `boxes` collide, `decor` is scenery only.
 - Thin members (cables, guy wires, braces, arches) use `strut(out, a, b, thickness, mat)` from `builders.ts`. Keep new obstacles 15 m+ from spawns, off the mover routes, and on Training off the central lanes (|x| < 28).
 - Each map needs exactly 8 spawns. `shared/maps/maps.test.ts` checks every spawn has open space around and above it. Run `npm test` after moving things.
-- Pick the map with **Map: … ▸** on the main menu. It applies to solo flying and to rooms you create; people joining get the room's map.
+- Pick the map with **Map: … ▸** on the Play screen. It applies to solo flying and to rooms you create; people joining get the room's map.
 - Mountains, clouds and the sun glow are in `client/src/world/scenery.ts`; building textures in `textures.ts`.
 
 ### Moving props and grid textures (ADR-0020)
@@ -145,11 +145,11 @@ In dev builds, `window.dronefight` exposes `renderer`, `world`, `drone`, `settin
 2. Connect it to the computer with a USB-C **data** cable (some cables are charge-only).
 3. Check that the OS sees it: open https://gamepad-tester.com in Chrome and move the sticks. Bars should move.
 4. If nothing appears, install DJI Assistant 2 (Consumer Drones Series), connect the controller once, then retry.
-5. In the game, open **Controller setup** and follow the steps. It detects each stick, its direction, and optional arm/reset switches, then saves a profile for that controller in this browser.
+5. In the game, open **Settings → Controller setup** and follow the steps. It detects each stick, its direction, and optional arm/reset switches, then saves a profile for that controller in this browser.
 
 ### Gamepads (Xbox, PlayStation, Logitech…)
 
-**Controller setup** opens a hub for the selected controller with separate parts:
+**Settings → Controller setup** opens a hub for the selected controller with separate parts:
 
 - **Calibrate sticks**: detects axes, range and center. Keeps your button bindings.
 - **Map buttons**: Arm / Reset / Fire / Special. Keeps your sticks. Skip keeps a binding.

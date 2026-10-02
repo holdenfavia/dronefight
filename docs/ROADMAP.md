@@ -95,6 +95,10 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Two-digit room codes; Controller setup hub (sticks / buttons / feel, guessed gamepad layouts)
 - [x] Free-for-all rooms of up to 10 pilots (ADR-0026)
 - [ ] Play a free-for-all with 3+ pilots; check spawns, scoreboard, markers
+- [x] Simpler start screen: Play (drone, map, solo / create / 2-digit join) and Settings (incl. controller)
+- [x] Rejoin the same room code after a server restart
+- [x] Bigger missile blast; hovering drone watches its missile and the blast (ADR-0027)
+- [ ] Add a card to Fly.io (trial stops the server every 5 min)
 - [ ] Additional maps
 - [x] Sound (motors, hits, UI): procedural, ADR-0010
 - [ ] Sound tuning pass after real matches

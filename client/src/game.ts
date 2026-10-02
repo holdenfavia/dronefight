@@ -210,6 +210,11 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   let wasInRoom = false;
   const smokeSources: { id: string; position: THREE.Vector3 }[] = [];
   const missileCamPos = new THREE.Vector3();
+  /** Where the hovering drone looks: our missile, then where it blew up (ADR-0027). */
+  const WATCH_BLAST_MS = 1500;
+  const watchPoint = new THREE.Vector3();
+  let watchUntil = 0;
+  const watchLook = { target: watchPoint, get uptiltDeg() { return uptiltDeg(); } };
   const missileCamRot = new THREE.Quaternion();
   const missileTargets: THREE.Vector3[] = [];
 
@@ -281,12 +286,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   }
   applySettings();
 
-  // Invite links: ?room=CODE opens the online screen and joins.
+  // Invite links: ?room=CODE joins that room straight from the Play screen.
   const invite = new URLSearchParams(location.search).get('room');
-  if (invite) {
-    menu.show('online');
-    net.joinRoom(invite);
-  }
+  if (invite) menu.joinCode(invite);
 
   function resize(): void {
     const w = container.clientWidth;
@@ -312,12 +314,6 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       saveSettings(settings);
       applySettings();
 
-  // Invite links: ?room=CODE opens the online screen and joins.
-  const invite = new URLSearchParams(location.search).get('room');
-  if (invite) {
-    menu.show('online');
-    net.joinRoom(invite);
-  }
     }
   });
 
@@ -519,8 +515,15 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
         if (control.resetPressed && training.active) training.resetStats();
       }
 
-      // While you fly a missile, the drone holds a hover (ADR-0025).
-      drone.autoHover = !!combat.flying;
+      // While you fly a missile the drone hovers and watches it, then the blast for a moment (ADR-0025, ADR-0027).
+      const ridingNow = combat.flying;
+      if (ridingNow) {
+        watchPoint.set(ridingNow.m.p[0], ridingNow.m.p[1], ridingNow.m.p[2]);
+        watchUntil = now + WATCH_BLAST_MS;
+      }
+      const watching = !!ridingNow || now < watchUntil;
+      drone.autoHover = watching;
+      drone.hoverLook = watching && drone.classId !== 'wing' ? watchLook : null;
       accumulator += frameDt;
       while (accumulator >= STEP) {
         drone.preStep(control, settings.rates, STEP);

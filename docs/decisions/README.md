@@ -21,7 +21,7 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0015](0015-physics-cobra.md) | Cobra is physics-based: hold Special, pitch from elevator/stability/damping moments, speed-dependent, no cooldown; Map buttons quick remap | Superseded by 0022 (Map buttons stand) |
 | [0016](0016-smoke-and-rockets.md) | 3D quad smoke screen (conceals, 6 s, 10 s cooldown); Freestyle switchable TOW-style guided missile (line-of-sight guidance, 2.5 s burn, 5 s self-destruct, one in flight, proximity fuse, 45 splash); server-authoritative | Superseded by 0024 (smoke) and 0025 (missile) |
 | [0017](0017-training-ground.md) | Training map with practice bots (stationary, fixed-path, random, evasive); solo only, client-side hit checks, hits/kills/accuracy HUD | Accepted |
-| [0018](0018-missile-one-shot.md) | Guided missile is a one-shot kill: anyone within 3 m of the blast dies (fuse is 2.5 m); 50→0 splash out to 6 m | Accepted |
+| [0018](0018-missile-one-shot.md) | Guided missile is a one-shot kill: anyone within 3 m of the blast dies (fuse is 2.5 m); 50→0 splash out to 6 m | Accepted (numbers superseded by 0027) |
 | [0019](0019-playground-map.md) | Playground map: giant park (playhouse, slides, swings, monkey bars, lattice, seesaw…) in solid colors with baked grids; exception to ADR-0007 for this map | Accepted |
 | [0020](0020-movers-and-grid-option.md) | Moving props from the shared clock (Downtown traffic, Playground roller coaster, Yard tractor): solid to fly into, not to rounds; Settings option for grid textures on every map | Accepted (amended by 0023) |
 | [0021](0021-fly-io-hosting.md) | Host on Fly.io: one container serves the client and the room server on one port; exactly one always-on machine in `dfw` (Dallas) | Accepted |
@@ -30,3 +30,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0024](0024-smoke-trail-stealth.md) | 3D quad smoke is a 6 s stealth smoke trail: the other pilot sees only your frame (no glow, trail, lead dot or marker); 10 s cooldown | Accepted |
 | [0025](0025-piloted-missile.md) | Freestyle missile is flown from its own camera (sticks, throttle, thrust vectoring, fuel ≤10 s); drone auto-hovers and can be shot; client flies it, server validates and decides hits | Accepted |
 | [0026](0026-free-for-all-rooms.md) | Free-for-all rooms of up to 10 pilots: match starts at 2, join mid-match, first to 10 kills, 10 pilot colors, spawn offsets | Accepted |
+| [0027](0027-bigger-missile-blast.md) | Missile fuse 4 m, one-shot within 5 m, splash to 10 m; hovering drone watches its missile and the blast for 1.5 s | Accepted |
