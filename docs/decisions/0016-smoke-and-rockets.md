@@ -1,6 +1,6 @@
 # ADR-0016: Specials for the other classes: 3D smoke screen, Freestyle guided missile
 
-- **Status:** Accepted (smoke superseded by ADR-0024; missile damage amended by ADR-0018)
+- **Status:** Superseded by ADR-0024 (smoke) and ADR-0025 (missile guidance); damage amended by ADR-0018
 - **Date:** 2026-09-30
 - **Amends:** ADR-0013 / ADR-0014 (class abilities)
 

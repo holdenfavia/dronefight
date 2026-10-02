@@ -88,9 +88,9 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 |---|---|
 | FPV wing | **Hold** (or flip a switch mapped to Special) for **maneuver mode**: pitch ×2, roll ×1.3, sharper when slow, weaker nose-into-wind pull, so a hard pull stalls you. HUD shows MANEUVER OFF / ON / STALL |
 | 3D quad | **Tap** for a smoke trail (ADR-0024): for 6 s the other pilot sees only your frame (no glow, trail, marker or lead dot); you leave a thin smoke trail; 10 s cooldown |
-| Freestyle 5" | **Tap** to switch Guns / **guided missile**. Fire launches it; keep your crosshair on the target to steer (TOW-style). 2.5 s burn, self-destructs at 5 s, one in flight (firing again replaces it), pod of 3. **One-shot kill** if it detonates within 3 m (ADR-0018) |
+| Freestyle 5" | **Tap** to switch Guns / **missile**. Fire launches it and **you fly it** from its camera (ADR-0025): sticks steer (roll/pitch/yaw), throttle sets speed (~60–120 m/s) and turn authority (thrust vectoring). Fuel ~6 s at full throttle, up to 10 s slow, then a 1.5 s glide. Fire again or Special detonates. Your drone auto-hovers meanwhile and **can be shot**; if it dies the missile blows. Pod of 3, one in flight. **One-shot kill** within 3 m (ADR-0018) |
 
-Numbers: `shared/abilities.ts` (smoke), `shared/missile.ts` (missile physics, shared by server and client), `MANEUVER` in `client/src/sim/wingModel.ts`.
+Numbers: `shared/abilities.ts` (smoke), `shared/missile.ts` (missile flight model; the shooter's client flies it, the server validates its reported path and decides hits), `MANEUVER` in `client/src/sim/wingModel.ts`.
 
 A switch works as Special: in **Map buttons**, flip the switch on when asked for Special. While it's on, maneuver mode stays on.
 
@@ -174,4 +174,4 @@ After that, every update is just `npm run deploy` (it builds in Fly's builder; n
 - **Always deploy with `npm run deploy`** (`--ha=false`). Plain `fly deploy` on a new app creates two machines, which splits rooms between them. Fix with `fly scale count 1`.
 - Logs: `fly logs`. Status: `fly status`. Health: `https://<name>.fly.dev/healthz` returns `ok`.
 - Try the production setup locally: `npm run build && PORT=8080 npm start`, then open http://localhost:8080.
-- Region is `primary_region` in `fly.toml` (`ord` = Chicago). Pick one between the two pilots (`fly platform regions` lists them); after changing it, run `fly scale count 1 --region <new>` and remove the old machine.
+- Region is `primary_region` in `fly.toml` (`dfw` = Dallas, closest to both pilots). Pick one between the two pilots (`fly platform regions` lists them); after changing it, run `fly scale count 1 --region <new>` and remove the old machine.

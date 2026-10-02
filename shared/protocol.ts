@@ -57,8 +57,8 @@ export interface DroneState {
   m: number;
   armed: boolean;
   crashed: boolean;
-  /** Line of sight (origin xyz, direction xyz) while guiding a missile (ADR-0016). */
-  g?: [number, number, number, number, number, number];
+  /** The missile you're flying (ADR-0025): id, position xyz, velocity xyz. */
+  k?: [number, number, number, number, number, number, number];
 }
 
 /** One round fired (ADR-0009). */
@@ -110,7 +110,9 @@ export type ClientMessage =
   | { t: 'shot'; s: Shot }
   /** Choose a drone class; applies at the next respawn during a match (ADR-0013). */
   | { t: 'loadout'; drone: DroneClassId }
-  /** Use a class ability at a position (3D smoke screen, ADR-0016). */
+  /** Blow up the missile you're flying, here (ADR-0025). */
+  | { t: 'detonate'; rid: number; p: Vec3 }
+  /** Use a class ability at a position (3D smoke, ADR-0024). */
   | { t: 'ability'; kind: 'smoke'; p: Vec3 }
   | { t: 'ping'; id: number; ct: number };
 
@@ -163,7 +165,7 @@ export function isDroneState(x: unknown): x is DroneState {
     isNum(s.m) &&
     typeof s.armed === 'boolean' &&
     typeof s.crashed === 'boolean' &&
-    (s.g === undefined || isVec(s.g, 6))
+    (s.k === undefined || isVec(s.k, 7))
   );
 }
 
@@ -187,6 +189,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isDroneState(m.s) ? { t: 'state', s: m.s } : null;
     case 'ping':
       return isNum(m.id) && isNum(m.ct) ? { t: 'ping', id: m.id, ct: m.ct } : null;
+    case 'detonate':
+      return isNum(m.rid) && isVec(m.p, 3) ? { t: 'detonate', rid: m.rid, p: m.p as Vec3 } : null;
     case 'ability':
       return m.kind === 'smoke' && isVec(m.p, 3) ? { t: 'ability', kind: 'smoke', p: m.p as Vec3 } : null;
     case 'loadout':

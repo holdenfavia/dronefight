@@ -104,6 +104,11 @@ export class NetClient {
     if (this.inRoom) this.send({ t: 'ability', kind: 'smoke', p });
   }
 
+  /** Blow up the missile we're flying, here (ADR-0025). */
+  sendDetonate(rid: number, p: [number, number, number]): void {
+    if (this.inRoom) this.send({ t: 'detonate', rid, p });
+  }
+
   /** Send one round to the server, which decides whether it hits (ADR-0009). */
   sendShot(shot: Shot): void {
     if (this.inRoom) this.send({ t: 'shot', s: shot });

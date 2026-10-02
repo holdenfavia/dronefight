@@ -10,7 +10,7 @@ import type { Tracers } from '../render/tracers';
 import type { Drone } from '../sim/drone';
 import type { CombatHudInfo, Hud } from '../ui/hud';
 import { SMOKE } from '../../../shared/abilities';
-import { MISSILE, refillPod, type AimRay } from '../../../shared/missile';
+import { MISSILE, quatRotate, refillPod, type MissileInput, type MissileState } from '../../../shared/missile';
 import type { Missiles, SmokeTrails } from './effects';
 import type { PropField } from '../../../shared/props';
 import type { V3 } from '../../../shared/maps/movers';
@@ -81,7 +81,9 @@ export class CombatClient {
   private missilePod: number = MISSILE.pod;
   private missilePodAt = performance.now();
   private nextMissileId = 1;
-  private readonly aimRay: AimRay = { o: [0, 0, 0], d: [0, 0, -1] };
+  /** Fire was held last frame (a new press detonates the missile you're flying). */
+  private fireWasHeld = false;
+  private readonly missileInput: MissileInput = { throttle: 0.5, roll: 0, pitch: 0, yaw: 0 };
   /** 3D quad: when the smoke trail is ready again (performance.now() ms). */
   private smokeReadyAt = 0;
   private readonly hudInfo: CombatHudInfo = {
@@ -124,24 +126,43 @@ export class CombatClient {
     return this.net.you ?? 'me';
   }
 
-  /** Our line of sight while guiding a missile, for the server (sent with our state). Null otherwise. */
-  guidance(): [number, number, number, number, number, number] | null {
-    if (this.effects.missiles.inFlight(this.myId) === 0) return null;
-    const { o, d } = this.currentAim();
-    const r = (x: number) => Math.round(x * 1000) / 1000;
-    return [r(o[0]), r(o[1]), r(o[2]), r(d[0]), r(d[1]), r(d[2])];
+  /** The missile we're flying right now (ADR-0025), or null. */
+  get flying(): { rid: number; m: MissileState } | null {
+    return this.effects.missiles.local(this.myId);
   }
 
-  /** Where the crosshair points right now: the FPV camera's line of sight. */
-  private currentAim(): AimRay {
-    this.aim(this.origin, this.dir, this.right, this.up);
-    this.aimRay.o[0] = this.origin.x;
-    this.aimRay.o[1] = this.origin.y;
-    this.aimRay.o[2] = this.origin.z;
-    this.aimRay.d[0] = this.dir.x;
-    this.aimRay.d[1] = this.dir.y;
-    this.aimRay.d[2] = this.dir.z;
-    return this.aimRay;
+  /** Our missile's pose for the server, sent with our state: id, position, velocity. */
+  missilePose(): [number, number, number, number, number, number, number] | null {
+    const f = this.flying;
+    if (!f) return null;
+    const r = (x: number) => Math.round(x * 100) / 100;
+    const { p, v } = f.m;
+    return [f.rid, r(p[0]), r(p[1]), r(p[2]), r(v[0]), r(v[1]), r(v[2])];
+  }
+
+  /** Missile HUD (ADR-0025): speed, throttle, fuel, time left, range to the nearest target ahead. */
+  missileHud(targets: readonly THREE.Vector3[]): { speed: number; throttle: number; fuel: number; timeLeft: number; range: number | null } | null {
+    const f = this.flying;
+    if (!f) return null;
+    const { m } = f;
+    const nose = quatRotate(m.q, [0, 0, -1]);
+    let range: number | null = null;
+    for (const t of targets) {
+      const dx = t.x - m.p[0];
+      const dy = t.y - m.p[1];
+      const dz = t.z - m.p[2];
+      const d = Math.hypot(dx, dy, dz);
+      // Within ~25° of the nose.
+      if (d > 0 && (dx * nose[0] + dy * nose[1] + dz * nose[2]) / d > 0.9 && (range === null || d < range)) range = d;
+    }
+    const burnLeft = m.burnout === null ? Math.min(m.fuel / (MISSILE.idleBurn + (1 - MISSILE.idleBurn) * m.throttle), MISSILE.maxFlightSeconds - m.age) + MISSILE.glideSeconds : MISSILE.glideSeconds - (m.age - m.burnout);
+    return {
+      speed: Math.hypot(m.v[0], m.v[1], m.v[2]),
+      throttle: m.throttle,
+      fuel: m.fuel / MISSILE.fuelSeconds,
+      timeLeft: Math.max(0, burnLeft),
+      range,
+    };
   }
 
   /** HUD readout for this class's special (ADR-0015/0016). The wing's maneuver mode is reported by the game. */
@@ -149,7 +170,7 @@ export class CombatClient {
     const now = performance.now();
     if (this.drone.classId === 'freestyle') {
       if (this.weapon === 'guns') return { label: 'WEAPON', value: 'GUNS' };
-      if (this.effects.missiles.inFlight(this.myId) > 0) return { label: 'MISSILE', value: 'GUIDE IT' };
+      if (this.flying) return { label: 'MISSILE', value: 'FIRE: DETONATE' };
       const pod = refillPod(this.missilePod, this.missilePodAt, now).ammo;
       return { label: 'MISSILE', value: `${Math.floor(pod)}/${MISSILE.pod}` };
     }
@@ -170,9 +191,13 @@ export class CombatClient {
     return this.myId;
   }
 
-  /** Tap-Special abilities: Freestyle weapon switch, 3D smoke. (The wing's maneuver mode is a hold, handled by the drone.) */
+  /** Tap-Special abilities: Freestyle weapon switch (or detonate while flying a missile), 3D smoke. (The wing's maneuver mode is a hold, handled by the drone.) */
   private handleSpecial(control: ControlState, alive: boolean): void {
     if (!control.specialPressed) return;
+    if (this.flying) {
+      this.effects.missiles.detonateLocal(this.myId);
+      return;
+    }
     if (this.drone.classId === 'freestyle') {
       this.weapon = this.weapon === 'guns' ? 'missiles' : 'guns';
       this.sounds.weaponSwitch();
@@ -220,14 +245,24 @@ export class CombatClient {
     const alive = !this.inMatch || (me?.alive ?? false);
     if (flying) this.handleSpecial(control, alive);
     const canFire = flying && this.drone.armed && !this.drone.crashed && alive;
-    const firing = control.fire && canFire;
-    // Guided missiles: steered by our line of sight every frame (TOW-style, ADR-0016).
-    this.effects.missiles.update(dt, alive && !this.drone.crashed ? this.currentAim() : null);
+    const firePressed = control.fire && !this.fireWasHeld;
+    this.fireWasHeld = control.fire;
+    // Flying a missile (ADR-0025): the sticks fly it; a new Fire press (or Special) detonates it; if our
+    // drone goes down, it blows where it is.
+    const ours = this.flying;
+    if (ours && (!alive || this.drone.crashed || (flying && firePressed))) this.effects.missiles.detonateLocal(this.myId);
+    const mi = this.missileInput;
+    mi.throttle = Math.max(0, Math.min(1, control.throttle));
+    mi.roll = control.roll;
+    mi.pitch = control.pitch;
+    mi.yaw = control.yaw;
+    this.effects.missiles.update(dt, flying ? mi : null);
+    const firing = control.fire && canFire && !ours;
     if (firing && this.missilesSelected) {
       const pod = refillPod(this.missilePod, this.missilePodAt, performance.now());
       this.missilePod = pod.ammo;
       this.missilePodAt = pod.at;
-      if (this.effects.missiles.inFlight(this.myId) < MISSILE.maxInFlight && this.missilePod >= 1 && this.fireCooldown <= 0) {
+      if (firePressed && this.effects.missiles.inFlight(this.myId) < MISSILE.maxInFlight && this.missilePod >= 1 && this.fireCooldown <= 0) {
         this.missilePod -= 1;
         this.fireMissile();
         this.fireCooldown = 0.3;

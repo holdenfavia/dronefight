@@ -738,3 +738,107 @@ body {
     font-size: 20px;
   }
 }
+
+/* Missile camera HUD (ADR-0025): a monochrome TV-guided feed. */
+.msl {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: #c8ffb0;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 6px rgba(120, 255, 90, 0.6);
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.12) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.45) 100%);
+}
+.msl[hidden] { display: none; }
+.riding-missile .osd-cross,
+.riding-missile .osd-bottom,
+.riding-missile .osd-lead { display: none; }
+.msl-corners {
+  position: absolute;
+  inset: 12% 18%;
+  --c: rgba(200, 255, 176, 0.85);
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 28px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) top left / 2px 28px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 28px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 2px 28px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 28px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 2px 28px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 28px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 2px 28px no-repeat;
+}
+.msl-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  border: 2px solid rgba(200, 255, 176, 0.9);
+  border-radius: 50%;
+}
+.msl-reticle span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  background: #c8ffb0;
+}
+.msl-reticle::before,
+.msl-reticle::after {
+  content: '';
+  position: absolute;
+  background: rgba(200, 255, 176, 0.9);
+}
+.msl-reticle::before { left: -40px; right: -40px; top: 50%; height: 2px; margin-top: -1px; clip-path: polygon(0 0, 30% 0, 30% 100%, 0 100%, 0 0, 100% 0, 100% 100%, 70% 100%, 70% 0); }
+.msl-reticle::after { top: -40px; bottom: -40px; left: 50%; width: 2px; margin-left: -1px; clip-path: polygon(0 0, 100% 0, 100% 30%, 0 30%, 0 0, 0 70%, 100% 70%, 100% 100%, 0 100%); }
+.msl-top {
+  position: absolute;
+  top: 7%;
+  width: 100%;
+  text-align: center;
+  font-size: 18px;
+}
+.msl-left,
+.msl-right {
+  position: absolute;
+  top: 35%;
+  height: 30%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.msl-left { left: 10%; }
+.msl-right { right: 10%; }
+.msl-bar {
+  flex: 1;
+  width: 14px;
+  border: 2px solid rgba(200, 255, 176, 0.85);
+  display: flex;
+  align-items: flex-end;
+}
+.msl-bar div {
+  width: 100%;
+  height: 100%;
+  background: #c8ffb0;
+  transform-origin: bottom;
+}
+.msl.low-fuel .msl-right { color: #ff7a4a; animation: msl-blink 0.4s steps(2) infinite; }
+.msl-bottom {
+  position: absolute;
+  bottom: 8%;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 36px;
+  font-size: 18px;
+}
+.msl-bottom .lock { color: #ff7a4a; }
+.msl-hint { opacity: 0.7; font-size: 14px; align-self: center; }
+@keyframes msl-blink { 50% { opacity: 0.3; } }

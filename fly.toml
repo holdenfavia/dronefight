@@ -1,6 +1,6 @@
 # Fly.io config (ADR-0021). Rooms live in memory, so run exactly ONE machine: deploy with `npm run deploy`.
 app = "dronefight"
-primary_region = "ord"
+primary_region = "dfw"
 
 [build]
 

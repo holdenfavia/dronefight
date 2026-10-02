@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SMOKE } from '../../shared/abilities.js';
-import { MISSILE } from '../../shared/missile.js';
+import { launchMissile, MISSILE, MISSILE_MAX_AGE, quatRotate, stepMissile, type MissileInput, type MissileState } from '../../shared/missile.js';
 import { COMBAT } from '../../shared/combat.js';
 import { DRONE_CLASSES } from '../../shared/drones.js';
 import type { DroneState, ServerMessage, Vec3 } from '../../shared/protocol.js';
@@ -22,8 +22,8 @@ function setup() {
   match.addPlayer('A', now);
   match.addPlayer('B', now);
   const posA: Vec3 = [-100, 30, 0];
-  /** A's line of sight, sent with A's states (guides A's missiles, ADR-0016). */
-  let aimA: [number, number, number, number, number, number] | undefined;
+  /** The missile A is flying (ADR-0025): A's client flies it and reports its pose with each state. */
+  let missileA: { rid: number; m: MissileState; input: (m: MissileState) => MissileInput } | null = null;
   let posB: Vec3 = [-100, 30, -20];
   let velB: Vec3 = [0, 0, 0];
 
@@ -31,8 +31,17 @@ function setup() {
   const advance = (ms: number) => {
     const end = now + ms;
     while (now < end) {
-      now = Math.min(end, now + 1000 / 30);
-      match.onState('A', { ...droneAt(posA), g: aimA }, now);
+      const step = Math.min(end, now + 1000 / 30) - now;
+      now += step;
+      let k: DroneState['k'];
+      if (missileA) {
+        let alive = true;
+        for (let i = 0; i < 4 && alive; i++) alive = stepMissile(missileA.m, missileA.input(missileA.m), step / 4000);
+        const { m, rid } = missileA;
+        if (alive) k = [rid, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2]];
+        else missileA = null; // self-destructed on the client: it stops reporting
+      }
+      match.onState('A', { ...droneAt(posA), k }, now);
       posB = [posB[0] + (velB[0] * 1000) / 30 / 1000, posB[1], posB[2] + (velB[2] * 1000) / 30 / 1000];
       match.onState('B', droneAt(posB, velB), now);
       match.tick(now);
@@ -60,16 +69,18 @@ function setup() {
     },
     posB: () => posB,
     posA,
-    /** Point A's line of sight at a spot (or stop guiding with null). */
-    aimAt: (target: Vec3 | null) => {
-      if (!target) {
-        aimA = undefined;
-        return;
-      }
-      const d = [target[0] - posA[0], target[1] - posA[1], target[2] - posA[2]];
-      const len = Math.hypot(d[0]!, d[1]!, d[2]!);
-      aimA = [posA[0], posA[1], posA[2], d[0]! / len, d[1]! / len, d[2]! / len];
+    /** A launches a missile along `dir` and flies it with `input` (ADR-0025). */
+    fly: (rid: number, dir: Vec3, input: (m: MissileState) => MissileInput = () => ({ throttle: 1, roll: 0, pitch: 0, yaw: 0 })) => {
+      const len = Math.hypot(...dir);
+      const d: Vec3 = [dir[0] / len, dir[1] / len, dir[2] / len];
+      match.onShot('A', { ts: now, p: posA, d, w: 'rocket', rid }, now);
+      missileA = { rid, m: launchMissile(posA, d), input };
     },
+    /** A's client stops reporting the missile (e.g. the tab froze). */
+    dropMissile: () => {
+      missileA = null;
+    },
+    missile: () => missileA,
   };
 }
 
@@ -271,18 +282,24 @@ describe('drone classes (ADR-0013)', () => {
 
 });
 
-describe('guided missiles and smoke (ADR-0016)', () => {
-  /** A launches a missile in direction `dir`. */
-  function launch(t: ReturnType<typeof setup>, dir: Vec3, rid: number) {
-    const len = Math.hypot(...dir);
-    t.match.onShot('A', { ts: t.getNow(), p: t.posA, d: [dir[0] / len, dir[1] / len, dir[2] / len], w: 'rocket', rid }, t.getNow());
-  }
+/** Autopilot for tests: full throttle, steer the nose at a point (yaw/pitch proportional to the error). */
+function homeOn(target: () => Vec3) {
+  return (m: MissileState): MissileInput => {
+    const t = target();
+    const d: Vec3 = [t[0] - m.p[0], t[1] - m.p[1], t[2] - m.p[2]];
+    const len = Math.hypot(...d) || 1;
+    const inv: [number, number, number, number] = [-m.q[0], -m.q[1], -m.q[2], m.q[3]];
+    const local = quatRotate(inv, [d[0] / len, d[1] / len, d[2] / len]);
+    const c = (x: number) => Math.max(-1, Math.min(1, x));
+    return { throttle: 1, roll: 0, yaw: c(local[0] * 4), pitch: c(-local[1] * 4) };
+  };
+}
 
-  it('a missile guided onto the target is a one-shot kill (ADR-0018)', () => {
+describe('piloted missiles (ADR-0025) and smoke (ADR-0024)', () => {
+  it('a missile flown onto the target is a one-shot kill (ADR-0018)', () => {
     const t = setup();
     t.advance(afterProtection);
-    t.aimAt(t.posB());
-    launch(t, [0, 0, -1], 1);
+    t.fly(1, [0, 0, -1], homeOn(t.posB));
     t.advance(800);
     expect(t.log.some((m) => m.t === 'boom' && m.rid === 1)).toBe(true);
     expect(t.log.some((m) => m.t === 'death' && m.id === 'B' && m.killer === 'A')).toBe(true);
@@ -297,42 +314,100 @@ describe('guided missiles and smoke (ADR-0016)', () => {
     t.setB([-100, 30, -20]);
     t.advance(afterProtection);
     expect(t.match.state().players.find((p) => p.id === 'B')?.drone).toBe('wing');
-    t.aimAt(t.posB());
-    launch(t, [0, 0, -1], 7);
+    t.fly(7, [0, 0, -1], homeOn(t.posB));
     t.advance(800);
     expect(t.log.some((m) => m.t === 'death' && m.id === 'B' && m.cause === 'shot' && m.killer === 'A')).toBe(true);
   });
 
-  it('steers: launched 90° off, the shooter looks at the target and the missile comes onto it', () => {
+  it('flown: launched 45° off, the pilot turns it onto a target 115 m away', () => {
     const t = setup();
     t.advance(afterProtection);
-    // B 115 m straight ahead: far enough for the missile (turn radius ~50 m) to settle onto the line of sight.
     t.setB([t.posA[0], t.posA[1], t.posA[2] - 115]);
     t.advance(100);
-    launch(t, [1, 0, 0], 2);
-    t.aimAt(t.posB());
+    t.fly(2, [1, 0, -1], homeOn(t.posB));
     t.advance(3000);
     expect(t.log.some((m) => m.t === 'boom' && m.rid === 2)).toBe(true);
     expect(t.hp('B')).toBeLessThan(FS.maxHp);
   });
 
-  it('without guidance it flies straight and self-destructs by its lifetime (no cross-map sniping)', () => {
+  it('runs out of flight and self-destructs (no endless missiles)', () => {
     const t = setup();
     t.advance(afterProtection);
-    t.aimAt(null);
-    launch(t, [0, 1, 0], 3); // straight up into empty sky
-    t.advance(MISSILE.lifetimeSeconds * 1000 - 300);
+    // Straight up at idle: the most fuel-saving flight there is.
+    t.fly(3, [0, 1, 0], () => ({ throttle: 0, roll: 0, pitch: 0, yaw: 0 }));
+    t.advance(MISSILE.fuelSeconds * 1000);
     expect(t.log.some((m) => m.t === 'boom' && m.rid === 3)).toBe(false);
-    t.advance(500);
-    const boom = t.log.find((m) => m.t === 'boom' && m.rid === 3);
-    expect(boom).toBeDefined();
+    t.advance((MISSILE_MAX_AGE - MISSILE.fuelSeconds) * 1000 + MISSILE.staleMs + 200);
+    expect(t.log.some((m) => m.t === 'boom' && m.rid === 3)).toBe(true);
     expect(t.hp('B')).toBe(FS.maxHp);
   });
 
-  it('sends missile positions to clients while it flies', () => {
+  it('a client that keeps reporting past the flight cap is cut off by the server', () => {
     const t = setup();
     t.advance(afterProtection);
-    launch(t, [0, 1, 0], 4);
+    t.fly(9, [0, 1, 0], () => ({ throttle: 0, roll: 0, pitch: 0, yaw: 0 }));
+    // Cheat: keep the missile alive forever on the client.
+    const x = t.missile()!;
+    x.m.fuel = Infinity;
+    x.m.age = -1e9;
+    t.advance(MISSILE_MAX_AGE * 1000 + MISSILE.staleMs + 200);
+    expect(t.log.some((m) => m.t === 'boom' && m.rid === 9)).toBe(true);
+  });
+
+  it('impossible moves are clamped to the speed cap', () => {
+    const t = setup();
+    t.advance(afterProtection);
+    t.fly(12, [0, 1, 0]);
+    t.advance(100);
+    const x = t.missile()!;
+    const before = [...x.m.p];
+    x.m.p[1] += 500; // teleport
+    t.advance(34);
+    const relayed = t.log.filter((m) => m.t === 'missile' && m.rid === 12).at(-1);
+    expect(relayed && relayed.t === 'missile' ? relayed.p[1] - before[1]! : Infinity).toBeLessThan(MISSILE.maxSpeed * 0.2 + 10);
+  });
+
+  it('a missile that goes quiet explodes where it was', () => {
+    const t = setup();
+    t.advance(afterProtection);
+    t.fly(13, [0, 1, 0]);
+    t.advance(300);
+    t.dropMissile();
+    t.advance(MISSILE.staleMs + 100);
+    expect(t.log.some((m) => m.t === 'boom' && m.rid === 13)).toBe(true);
+  });
+
+  it('detonate on demand, at the reported point if it is plausible', () => {
+    const t = setup();
+    t.advance(afterProtection);
+    t.fly(14, [0, 1, 0]);
+    t.advance(300);
+    const x = t.missile()!;
+    t.match.onDetonate('A', 14, [x.m.p[0], x.m.p[1], x.m.p[2]], t.getNow());
+    const boom = t.log.find((m) => m.t === 'boom' && m.rid === 14);
+    expect(boom && boom.t === 'boom' ? Math.hypot(boom.p[0] - x.m.p[0], boom.p[1] - x.m.p[1], boom.p[2] - x.m.p[2]) : Infinity).toBeLessThan(1);
+    // A far-away claim is ignored: it blows at the last accepted position instead.
+    t.fly(15, [0, 1, 0]);
+    t.advance(300);
+    t.match.onDetonate('A', 15, [0, 0, 0], t.getNow());
+    const far = t.log.find((m) => m.t === 'boom' && m.rid === 15);
+    expect(far && far.t === 'boom' ? far.p[1] : 0).toBeGreaterThan(30);
+  });
+
+  it('if your drone dies while you fly it, the missile blows', () => {
+    const t = setup();
+    t.advance(afterProtection);
+    t.fly(16, [0, 1, 0]);
+    t.advance(200);
+    t.match.onState('A', droneAt(t.posA, [0, 0, 0], true), t.getNow() + 1);
+    t.advance(50);
+    expect(t.log.some((m) => m.t === 'boom' && m.rid === 16)).toBe(true);
+  });
+
+  it('sends missile positions to the other pilot while it flies', () => {
+    const t = setup();
+    t.advance(afterProtection);
+    t.fly(4, [0, 1, 0]);
     t.advance(500);
     expect(t.log.filter((m) => m.t === 'missile' && m.rid === 4).length).toBeGreaterThanOrEqual(5);
   });
@@ -340,11 +415,10 @@ describe('guided missiles and smoke (ADR-0016)', () => {
   it('one missile in flight: a new launch replaces the old one (it detonates where it is)', () => {
     const t = setup();
     t.advance(afterProtection);
-    launch(t, [0, 1, 0], 10);
+    t.fly(10, [0, 1, 0]);
     t.advance(200);
     const before = t.log.length;
-    launch(t, [0, 1, 0], 11);
-    // 10 went off at once; 11 is the one still flying.
+    t.fly(11, [0, 1, 0]);
     expect(t.log.some((m) => m.t === 'boom' && m.rid === 10)).toBe(true);
     expect(t.log.some((m) => m.t === 'boom' && m.rid === 11)).toBe(false);
     t.advance(300);
@@ -356,23 +430,25 @@ describe('guided missiles and smoke (ADR-0016)', () => {
     const t = setup();
     t.advance(afterProtection);
     for (let rid = 20; rid < 24; rid++) {
-      launch(t, [0, 1, 0], rid);
+      t.fly(rid, [0, 1, 0]);
       t.advance(100);
     }
-    t.advance(MISSILE.lifetimeSeconds * 1000 + 200);
+    t.advance(MISSILE.staleMs + 200);
     const launched = new Set(t.log.filter((m) => m.t === 'boom' && m.rid >= 20).map((m) => (m.t === 'boom' ? m.rid : -1)));
     expect(launched.has(22)).toBe(true);
     expect(launched.has(23)).toBe(false);
     t.advance(MISSILE.regenMs);
-    launch(t, [0, 1, 0], 24);
-    t.advance(MISSILE.lifetimeSeconds * 1000 + 200);
+    t.fly(24, [0, 1, 0]);
+    t.advance(300);
+    t.dropMissile();
+    t.advance(MISSILE.staleMs + 200);
     expect(t.log.some((m) => m.t === 'boom' && m.rid === 24)).toBe(true);
   });
 
   it('a refused missile is never shown to the other pilot', () => {
     const t = setup();
     t.advance(afterProtection);
-    for (let rid = 30; rid < 34; rid++) launch(t, [0, 1, 0], rid);
+    for (let rid = 30; rid < 34; rid++) t.fly(rid, [0, 1, 0]);
     const relayed = t.log.filter((m) => m.t === 'shot' && m.s.w === 'rocket').map((m) => (m.t === 'shot' ? m.s.rid : -1));
     expect(relayed).toEqual([30, 31, 32]);
   });
@@ -383,7 +459,7 @@ describe('guided missiles and smoke (ADR-0016)', () => {
     match.addPlayer('A', 0);
     match.onState('A', droneAt([0, 20, 0]), 0);
     match.onShot('A', { ts: 0, p: [0, 20, 0], d: [0, 0, -1], w: 'rocket', rid: 1 }, 0);
-    for (let now = 0; now < 6000; now += 16) match.tick(now);
+    for (let now = 0; now < 2000; now += 16) match.tick(now);
     expect(log.some((m) => m.t === 'boom' && m.rid === 1)).toBe(true);
     expect(log.some((m) => m.t === 'hit')).toBe(false);
   });
@@ -393,7 +469,7 @@ describe('guided missiles and smoke (ADR-0016)', () => {
     t.match.onLoadout('A', 'wing', t.getNow());
     t.match.onState('A', droneAt(t.posA, [0, 0, 0], true), t.getNow());
     t.advance(COMBAT.respawnMs + afterProtection);
-    launch(t, [0, 1, 0], 5);
+    t.fly(5, [0, 1, 0]);
     t.advance(500);
     expect(t.log.some((m) => (m.t === 'boom' || m.t === 'missile') && m.rid === 5)).toBe(false);
   });

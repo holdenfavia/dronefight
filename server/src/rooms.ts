@@ -91,7 +91,9 @@ export class RoomManager {
       case 'state': {
         const room = player.room;
         if (!room) return;
-        const snap = JSON.stringify({ t: 'snap', id: player.id, st: this.now(), s: msg.s } satisfies ServerMessage);
+        // The missile pose goes out separately (as 'missile' messages, ADR-0025), not in every snapshot.
+        const { k: _missile, ...drone } = msg.s;
+        const snap = JSON.stringify({ t: 'snap', id: player.id, st: this.now(), s: drone } satisfies ServerMessage);
         for (const other of room.players.values()) {
           if (other === player) continue;
           if (other.conn.bufferedAmount > NET.maxBufferedBytes) {
@@ -111,6 +113,9 @@ export class RoomManager {
         break;
       case 'ability':
         player.room?.match.onAbility(player.id, msg.p, this.now());
+        break;
+      case 'detonate':
+        player.room?.match.onDetonate(player.id, msg.rid, msg.p, this.now());
         break;
       case 'ping':
         send(conn, { t: 'pong', id: msg.id, ct: msg.ct, st: this.now() });

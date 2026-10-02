@@ -1,6 +1,6 @@
 import { getMap, pickSpawn, type MapDef, type MapId } from '../../shared/maps/index.js';
 import { SMOKE } from '../../shared/abilities.js';
-import { launchMissile, MISSILE, missileImpact, refillPod, splashDamage, stepMissile, type AimRay, type MissileState } from '../../shared/missile.js';
+import { MISSILE, MISSILE_MAX_AGE, missileImpact, refillPod, splashDamage } from '../../shared/missile.js';
 import { COMBAT } from '../../shared/combat.js';
 import { DEFAULT_DRONE, droneClass, type DroneClass, type DroneClassId } from '../../shared/drones.js';
 import {
@@ -53,27 +53,35 @@ interface Pilot {
   /** Token bucket for fire-rate checks (ADR-0014): rounds available, and when it was last refilled. */
   ammo: number;
   ammoAt: number;
-  /** Freestyle missile pod, its latest line of sight for guidance, and the 3D smoke cooldown (ADR-0016). */
+  /** Freestyle missile pod (ADR-0025) and the 3D smoke cooldown (ADR-0024). */
   missiles: number;
   missilesAt: number;
-  aim: AimRay | null;
   smokeReadyAt: number;
   /** Index of the last spawn used, so the next one differs (ADR-0012). */
   lastSpawn: number | null;
   history: HistoryEntry[];
 }
 
-/** A guided missile in flight (ADR-0016), flown in server time with the shooter's live aim. */
+/**
+ * A piloted missile in flight (ADR-0025). The shooter's client flies it and reports its pose with each
+ * state; the server checks every reported move (speed cap, lifetime) and decides impacts.
+ */
 interface Missile {
   shooter: string;
   rid: number;
-  m: MissileState;
+  p: Vec3;
+  v: Vec3;
+  /** Server time it launched, and of its last accepted position. */
+  born: number;
+  updatedAt: number;
   lastSent: number;
 }
 
-/** Physics step for missiles (s) and how often their positions go out to clients (ms). */
-const MISSILE_STEP = 1 / 120;
+/** How often missile positions go out to the other clients (ms). */
 const MISSILE_SEND_MS = 50;
+/** Slack on the speed check: jitter in update timing, plus a few metres (ms are server receive times). */
+const MISSILE_SPEED_SLACK = 1.3;
+const MISSILE_MOVE_SLACK_M = 3;
 /** Missile pod: accept a launch when the server's pod is within this of a full missile (clock skew). */
 const POD_GRACE = 0.1;
 
@@ -102,7 +110,6 @@ export class Match {
   private readonly pilots = new Map<string, Pilot>();
   private bullets: Bullet[] = [];
   private missiles: Missile[] = [];
-  private missileClock = 0;
   private now = 0;
   private protectedAnnounced = new Set<string>();
   private readonly map: MapDef;
@@ -142,7 +149,6 @@ export class Match {
       ammoAt: now,
       missiles: MISSILE.pod,
       missilesAt: now,
-      aim: null,
       smokeReadyAt: 0,
       lastSpawn: null,
       history: [],
@@ -196,8 +202,8 @@ export class Match {
     if (!pilot) return;
     this.now = st;
     pilot.history.push({ st, p: s.p, v: s.v });
-    pilot.aim = s.g ? { o: [s.g[0], s.g[1], s.g[2]], d: [s.g[3], s.g[4], s.g[5]] } : null;
     while (pilot.history.length > 1 && (pilot.history[0]?.st ?? st) < st - HISTORY_MS) pilot.history.shift();
+    if (s.k) this.moveMissile(id, s.k, st);
 
     const crashedNow = s.crashed && !pilot.lastCrashed;
     pilot.lastCrashed = s.crashed;
@@ -220,7 +226,8 @@ export class Match {
       // only once accepted, so nobody sees a ghost launch (ADR-0016).
       if (!pilot.alive || !muzzleOk || !this.takeMissile(pilot, st)) return;
       this.emit({ t: 'shot', id, s: shot }, { except: id });
-      this.missiles.push({ shooter: id, rid: shot.rid ?? 0, m: launchMissile(shot.p, shot.d), lastSent: 0 });
+      const v: Vec3 = [shot.d[0] * MISSILE.launchSpeed, shot.d[1] * MISSILE.launchSpeed, shot.d[2] * MISSILE.launchSpeed];
+      this.missiles.push({ shooter: id, rid: shot.rid ?? 0, p: [shot.p[0], shot.p[1], shot.p[2]], v, born: st, updatedAt: st, lastSent: 0 });
       return;
     }
 
@@ -271,9 +278,9 @@ export class Match {
   }
 
   /**
-   * Freestyle missile: must fly a Freestyle and have one in the pod. One in flight at a time: the shooter's
-   * client ends a missile slightly before the server does (the server started it later by the upload
-   * delay), so a new launch *replaces* the old one (it detonates where it is) instead of being refused.
+   * Freestyle missile: must fly a Freestyle and have one in the pod. One in flight at a time: if the
+   * server still has the old one (its end hasn't arrived yet), a new launch *replaces* it (it detonates
+   * where it is) instead of being refused.
    */
   private takeMissile(pilot: Pilot, now: number): boolean {
     if (pilot.drone !== 'freestyle') return false;
@@ -287,56 +294,91 @@ export class Match {
       const old = this.missiles[i]!;
       if (old.shooter !== pilot.id) continue;
       this.missiles.splice(i, 1);
-      this.explode(old.shooter, old.rid, [old.m.p[0], old.m.p[1], old.m.p[2]], now);
+      this.explode(old.shooter, old.rid, [old.p[0], old.p[1], old.p[2]], now);
     }
     return true;
   }
 
   /**
-   * Fly every missile forward to `now` (ADR-0016). Guidance uses the shooter's latest line of sight;
-   * if they're dead or switched class, the wire is cut. Explodes on proximity, geometry, or lifetime.
+   * The shooter reports where their missile is now (ADR-0025). Accept the move if it's physically
+   * possible (clamp it if not), then check the path since the last report for geometry, pilots and props.
    */
-  private stepMissiles(now: number): void {
-    if (this.missiles.length === 0) {
-      this.missileClock = now;
+  private moveMissile(shooter: string, k: readonly number[], now: number): void {
+    const x = this.missiles.find((m) => m.shooter === shooter && m.rid === k[0]);
+    if (!x) return;
+    const a = x.p;
+    let b: Vec3 = [k[1]!, k[2]!, k[3]!];
+    const dist = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    const maxMove = (MISSILE.maxSpeed * MISSILE_SPEED_SLACK * Math.max(0, now - x.updatedAt)) / 1000 + MISSILE_MOVE_SLACK_M;
+    if (dist > maxMove) {
+      const f = maxMove / dist;
+      b = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+    }
+    const sp = Math.hypot(k[4]!, k[5]!, k[6]!);
+    const vf = sp > MISSILE.maxSpeed ? MISSILE.maxSpeed / sp : 1;
+    const v: Vec3 = [k[4]! * vf, k[5]! * vf, k[6]! * vf];
+    const impact = this.missileImpactAt(shooter, a, b, now);
+    if (impact) {
+      this.removeMissile(x);
+      this.explode(x.shooter, x.rid, impact, now);
       return;
     }
-    let remaining = Math.min(0.25, (now - this.missileClock) / 1000);
-    this.missileClock = now;
-    while (remaining > 1e-6 && this.missiles.length > 0) {
-      const dt = Math.min(MISSILE_STEP, remaining);
-      remaining -= dt;
-      for (let i = this.missiles.length - 1; i >= 0; i--) {
-        const x = this.missiles[i]!;
-        const shooter = this.pilots.get(x.shooter);
-        const aim = shooter && shooter.alive && shooter.drone === 'freestyle' ? shooter.aim : null;
-        const a: Vec3 = [x.m.p[0], x.m.p[1], x.m.p[2]];
-        const alive = stepMissile(x.m, aim, dt);
-        const b = x.m.p;
-        // Enemies only: never the shooter, never the dead or spawn-protected.
-        const targets: Vec3[] = [];
-        for (const target of this.pilots.values()) {
-          if (target.id === x.shooter || !target.alive || target.protectedUntil > now) continue;
-          const pos = sampleHistory(target.history, now);
-          if (pos) targets.push(pos);
-        }
-        // The fuse also reacts to cars, barrels and tanks (ADR-0023).
-        targets.push(...this.props.centers(now));
-        const impact = missileImpact(a, b, this.colliders, targets);
-        let at: Vec3 | null = null;
-        if (impact !== null) at = [a[0] + (b[0] - a[0]) * impact, a[1] + (b[1] - a[1]) * impact, a[2] + (b[2] - a[2]) * impact];
-        else if (!alive) at = [b[0], b[1], b[2]];
-        if (at) {
-          this.missiles.splice(i, 1);
-          this.explode(x.shooter, x.rid, at, now);
-        }
+    x.p = b;
+    x.v = v;
+    x.updatedAt = now;
+  }
+
+  /** Where along a -> b the missile hits geometry or trips its fuse (pilots as the shooter saw them, props), or null. */
+  private missileImpactAt(shooter: string, a: Vec3, b: Vec3, now: number): Vec3 | null {
+    const seen = Math.max(now - NET.interpDelayMs, now - MAX_REWIND_MS);
+    const targets: Vec3[] = [];
+    for (const target of this.pilots.values()) {
+      // Enemies only: never the shooter, never the dead or spawn-protected.
+      if (target.id === shooter || !target.alive || target.protectedUntil > now) continue;
+      const pos = sampleHistory(target.history, seen);
+      if (pos) targets.push(pos);
+    }
+    // The fuse also reacts to cars, barrels and tanks (ADR-0023).
+    targets.push(...this.props.centers(now));
+    const f = missileImpact(a, b, this.colliders, targets);
+    return f === null ? null : [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+  }
+
+  /** The shooter blew up their missile (or their client saw it hit something). Trust the point if it's plausible. */
+  onDetonate(id: string, rid: number, p: Vec3, now: number): void {
+    const x = this.missiles.find((m) => m.shooter === id && m.rid === rid);
+    if (!x) return;
+    const reach = (MISSILE.maxSpeed * MISSILE_SPEED_SLACK * Math.max(0, now - x.updatedAt)) / 1000 + MISSILE_MOVE_SLACK_M;
+    const near = Math.hypot(p[0] - x.p[0], p[1] - x.p[1], p[2] - x.p[2]) <= reach;
+    // Check the last stretch too, so a detonation can't skip past a wall or a target.
+    const at = (near && this.missileImpactAt(id, x.p, p, now)) || (near ? p : x.p);
+    this.removeMissile(x);
+    this.explode(x.shooter, x.rid, [at[0], at[1], at[2]], now);
+  }
+
+  private removeMissile(x: Missile): void {
+    const i = this.missiles.indexOf(x);
+    if (i >= 0) this.missiles.splice(i, 1);
+  }
+
+  /** End missiles that went quiet or outlived their fuel (ADR-0025), and relay positions to everyone else. */
+  private stepMissiles(now: number): void {
+    for (const x of [...this.missiles]) {
+      const shooter = this.pilots.get(x.shooter);
+      const expired = now - x.born > MISSILE_MAX_AGE * 1000 + MISSILE.staleMs;
+      const stale = now - x.updatedAt > MISSILE.staleMs;
+      // The pilot flying it died, or switched off the Freestyle: it blows where it is.
+      const orphaned = !shooter || !shooter.alive || shooter.drone !== 'freestyle';
+      if (expired || stale || orphaned) {
+        this.removeMissile(x);
+        this.explode(x.shooter, x.rid, x.p, now);
       }
     }
     for (const x of this.missiles) {
       if (now - x.lastSent < MISSILE_SEND_MS) continue;
       x.lastSent = now;
       const r = (n: number) => Math.round(n * 100) / 100;
-      this.emit({ t: 'missile', id: x.shooter, rid: x.rid, p: x.m.p.map(r) as Vec3, v: x.m.v.map(r) as Vec3 });
+      this.emit({ t: 'missile', id: x.shooter, rid: x.rid, p: x.p.map(r) as Vec3, v: x.v.map(r) as Vec3 }, { except: x.shooter });
     }
   }
 

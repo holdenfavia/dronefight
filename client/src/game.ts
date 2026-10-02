@@ -106,6 +106,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   });
   // Our missile's predicted proximity fuse: practice bots, or the other pilots in a room (the server
   // decides the real explosion; this just keeps it from visibly flying through them first).
+  // Our missile ended (hit, fuse, burnout or detonated): the server makes it official (ADR-0025).
+  combatEffects.missiles.onLocalEnd = (rid, at) => net.sendDetonate(rid, at);
   // Props set off the fuse too (ADR-0023).
   const fuseTargets: THREE.Vector3[] = [];
   combatEffects.missiles.fuseTargets = () => {
@@ -207,6 +209,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   };
   let wasInRoom = false;
   const smokeSources: { id: string; position: THREE.Vector3 }[] = [];
+  const missileCamPos = new THREE.Vector3();
+  const missileCamRot = new THREE.Quaternion();
+  const missileTargets: THREE.Vector3[] = [];
 
   let paused = true;
   const menu = new Menu(menuRoot, input, settings, net, {
@@ -328,6 +333,14 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     else void document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
   }
 
+  /** What the missile HUD measures range to: practice bots, or the other pilots (not while they smoke). */
+  function missileTargetList(): readonly THREE.Vector3[] {
+    missileTargets.length = 0;
+    if (training.active) missileTargets.push(...training.targets());
+    else for (const v of remotes.views) if (!v.crashed && !v.concealed) missileTargets.push(v.position);
+    return missileTargets;
+  }
+
   function localState(): DroneState {
     const p = drone.currPos;
     const q = drone.currRot;
@@ -341,8 +354,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       m: r(drone.state.motorOutput),
       armed: drone.armed,
       crashed: drone.crashed,
-      // Our line of sight while a missile is in flight: the server steers the real missile with it (ADR-0016).
-      g: combat.guidance() ?? undefined,
+      // The missile we're flying: the server checks its path and decides hits (ADR-0025).
+      k: combat.missilePose() ?? undefined,
     };
   }
 
@@ -468,6 +481,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
         if (control.resetPressed && training.active) training.resetStats();
       }
 
+      // While you fly a missile, the drone holds a hover (ADR-0025).
+      drone.autoHover = !!combat.flying;
       accumulator += frameDt;
       while (accumulator >= STEP) {
         drone.preStep(control, settings.rates, STEP);
@@ -495,6 +510,15 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     combatEffects.smoke.update(smokeSources);
     const remote = remotes.views[0];
     combat.update(frameDt, control, !paused);
+    // Riding our missile: the camera is its nose, and you can see your own drone hovering (ADR-0025).
+    const ridden = combat.flying;
+    if (ridden) {
+      const m = ridden.m;
+      missileCamPos.set(m.p[0], m.p[1], m.p[2]);
+      missileCamRot.set(m.q[0], m.q[1], m.q[2], m.q[3]);
+      rig.updateMissile(missileCamPos, missileCamRot);
+    }
+    droneModel.visible = settings.camera.view === 'chase' || !!ridden;
     tracers.update();
     particles.update(rig.camera, frameDt);
     training.setActive(!net.inRoom && currentMap.id === 'training');
@@ -508,7 +532,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     camUpA.set(0, 1, 0).applyQuaternion(cam.quaternion);
     audio.updateListener(cam.position.x, cam.position.y, cam.position.z, camForwardA.x, camForwardA.y, camForwardA.z, camUpA.x, camUpA.y, camUpA.z);
     audio.setDucked(menu.visible);
-    motorSound.update(drone.state.motorOutput, drone.speed, drone.armed && !drone.crashed);
+    // Riding a missile, you hear its motor (by throttle) instead of your hovering quad.
+    if (ridden) motorSound.update(0.35 + 0.65 * ridden.m.throttle, Math.hypot(...ridden.m.v), ridden.m.burnout === null);
+    else motorSound.update(drone.state.motorOutput, drone.speed, drone.armed && !drone.crashed);
     remoteAudio.update(remotes.views);
     if (drone.crashed && !wasCrashed) sfx.crash();
     else if (drone.armed !== wasArmed && !drone.crashed) sfx.arm(drone.armed);
@@ -533,6 +559,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
         ? leadFor(remote.position, remote.velocity)
         : practiceLead(),
       training: training.active ? training.statsText() : null,
+      missile: combat.missileHud(missileTargetList()),
       special:
         drone.classId === 'wing'
           ? { label: 'MANEUVER', value: drone.stalled ? 'STALL' : drone.maneuverActive ? 'ON' : 'OFF' }

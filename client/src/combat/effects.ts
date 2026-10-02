@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { SMOKE } from '../../../shared/abilities';
-import { launchMissile, MISSILE, missileImpact, stepMissile, type AimRay, type MissileState, type Vec3 } from '../../../shared/missile';
+import { launchMissile, MISSILE, missileImpact, stepMissile, type MissileInput, type MissileState, type Vec3 } from '../../../shared/missile';
 import type { BoxCollider } from '../../../shared/raycast';
 import type { Particles } from '../render/particles';
 
@@ -67,12 +67,15 @@ const REMOTE_TIMEOUT_MS = 600;
 const RECENT = 16;
 
 /**
- * Guided missiles (ADR-0016): ours predicted locally with shared physics (steering feels instant),
- * theirs drawn from the server's ~20/s updates. The server decides the real explosion (`boom`).
+ * Missiles (ADR-0025): ours flown here from the pilot's sticks with the shared physics (we report its
+ * pose to the server), theirs drawn from the server's ~20/s updates. The server decides the real
+ * explosion (`boom`); ours is drawn the moment we see it hit.
  */
 export class Missiles {
-  /** Extra things our missiles' proximity fuse reacts to locally (practice bots, ADR-0017). */
+  /** Things our missile's proximity fuse reacts to locally (bots, pilots, props). */
   fuseTargets: () => readonly THREE.Vector3[] = () => [];
+  /** Our missile ended here (hit, fuse, self-destruct or detonated): tell the server. */
+  onLocalEnd: ((rid: number, at: Vec3) => void) | null = null;
   private readonly missiles: FlyingMissile[] = [];
   private readonly pool: THREE.Mesh[] = [];
   private readonly flashes: { sprite: THREE.Sprite; born: number }[] = [];
@@ -115,6 +118,21 @@ export class Missiles {
     return this.missiles.filter((m) => m.owner === owner).length;
   }
 
+  /** The missile `owner` is flying locally (ours), or null. */
+  local(owner: string): { rid: number; m: MissileState } | null {
+    const x = this.missiles.find((m) => m.owner === owner && m.local);
+    return x?.local ? { rid: x.rid, m: x.local } : null;
+  }
+
+  /** Blow up our missile where it is now (Fire / Special while flying it). */
+  detonateLocal(owner: string): void {
+    const i = this.missiles.findIndex((m) => m.owner === owner && m.local);
+    if (i < 0) return;
+    const m = this.missiles[i]!;
+    const at: Vec3 = [m.local!.p[0], m.local!.p[1], m.local!.p[2]];
+    this.endLocal(i, at);
+  }
+
   /** Ours: fly it locally from launch. */
   launchLocal(owner: string, rid: number, origin: THREE.Vector3, dir: THREE.Vector3): void {
     this.add(owner, rid, launchMissile([origin.x, origin.y, origin.z], [dir.x, dir.y, dir.z]), null);
@@ -122,7 +140,7 @@ export class Missiles {
 
   /** Theirs: start from the launch message, then follow server updates. */
   launchRemote(owner: string, rid: number, origin: THREE.Vector3, dir: THREE.Vector3): void {
-    this.add(owner, rid, null, { p: origin.clone(), v: dir.clone().normalize().multiplyScalar(MISSILE.speed), at: performance.now() });
+    this.add(owner, rid, null, { p: origin.clone(), v: dir.clone().normalize().multiplyScalar(MISSILE.launchSpeed), at: performance.now() });
   }
 
   /** Server position update for someone else's missile. */
@@ -142,8 +160,8 @@ export class Missiles {
     this.explode(this.pos.set(at[0], at[1], at[2]));
   }
 
-  /** Advance: our missiles with our live aim (null = no guidance), theirs by extrapolation. */
-  update(dt: number, ourAim: AimRay | null): void {
+  /** Advance: ours from the pilot's sticks (null = centered), theirs by extrapolation. */
+  update(dt: number, input: MissileInput | null): void {
     const now = performance.now();
     for (let i = this.missiles.length - 1; i >= 0; i--) {
       const m = this.missiles[i]!;
@@ -151,18 +169,18 @@ export class Missiles {
         this.from[0] = m.local.p[0];
         this.from[1] = m.local.p[1];
         this.from[2] = m.local.p[2];
-        const alive = stepMissile(m.local, ourAim, dt);
+        const alive = stepMissile(m.local, input, dt);
         const [bx, by, bz] = m.local.p;
-        // Same impact rule as the server: geometry, or the proximity fuse on practice targets.
+        // Same impact rule as the server: geometry, or the proximity fuse.
         const impact = missileImpact(this.from, m.local.p, this.colliders(), this.fuseTargets());
         if (impact !== null || !alive) {
-          // Predicted impact: draw it now; the server's damage follows.
-          this.pos.set(this.from[0], this.from[1], this.from[2]).lerp(this.look.set(bx, by, bz), impact ?? 1);
-          this.remember(m);
-          this.remove(i);
-          this.explode(this.pos);
+          const f = impact ?? 1;
+          const at: Vec3 = [this.from[0] + (bx - this.from[0]) * f, this.from[1] + (by - this.from[1]) * f, this.from[2] + (bz - this.from[2]) * f];
+          this.endLocal(i, at);
           continue;
         }
+        // We're riding it (the camera is inside), so it isn't drawn.
+        m.mesh.visible = false;
         m.mesh.position.set(bx, by, bz);
         this.look.set(m.local.v[0], m.local.v[1], m.local.v[2]);
       } else if (m.remote) {
@@ -177,7 +195,8 @@ export class Missiles {
       if (this.look.lengthSq() > 1e-6) m.mesh.quaternion.setFromUnitVectors(FORWARD, this.look.normalize());
       if (now - m.lastPuff > 22) {
         m.lastPuff = now;
-        const p = m.mesh.position;
+        // A little behind the missile, so the camera riding ours isn't inside the puff.
+        const p = this.pos.copy(m.mesh.position).addScaledVector(this.look, -2.5);
         this.particles.emit(p.x, p.y, p.z, { startSize: 0.35, endSize: 1.8, lifeMs: 1100, color: '#cfd2d4', alpha: 0.7, vy: 0.6 });
       }
     }
@@ -194,8 +213,18 @@ export class Missiles {
     }
   }
 
+  /** Our missile ends: draw the blast now, remember it so the server's `boom` isn't drawn twice, report it. */
+  private endLocal(i: number, at: Vec3): void {
+    const m = this.missiles[i]!;
+    this.remember(m);
+    this.remove(i);
+    this.explode(this.pos.set(at[0], at[1], at[2]));
+    this.onLocalEnd?.(m.rid, at);
+  }
+
   private add(owner: string, rid: number, local: MissileState | null, remote: FlyingMissile['remote']): void {
     const mesh = this.pool.pop() ?? new THREE.Mesh(this.geo, this.mat);
+    mesh.visible = true;
     this.scene.add(mesh);
     this.missiles.push({ owner, rid, local, remote, lastPuff: 0, mesh });
   }

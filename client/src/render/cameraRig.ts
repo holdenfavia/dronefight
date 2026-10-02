@@ -35,6 +35,15 @@ export class CameraRig {
     this.camera.updateProjectionMatrix();
   }
 
+  /** Ride a missile (ADR-0025): look straight out of its nose, from just behind the tip. */
+  updateMissile(pos: THREE.Vector3, rot: THREE.Quaternion): void {
+    const cam = this.camera;
+    this.chaseInitialized = false;
+    cam.quaternion.copy(rot);
+    this.offset.set(0, 0, -0.4).applyQuaternion(rot);
+    cam.position.copy(pos).add(this.offset);
+  }
+
   /** Place the camera from the interpolated drone pose. */
   update(pos: THREE.Vector3, rot: THREE.Quaternion, dt: number): void {
     const cam = this.camera;

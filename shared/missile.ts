@@ -1,24 +1,44 @@
-// Freestyle's TOW-style guided missile (ADR-0016). Shared physics: the server flies it authoritatively,
-// and the shooter's client runs the same code to predict their own missile with zero steering lag.
+// Freestyle's piloted missile (ADR-0025). The shooter flies it from its own camera with the same
+// shared physics; the server validates the reported path and decides hits.
 
 import { raycastArena, segmentPointDistance, type BoxCollider } from './raycast.js';
 
 export type Vec3 = [number, number, number];
+/** Quaternion [x, y, z, w]. */
+export type Quat = [number, number, number, number];
 
 export const MISSILE = {
-  /** Motor burn: constant speed (m/s) for boostSeconds. */
-  speed: 95,
-  boostSeconds: 2.5,
-  /** Self-destructs at this age (s): together with the burn time this caps the reach (~340 m). */
-  lifetimeSeconds: 5,
-  /** Max turn rate while boosting, and after burnout (deg/s). */
-  turnRateDeg: 110,
-  coastTurnRateDeg: 30,
-  /** After burnout: speed decays by this fraction per second, and gravity pulls it down. */
-  coastDrag: 0.8,
+  /** Speed leaving the rail (m/s). */
+  launchSpeed: 60,
+  /**
+   * Thrust as acceleration (m/s²) at full throttle; at zero throttle the motor still gives
+   * `idleThrust` of it. Drag (a = drag·v²) sets the cruise speeds: ~120 m/s at full, ~60 at idle.
+   */
+  thrustAccel: 140,
+  idleThrust: 0.25,
+  drag: 0.0097,
+  /** Validation cap for reported speeds (m/s). */
+  maxSpeed: 130,
+  /** Body rates at full stick (deg/s), scaled by thrust-vectoring authority. */
+  rollDeg: 360,
+  pitchDeg: 160,
+  yawDeg: 100,
+  /** Stick expo, so small corrections are gentle. */
+  expo: 0.3,
+  /** Turn authority from thrust vectoring: `minAuthority` at idle up to 1 at full throttle; after burnout `glideAuthority`. */
+  minAuthority: 0.4,
+  glideAuthority: 0.3,
+  /** How fast the flight path swings onto the nose (1/s): high, it's a missile. */
+  align: 6,
+  glideAlign: 1.5,
+  /** Fuel in seconds at full throttle; burns at `idleBurn` of that rate at zero throttle. */
+  fuelSeconds: 6,
+  idleBurn: 0.3,
+  /** After burnout it glides (gravity, drag) this long, then self-destructs. */
+  glideSeconds: 1.5,
+  /** Never flies longer than this, whatever the throttle (s). */
+  maxFlightSeconds: 10,
   gravity: 9.81,
-  /** Guidance aims this far past the missile along your line of sight (m), so it flies onto the crosshair smoothly. */
-  aimLead: 12,
   /** Proximity fuse radius (m). */
   proximity: 2.5,
   /**
@@ -29,93 +49,145 @@ export const MISSILE = {
   lethalRadius: 3,
   damage: 50,
   splashRadius: 6,
-  /** Pod size, time to regenerate one (ms), and how many can fly at once (a TOW operator guides one). */
+  /** Pod size, time to regenerate one (ms), and how many can fly at once. */
   pod: 3,
   regenMs: 4000,
   maxInFlight: 1,
+  /** Server: a missile with no position update for this long explodes where it was (ms). */
+  staleMs: 500,
 } as const;
+
+/** Total time a missile can exist (s): flight cap plus the glide after burnout. */
+export const MISSILE_MAX_AGE = MISSILE.maxFlightSeconds + MISSILE.glideSeconds;
 
 export interface MissileState {
   p: Vec3;
   /** Velocity (m/s). */
   v: Vec3;
+  /** Orientation; the nose is local -Z (like the drones). */
+  q: Quat;
   /** Seconds since launch. */
   age: number;
+  /** Fuel left, in seconds at full throttle. */
+  fuel: number;
+  /** Age when the fuel ran out, or null while burning. */
+  burnout: number | null;
+  /** Last throttle (0..1), for the HUD and sound. */
+  throttle: number;
 }
 
-/** The shooter's line of sight: where their crosshair points. */
-export interface AimRay {
-  o: Vec3;
-  d: Vec3;
+/** The pilot's sticks while flying the missile: throttle 0..1, rates -1..1. */
+export interface MissileInput {
+  throttle: number;
+  roll: number;
+  pitch: number;
+  yaw: number;
 }
 
 export function launchMissile(p: Vec3, d: Vec3): MissileState {
   const len = Math.hypot(d[0], d[1], d[2]) || 1;
-  return { p: [p[0], p[1], p[2]], v: [(d[0] / len) * MISSILE.speed, (d[1] / len) * MISSILE.speed, (d[2] / len) * MISSILE.speed], age: 0 };
+  const dir: Vec3 = [d[0] / len, d[1] / len, d[2] / len];
+  return {
+    p: [p[0], p[1], p[2]],
+    v: [dir[0] * MISSILE.launchSpeed, dir[1] * MISSILE.launchSpeed, dir[2] * MISSILE.launchSpeed],
+    q: quatLookAlong(dir),
+    age: 0,
+    fuel: MISSILE.fuelSeconds,
+    burnout: null,
+    throttle: 0.5,
+  };
 }
 
-/**
- * Advance one step. Guidance (SACLOS, like a TOW): steer toward the point on the shooter's line of sight
- * a little past the missile, limited by the turn rate. `aim` null = wire cut: no steering.
- * Returns false once the missile has reached its lifetime (self-destruct).
- */
-export function stepMissile(m: MissileState, aim: AimRay | null, dt: number): boolean {
-  const boosting = m.age < MISSILE.boostSeconds;
-  let [vx, vy, vz] = m.v;
-  let speed = Math.hypot(vx, vy, vz);
+const expo = (x: number) => x * (1 - MISSILE.expo) + x * x * x * MISSILE.expo;
+const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 
-  if (aim && speed > 1) {
-    const [ox, oy, oz] = aim.o;
-    const range = Math.hypot(m.p[0] - ox, m.p[1] - oy, m.p[2] - oz) + MISSILE.aimLead;
-    const tx = ox + aim.d[0] * range - m.p[0];
-    const ty = oy + aim.d[1] * range - m.p[1];
-    const tz = oz + aim.d[2] * range - m.p[2];
-    const tl = Math.hypot(tx, ty, tz);
-    if (tl > 1e-6) {
-      // Rotate the velocity direction toward the target direction by at most maxTurn.
-      const cx = vx / speed;
-      const cy = vy / speed;
-      const cz = vz / speed;
-      const wx = tx / tl;
-      const wy = ty / tl;
-      const wz = tz / tl;
-      const angle = Math.acos(Math.max(-1, Math.min(1, cx * wx + cy * wy + cz * wz)));
-      const maxTurn = ((boosting ? MISSILE.turnRateDeg : MISSILE.coastTurnRateDeg) * Math.PI) / 180 * dt;
-      if (angle > 1e-6) {
-        const k = Math.min(1, maxTurn / angle);
-        // Slerp between the unit vectors.
-        const sinA = Math.sin(angle);
-        const a = Math.sin((1 - k) * angle) / sinA;
-        const b = Math.sin(k * angle) / sinA;
-        vx = (a * cx + b * wx) * speed;
-        vy = (a * cy + b * wy) * speed;
-        vz = (a * cz + b * wz) * speed;
-      }
+/**
+ * Advance one step under the pilot's input (null = sticks centered, half throttle). Sticks command body
+ * rates with thrust-vectoring authority; the flight path swings onto the nose; thrust, drag and (after
+ * burnout) gravity set the speed. Returns false once its flight is over (self-destruct).
+ */
+export function stepMissile(m: MissileState, input: MissileInput | null, dt: number): boolean {
+  const throttle = clamp(input?.throttle ?? 0.5, 0, 1);
+  const burning = m.burnout === null;
+  m.throttle = burning ? throttle : 0;
+
+  // Fuel.
+  if (burning) {
+    m.fuel -= (MISSILE.idleBurn + (1 - MISSILE.idleBurn) * throttle) * dt;
+    if (m.fuel <= 0) {
+      m.fuel = 0;
+      m.burnout = m.age;
     }
   }
+  const thrustFrac = m.burnout === null ? MISSILE.idleThrust + (1 - MISSILE.idleThrust) * throttle : 0;
 
-  if (boosting) {
-    // Motor on: hold speed along the current heading.
-    const s = Math.hypot(vx, vy, vz) || 1;
-    vx = (vx / s) * MISSILE.speed;
-    vy = (vy / s) * MISSILE.speed;
-    vz = (vz / s) * MISSILE.speed;
-  } else {
-    // Burnt out: drag bleeds speed and gravity pulls it down. No more boost, ever.
-    const decay = Math.exp(-MISSILE.coastDrag * dt);
-    vx *= decay;
-    vy = vy * decay - MISSILE.gravity * dt;
-    vz *= decay;
+  // Rotation: body rates from the sticks (same signs as the wing), scaled by vectoring authority.
+  const authority = m.burnout === null ? MISSILE.minAuthority + (1 - MISSILE.minAuthority) * throttle : MISSILE.glideAuthority;
+  const DEG = Math.PI / 180;
+  const wx = -expo(clamp(input?.pitch ?? 0, -1, 1)) * MISSILE.pitchDeg * DEG * authority;
+  const wy = -expo(clamp(input?.yaw ?? 0, -1, 1)) * MISSILE.yawDeg * DEG * authority;
+  const wz = -expo(clamp(input?.roll ?? 0, -1, 1)) * MISSILE.rollDeg * DEG * authority;
+  const angle = Math.hypot(wx, wy, wz) * dt;
+  if (angle > 1e-9) {
+    const k = Math.sin(angle / 2) / (Math.hypot(wx, wy, wz) || 1);
+    m.q = quatNormalize(quatMultiply(m.q, [wx * k, wy * k, wz * k, Math.cos(angle / 2)]));
   }
-  speed = Math.hypot(vx, vy, vz);
-  m.v[0] = vx;
-  m.v[1] = vy;
-  m.v[2] = vz;
-  m.p[0] += vx * dt;
-  m.p[1] += vy * dt;
-  m.p[2] += vz * dt;
+  const nose = quatRotate(m.q, [0, 0, -1]);
+
+  // Speed: thrust minus drag along the path.
+  let speed = Math.hypot(m.v[0], m.v[1], m.v[2]);
+  speed = Math.max(0, speed + (MISSILE.thrustAccel * thrustFrac - MISSILE.drag * speed * speed) * dt);
+  // Direction: swing the flight path toward the nose.
+  let dir: Vec3 = speed > 1e-6 ? [m.v[0], m.v[1], m.v[2]] : [nose[0], nose[1], nose[2]];
+  const dl = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+  dir = [dir[0] / dl, dir[1] / dl, dir[2] / dl];
+  const f = 1 - Math.exp(-(m.burnout === null ? MISSILE.align : MISSILE.glideAlign) * dt);
+  dir = [dir[0] + (nose[0] - dir[0]) * f, dir[1] + (nose[1] - dir[1]) * f, dir[2] + (nose[2] - dir[2]) * f];
+  const nl = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+  m.v = [(dir[0] / nl) * speed, (dir[1] / nl) * speed, (dir[2] / nl) * speed];
+  // Powered, the motor holds it up; gliding, gravity takes over.
+  if (m.burnout !== null) m.v[1] -= MISSILE.gravity * dt;
+
+  m.p[0] += m.v[0] * dt;
+  m.p[1] += m.v[1] * dt;
+  m.p[2] += m.v[2] * dt;
   m.age += dt;
-  return m.age < MISSILE.lifetimeSeconds;
+  if (m.age >= MISSILE.maxFlightSeconds && m.burnout === null) m.burnout = m.age;
+  return m.burnout === null || m.age - m.burnout < MISSILE.glideSeconds;
+}
+
+// --- Small quaternion helpers (shared code can't use three.js types on the server's hot path).
+
+export function quatMultiply(a: Quat, b: Quat): Quat {
+  return [
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+  ];
+}
+
+export function quatNormalize(q: Quat): Quat {
+  const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1;
+  return [q[0] / l, q[1] / l, q[2] / l, q[3] / l];
+}
+
+export function quatRotate(q: Quat, v: Vec3): Vec3 {
+  const [x, y, z, w] = q;
+  // t = 2 * cross(q.xyz, v); v' = v + w t + cross(q.xyz, t)
+  const tx = 2 * (y * v[2] - z * v[1]);
+  const ty = 2 * (z * v[0] - x * v[2]);
+  const tz = 2 * (x * v[1] - y * v[0]);
+  return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)];
+}
+
+/** Orientation whose nose (-Z) points along `dir`, with no roll (right wing level). */
+export function quatLookAlong(dir: Vec3): Quat {
+  const yaw = Math.atan2(-dir[0], -dir[2]);
+  const pitch = Math.asin(clamp(dir[1], -1, 1));
+  const qy: Quat = [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)];
+  const qx: Quat = [Math.sin(pitch / 2), 0, 0, Math.cos(pitch / 2)];
+  return quatMultiply(qy, qx);
 }
 
 /** Enough to destroy any drone class outright. */

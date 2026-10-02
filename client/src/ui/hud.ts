@@ -60,6 +60,8 @@ export interface HudInfo {
   special: { label: string; value: string } | null;
   /** Training stats line (ADR-0017), shown where the match score would be. */
   training: string | null;
+  /** Riding a missile (ADR-0025): its own HUD replaces the drone OSD. */
+  missile: { speed: number; throttle: number; fuel: number; timeLeft: number; range: number | null } | null;
 }
 
 type El =
@@ -80,7 +82,13 @@ type El =
   | 'banner'
   | 'lead'
   | 'special'
-  | 'specialLabel';
+  | 'specialLabel'
+  | 'msl'
+  | 'mslSpd'
+  | 'mslThrFill'
+  | 'mslFuelFill'
+  | 'mslTime'
+  | 'mslRange';
 
 /** On-screen display, styled after a Betaflight OSD. Updates text only when it changes. */
 export class Hud {
@@ -100,6 +108,14 @@ export class Hud {
       <div class="osd-marker" data-marker><span class="osd-marker-diamond"></span><span class="osd-marker-label" data-marker-label></span></div>
       <div class="osd-status" data-status></div>
       <div class="osd-hp" data-hp><span class="osd-label">HP</span><div class="osd-hp-bar"><div class="osd-hp-fill" data-hp-fill></div></div><span data-hp-text></span></div>
+      <div class="msl" data-msl hidden>
+        <div class="msl-corners"></div>
+        <div class="msl-reticle"><span></span></div>
+        <div class="msl-top">TV GUIDED · <b data-msl-time></b></div>
+        <div class="msl-left"><span class="osd-label">THR</span><div class="msl-bar"><div data-msl-thr></div></div></div>
+        <div class="msl-right"><span class="osd-label">FUEL</span><div class="msl-bar"><div data-msl-fuel></div></div></div>
+        <div class="msl-bottom"><span data-msl-spd></span><span data-msl-range></span><span class="msl-hint">FIRE / SPECIAL: DETONATE</span></div>
+      </div>
       <div class="osd-bottom">
         <div class="osd-item"><span class="osd-label">THR</span><span data-thr></span></div>
         <div class="osd-item"><span class="osd-label">SPD</span><span data-spd></span></div>
@@ -130,6 +146,12 @@ export class Hud {
       lead: q('[data-lead]'),
       special: q('[data-special]'),
       specialLabel: q('[data-special-label]'),
+      msl: q('[data-msl]'),
+      mslSpd: q('[data-msl-spd]'),
+      mslThrFill: q('[data-msl-thr]'),
+      mslFuelFill: q('[data-msl-fuel]'),
+      mslTime: q('[data-msl-time]'),
+      mslRange: q('[data-msl-range]'),
     };
   }
 
@@ -188,6 +210,22 @@ export class Hud {
     lead.hidden = !info.lead;
     if (info.lead) lead.style.transform = `translate(${info.lead.x.toFixed(1)}px, ${info.lead.y.toFixed(1)}px)`;
     this.updateCombat(combat);
+    this.updateMissile(info.missile);
+  }
+
+  private updateMissile(m: HudInfo['missile']): void {
+    const el = this.el;
+    el.msl.hidden = !m;
+    // The drone's crosshair and bottom row make no sense from the missile's nose.
+    el.msl.parentElement?.classList.toggle('riding-missile', !!m);
+    if (!m) return;
+    this.set(el.mslSpd, `${Math.round(m.speed * 3.6)} KM/H`);
+    this.set(el.mslTime, `${m.timeLeft.toFixed(1)} S`);
+    this.set(el.mslRange, m.range === null ? 'NO TARGET' : `TGT ${Math.round(m.range)} M`);
+    el.mslRange.classList.toggle('lock', m.range !== null && m.range < 40);
+    el.mslThrFill.style.transform = `scaleY(${m.throttle.toFixed(3)})`;
+    el.mslFuelFill.style.transform = `scaleY(${Math.max(0, m.fuel).toFixed(3)})`;
+    el.msl.classList.toggle('low-fuel', m.fuel < 0.2);
   }
 
   private updateCombat(c: CombatHudInfo | null): void {

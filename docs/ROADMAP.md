@@ -89,6 +89,9 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Wing maneuver mode replaces the Cobra (ADR-0022)
 - [x] Destructible props: movers, parked cars, drums, propane, water tanks; server-synced, chains, blast damage (ADR-0023)
 - [ ] Play-test maneuver mode and prop blasts; tune HP and blast radii
+- [x] 3D smoke becomes a stealth smoke trail (ADR-0024)
+- [x] Freestyle missile is flown from its own camera; drone hovers (ADR-0025)
+- [ ] Play-test the flown missile; tune rates, speed and fuel
 - [ ] Additional maps
 - [x] Sound (motors, hits, UI): procedural, ADR-0010
 - [ ] Sound tuning pass after real matches

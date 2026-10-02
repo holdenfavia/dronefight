@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import { DRONE_CLASSES } from '../../shared/drones.js';
-import { MISSILE } from '../../shared/missile.js';
+import { launchMissile, MISSILE, quatRotate, stepMissile, type MissileState } from '../../shared/missile.js';
 import type { ServerMessage, Vec3 } from '../../shared/protocol.js';
 import { startServer } from './index.js';
 
@@ -35,8 +35,8 @@ async function connect(port: number): Promise<Client> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function state(p: Vec3, g?: [number, number, number, number, number, number]) {
-  return { t: 'state', s: { ts: 0, p, q: [0, 0, 0, 1], v: [0, 0, 0], m: 0.3, armed: true, crashed: false, ...(g ? { g } : {}) } };
+function state(p: Vec3, k?: number[]) {
+  return { t: 'state', s: { ts: 0, p, q: [0, 0, 0, 1], v: [0, 0, 0], m: 0.3, armed: true, crashed: false, ...(k ? { k } : {}) } };
 }
 
 describe('server pressure tests', () => {
@@ -63,7 +63,8 @@ describe('server pressure tests', () => {
       const r = Math.random();
       const n = () => (Math.random() < 0.1 ? [NaN, Infinity, -1e308, 1e308, 'x', null][Math.floor(Math.random() * 6)] : (Math.random() - 0.5) * 400);
       if (r < 0.1) return '{not json';
-      if (r < 0.2) return { t: 'state', s: { ts: n(), p: [n(), n(), n()], q: [0, 0, 0, 1], v: [n(), n(), n()], m: n(), armed: true, crashed: Math.random() < 0.1, g: Math.random() < 0.5 ? [n(), n(), n(), n(), n(), n()] : undefined } };
+      if (r < 0.2) return { t: 'state', s: { ts: n(), p: [n(), n(), n()], q: [0, 0, 0, 1], v: [n(), n(), n()], m: n(), armed: true, crashed: Math.random() < 0.1, k: Math.random() < 0.5 ? [n(), n(), n(), n(), n(), n(), n()] : undefined } };
+      if (r < 0.25) return { t: 'detonate', rid: n(), p: [n(), n(), n()] };
       if (r < 0.35) return { t: 'shot', s: { ts: n(), p: [n(), n(), n()], d: [n(), n(), n()] } };
       if (r < 0.5) return { t: 'shot', s: { ts: n(), p: [n(), n(), n()], d: [n(), n(), n()], w: 'rocket', rid: n() } };
       if (r < 0.6) return { t: 'ability', kind: 'smoke', p: [n(), n(), n()] };
@@ -90,7 +91,7 @@ describe('server pressure tests', () => {
     b.ws.close();
   });
 
-  it('a guided missile flown by a real client hits the moving target, not the shooter', async () => {
+  it('a missile flown by a real client (ADR-0025) hits the moving target, not the shooter', async () => {
     const { a, b } = await room();
     // Both default to Freestyle. Find who is who in the match, then wait out spawn protection.
     const match = (await a.waitFor((m) => m.t === 'match' && m.m.phase === 'playing')) as Extract<ServerMessage, { t: 'match' }>;
@@ -101,16 +102,25 @@ describe('server pressure tests', () => {
     const posA: Vec3 = [-100, 40, 60];
     let posB: Vec3 = [10, 40, 40];
     let running = true;
-    const aim = (): [number, number, number, number, number, number] => {
-      const d = [posB[0] - posA[0], posB[1] - posA[1], posB[2] - posA[2]];
-      const l = Math.hypot(d[0]!, d[1]!, d[2]!);
-      return [posA[0], posA[1], posA[2], d[0]! / l, d[1]! / l, d[2]! / l];
+    /** A's client flies the missile: a simple autopilot that keeps the nose on B. */
+    let missile = null as MissileState | null;
+    const pilot = (m: MissileState) => {
+      const d: Vec3 = [posB[0] - m.p[0], posB[1] - m.p[1], posB[2] - m.p[2]];
+      const l = Math.hypot(...d) || 1;
+      const local = quatRotate([-m.q[0], -m.q[1], -m.q[2], m.q[3]], [d[0] / l, d[1] / l, d[2] / l]);
+      const c = (x: number) => Math.max(-1, Math.min(1, x));
+      return { throttle: 1, roll: 0, yaw: c(local[0] * 4), pitch: c(-local[1] * 4) };
     };
+    let last = performance.now();
     const pump = (async () => {
       let t = 0;
       while (running) {
         posB = [10, 40, 40 - 12 * Math.sin(t)];
-        a.send(state(posA, aim()));
+        const now = performance.now();
+        const dt = (now - last) / 1000;
+        last = now;
+        if (missile) for (let i = 0; i < 4; i++) stepMissile(missile, pilot(missile), dt / 4);
+        a.send(state(posA, missile ? [1, ...missile.p, ...missile.v] : undefined));
         b.send(state(posB));
         t += 1 / 30;
         await sleep(1000 / 30);
@@ -118,9 +128,14 @@ describe('server pressure tests', () => {
     })();
     await sleep(2300); // spawn protection
 
-    // Launch pointed 30° off the target: guidance has to steer it in.
-    const d = aim();
-    a.send({ t: 'shot', s: { ts: 0, p: posA, d: [d[3] * 0.87, 0, d[5] + 0.5], w: 'rocket', rid: 1 } });
+    // Launch pointed ~30° off the target: the pilot has to fly it in.
+    const dx = posB[0] - posA[0];
+    const dz = posB[2] - posA[2];
+    const l = Math.hypot(dx, dz);
+    const dir: Vec3 = [(dx / l) * 0.87, 0, dz / l + 0.5];
+    a.send({ t: 'shot', s: { ts: 0, p: posA, d: dir, w: 'rocket', rid: 1 } });
+    missile = launchMissile(posA, dir);
+    last = performance.now();
     const boom = (await a.waitFor((m) => m.t === 'boom' && m.rid === 1, 4000)) as Extract<ServerMessage, { t: 'boom' }>;
     running = false;
     await pump;

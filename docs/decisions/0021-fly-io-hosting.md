@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-01
+- **Amended:** 2026-10-01: region `dfw` (Dallas) instead of `ord`: both pilots are in Texas (Austin and nearby)
 
 ## Context
 
@@ -12,7 +13,7 @@ Combat, classes and maps are in, so it's time to play from two houses (Phase 3.5
 - **Fly.io**, one Docker container (`Dockerfile`, `node:26-slim`) that runs the room server and also serves the built client (`dist/client`) on the **same port** (8080 inside, HTTPS outside). The client connects back to its own origin (`wss://<app>.fly.dev`): no CORS, one URL to share.
 - **Exactly one machine.** Rooms are in memory, so a second machine would split players. Deploy with `npm run deploy` (`fly deploy --ha=false`).
 - **Never auto-stopped** (`auto_stop_machines = "off"`, `min_machines_running = 1`): a cold start would drop players.
-- Region **`ord`** (Chicago), closest to us (US Central). Changing region is one line in `fly.toml`.
+- Region **`dfw`** (Dallas), closest to both pilots in Texas (first deployed to `ord`). Changing region is one line in `fly.toml`.
 - `GET /healthz` for Fly's health check. VM: `shared-cpu-1x`, 256 MB (about $2/month).
 
 ## Alternatives considered
