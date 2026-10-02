@@ -37,7 +37,8 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     name: 'Freestyle 5"',
     blurb: 'All-rounder acro quad',
     maxHp: 100,
-    damage: 20,
+    // Fast time-to-kill (ADR-0028): 3 hits.
+    damage: 34,
     fireRate: 12,
     pellets: 1,
     spreadDeg: 0,
@@ -52,8 +53,8 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     name: '3D quad',
     blurb: 'Reversible thrust, hover inverted. Choked double-barrel shotgun',
     maxHp: 90,
-    // Choked shotgun (ADR-0014): 8 pellets in a tight cone, twice a second.
-    damage: 8,
+    // Choked shotgun (ADR-0014): 8 pellets in a tight cone, twice a second. A full close blast one-shots a quad (ADR-0028).
+    damage: 14,
     fireRate: 2,
     pellets: 8,
     spreadDeg: 1.5,
@@ -68,8 +69,8 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     name: 'FPV wing',
     blurb: "Fast, can't hover. Rotary cannon, maneuver mode on Special (E)",
     maxHp: 130,
-    // Rotary cannon (ADR-0014): very fast, light rounds.
-    damage: 5,
+    // Rotary cannon (ADR-0014): very fast, light rounds; 10 rounds kill a Freestyle (ADR-0028).
+    damage: 10,
     fireRate: 50,
     pellets: 1,
     spreadDeg: 0,

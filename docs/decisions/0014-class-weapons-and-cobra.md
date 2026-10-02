@@ -1,6 +1,6 @@
 # ADR-0014: Class weapons (wing rotary cannon, 3D shotgun) and the wing's Cobra
 
-- **Status:** Accepted; Cobra section superseded by ADR-0015 (physics-based, hold Special, no cooldown)
+- **Status:** Accepted; Cobra section superseded by ADR-0015 (physics-based, hold Special, no cooldown) (gun damage superseded by ADR-0028)
 - **Date:** 2026-09-29
 - **Amends:** ADR-0013 (wing and 3D quad weapons)
 

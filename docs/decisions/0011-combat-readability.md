@@ -1,6 +1,6 @@
 # ADR-0011: Combat readability: bigger targets, trails, lead indicator, twin guns
 
-- **Status:** Accepted, amended by ADR-0012 (hit radius now 0.75 m, matching the drawn size)
+- **Status:** Accepted, amended by ADR-0012 (hit radius now 0.75 m, matching the drawn size) (damage superseded by ADR-0028)
 - **Date:** 2026-09-29
 - **Amends:** ADR-0009 (weapon origin, hit size, damage, how the other pilot is shown)
 

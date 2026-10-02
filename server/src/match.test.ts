@@ -170,8 +170,10 @@ describe('Match (ADR-0009)', () => {
     // B crosses at 30 m/s, 40 m away. A sees B 100 ms in the past and aims at the lead point.
     t.setB([-100 - 20, 30, -40], [30, 0, 0]);
     t.advance(300);
+    // As many shots as a kill takes: every one must land.
+    const shots = Math.ceil(FS.maxHp / FS.damage);
     let hits = 0;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < shots; i++) {
       const b = t.posB();
       const seen: Vec3 = [b[0] - 30 * 0.1, b[1], b[2]];
       const d = [seen[0] - t.posA[0], seen[1] - t.posA[1], seen[2] - t.posA[2]] as const;
@@ -180,9 +182,9 @@ describe('Match (ADR-0009)', () => {
       t.fireAt([seen[0] + 30 * tt, seen[1], seen[2]]);
       t.advance(shotInterval + 1);
       t.advance(150);
-      if ((t.hp('B') ?? 0) < before) hits++;
+      if ((t.hp('B') ?? 0) < before || t.log.some((m) => m.t === 'death' && m.id === 'B')) hits++;
     }
-    expect(hits).toBe(5);
+    expect(hits).toBe(shots);
   });
 
   it('crash after being hit credits the attacker; a clean crash scores for no one', () => {
@@ -317,6 +319,24 @@ describe('free-for-all (ADR-0026)', () => {
     expect(match.state().phase).toBe('playing');
     match.removePlayer('c', 20);
     expect(match.state().phase).toBe('waiting');
+  });
+});
+
+describe('fast gun time-to-kill (ADR-0028)', () => {
+  const hitsToKill = (shooter: keyof typeof DRONE_CLASSES, target: keyof typeof DRONE_CLASSES) =>
+    Math.ceil(DRONE_CLASSES[target].maxHp / DRONE_CLASSES[shooter].damage);
+
+  it('Freestyle gun: 3 hits on quads, 4 on a wing', () => {
+    expect(hitsToKill('freestyle', 'freestyle')).toBe(3);
+    expect(hitsToKill('freestyle', 'quad3d')).toBe(3);
+    expect(hitsToKill('freestyle', 'wing')).toBe(4);
+  });
+
+  it('a full close shotgun blast one-shots a quad; the cannon kills in about 0.2 s', () => {
+    const sg = DRONE_CLASSES.quad3d;
+    expect(sg.damage * sg.pellets).toBeGreaterThanOrEqual(DRONE_CLASSES.freestyle.maxHp);
+    const cannon = DRONE_CLASSES.wing;
+    expect((hitsToKill('wing', 'freestyle') - 1) / cannon.fireRate).toBeLessThanOrEqual(0.2);
   });
 });
 
