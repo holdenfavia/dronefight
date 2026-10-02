@@ -65,7 +65,8 @@ export class NetClient {
   private pingId = 0;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private wantRoom: { kind: 'create'; map: MapId } | { kind: 'join'; code: string } | null = null;
+  /** The room to be in. `rejoin` (after we were in it) may recreate it if the server lost it on a restart. */
+  private wantRoom: { kind: 'create'; map: MapId } | { kind: 'join'; code: string } | { kind: 'rejoin'; code: string; map: MapId } | null = null;
 
   constructor(
     private readonly url: string,
@@ -192,7 +193,9 @@ export class NetClient {
   private requestRoom(): void {
     const want = this.wantRoom;
     if (!want) return;
-    this.send(want.kind === 'create' ? { t: 'create', map: want.map } : { t: 'join', room: want.code });
+    if (want.kind === 'create') this.send({ t: 'create', map: want.map });
+    else if (want.kind === 'rejoin') this.send({ t: 'join', room: want.code, map: want.map });
+    else this.send({ t: 'join', room: want.code });
   }
 
   private scheduleReconnect(): void {
@@ -235,8 +238,8 @@ export class NetClient {
         this.you = msg.you;
         this.map = msg.map;
         this.reconnectAttempt = 0;
-        // Rejoin the same room if the connection drops.
-        this.wantRoom = { kind: 'join', code: msg.room };
+        // Rejoin the same room if the connection drops (recreating it if the server restarted).
+        this.wantRoom = { kind: 'rejoin', code: msg.room, map: msg.map };
         this.peers.clear();
         for (const id of msg.peers) this.addPeer(id);
         this.setStatus('in-room');

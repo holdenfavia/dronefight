@@ -107,7 +107,8 @@ export interface MatchState {
 
 export type ClientMessage =
   | { t: 'create'; map: MapId }
-  | { t: 'join'; room: string }
+  /** `map` only when rejoining after a dropped connection: recreate the room with this code if it's gone (e.g. a server restart). */
+  | { t: 'join'; room: string; map?: MapId }
   | { t: 'leave' }
   | { t: 'state'; s: DroneState }
   | { t: 'shot'; s: Shot }
@@ -188,7 +189,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case 'leave':
       return { t: 'leave' };
     case 'join':
-      return typeof m.room === 'string' ? { t: 'join', room: normalizeRoomCode(m.room) } : null;
+      if (typeof m.room !== 'string') return null;
+      return isMapId(m.map) ? { t: 'join', room: normalizeRoomCode(m.room), map: m.map } : { t: 'join', room: normalizeRoomCode(m.room) };
     case 'state':
       return isDroneState(m.s) ? { t: 'state', s: m.s } : null;
     case 'ping':

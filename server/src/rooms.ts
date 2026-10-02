@@ -74,7 +74,11 @@ export class RoomManager {
         this.joinRoom(player, this.createRoom(msg.map));
         break;
       case 'join': {
-        const room = isValidRoomCode(msg.room) ? this.rooms.get(msg.room) : undefined;
+        const valid = isValidRoomCode(msg.room);
+        let room = valid ? this.rooms.get(msg.room) : undefined;
+        // Rejoining after a server restart: bring the room back under the same code, so everyone
+        // reconnecting ends up together again instead of scattered.
+        if (!room && valid && msg.map) room = this.createRoom(msg.map, msg.room);
         if (!room) {
           send(conn, { t: 'error', code: 'room-not-found', message: `No room called ${msg.room}` });
         } else if (room === player.room) {
@@ -135,9 +139,9 @@ export class RoomManager {
     return { rooms: this.rooms.size, players: this.players.size, droppedSnapshots: this.dropped };
   }
 
-  private createRoom(map: MapId): Room {
-    // A random free code; with only 100 codes, fall back to scanning for any free one.
-    let code = generateRoomCode(this.random);
+  private createRoom(map: MapId, wanted?: string): Room {
+    // The code asked for (a rejoin), else a random free one; with only 100 codes, fall back to scanning.
+    let code = wanted !== undefined && !this.rooms.has(wanted) ? wanted : generateRoomCode(this.random);
     for (let n = 0; this.rooms.has(code) && n < ROOM_CODE_COUNT; n++) {
       code = String((Number(code) + 1) % ROOM_CODE_COUNT).padStart(ROOM_CODE_LENGTH, '0');
     }

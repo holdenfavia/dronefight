@@ -51,6 +51,25 @@ describe('RoomManager', () => {
     expect(codes.has(code)).toBe(false);
   });
 
+  it('after a server restart, pilots rejoining by code end up in the same room again', () => {
+    // A fresh server (the old one's rooms are gone).
+    const rooms = new RoomManager(() => 0);
+    const a = new FakeConn();
+    const b = new FakeConn();
+    rooms.connect(a);
+    rooms.connect(b);
+    rooms.handle(a, { t: 'join', room: '42', map: 'playground' });
+    rooms.handle(b, { t: 'join', room: '42', map: 'yard' });
+    expect(a.last('joined')).toMatchObject({ room: '42', map: 'playground' });
+    expect(b.last('joined')).toMatchObject({ room: '42', map: 'playground' });
+    expect(b.last('joined')?.peers).toHaveLength(1);
+    // Typing a code that doesn't exist (no map) still says so.
+    const c = new FakeConn();
+    rooms.connect(c);
+    rooms.handle(c, { t: 'join', room: '43' });
+    expect(c.last('error')?.code).toBe('room-not-found');
+  });
+
   it('rejects unknown and full rooms', () => {
     const { rooms, b, code } = setup();
     rooms.handle(b, { t: 'join', room: 'ZZZZ' });
