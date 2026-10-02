@@ -44,7 +44,7 @@ export class Menu {
     else if (screen === 'settings') this.renderSettings();
     else if (screen === 'online') this.renderOnline();
     else if (screen === 'buttons') this.calibration.openButtons();
-    else this.calibration.open();
+    else this.calibration.openHub();
   }
 
   hide(): void {
@@ -116,9 +116,9 @@ export class Menu {
     const el = this.root.querySelector('[data-status]');
     if (!el) return;
     const pads = this.input.listGamepads();
-    const ready = pads.find((p) => p.calibrated) ?? pads.find((p) => p.standard);
+    const ready = pads.find((p) => p.kind === 'saved') ?? pads.find((p) => p.kind !== 'none');
     const text = ready
-      ? `✓ ${ready.id}`
+      ? `✓ ${ready.id}${ready.kind === 'guessed' ? ' (guessed layout: check it in Controller setup)' : ''}`
       : pads[0]
         ? `New controller found. Run Controller setup: ${pads[0].id}`
         : 'No controller: keyboard mode. Plug in your radio and move a stick.';
@@ -169,7 +169,7 @@ export class Menu {
         <button class="btn big" data-create ${busy ? 'disabled' : ''}>${busy ? 'Connecting…' : `Create room · ${getMap(this.settings.map).name}`}</button>
         <div class="divider">or join a friend</div>
         <form class="join-row" data-join>
-          <input maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false" data-code ${busy ? 'disabled' : ''}>
+          <input maxlength="2" inputmode="numeric" pattern="[0-9]*" placeholder="00" autocomplete="off" spellcheck="false" data-code ${busy ? 'disabled' : ''}>
           <button class="btn" type="submit" ${busy ? 'disabled' : ''}>Join</button>
         </form>
         <div class="net-error">${net.error ? escapeText(net.error) : ''}</div>

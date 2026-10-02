@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyDeadband,
+  applySensitivity,
+  looksLikeGamepad,
   detectMovedAxis,
   detectSwitch,
   normalizeStick,
@@ -66,5 +68,23 @@ describe('detection', () => {
     expect(binding).toEqual({ kind: 'axis', index: 2, threshold: 0, above: true });
     expect(readSwitch(binding, flipped)).toBe(true);
     expect(readSwitch(binding, base)).toBe(false);
+  });
+});
+
+describe('gamepads (Controller setup hub)', () => {
+  it('recognizes gamepads by name, but never radios', () => {
+    expect(looksLikeGamepad('Logitech Dual Action (Vendor: 046d Product: c216)')).toBe(true);
+    expect(looksLikeGamepad('Logitech Gamepad F310 (Vendor: 046d Product: c21d)')).toBe(true);
+    expect(looksLikeGamepad('Wireless Controller (Vendor: 054c Product: 09cc)')).toBe(true);
+    expect(looksLikeGamepad('DJI FPV Remote Controller 2')).toBe(false);
+    expect(looksLikeGamepad('Radiomaster TX16S Joystick (OpenTX)')).toBe(false);
+    expect(looksLikeGamepad('EdgeTX Radiomaster Boxer Joystick')).toBe(false);
+  });
+
+  it('sensitivity scales sticks and keeps them in range', () => {
+    expect(applySensitivity(0.5, 0.8)).toBeCloseTo(0.4);
+    expect(applySensitivity(-1, 0.5)).toBeCloseTo(-0.5);
+    expect(applySensitivity(0.9, 1.5)).toBe(1);
+    expect(applySensitivity(0.3)).toBe(0.3);
   });
 });

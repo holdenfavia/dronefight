@@ -24,11 +24,13 @@ export const NET = {
 } as const;
 
 /** No 0/O or 1/I, so codes are easy to read out over the phone. */
-export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-export const ROOM_CODE_LENGTH = 4;
+/** Room codes are two digits (ADR-0005): easy to read out on a call; 100 rooms is plenty for friends. */
+export const ROOM_CODE_ALPHABET = '0123456789';
+export const ROOM_CODE_LENGTH = 2;
+export const ROOM_CODE_COUNT = ROOM_CODE_ALPHABET.length ** ROOM_CODE_LENGTH;
 
 export function normalizeRoomCode(input: string): string {
-  return input.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, ROOM_CODE_LENGTH);
+  return input.replace(/[^0-9]/g, '').slice(0, ROOM_CODE_LENGTH);
 }
 
 export function isValidRoomCode(code: string): boolean {

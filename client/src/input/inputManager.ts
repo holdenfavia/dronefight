@@ -2,6 +2,9 @@ import { INPUT } from '../config';
 import type { FlightInput } from '../sim/flightModel';
 import { loadJson, saveJson } from '../storage';
 import {
+  applySensitivity,
+  guessedGamepadProfile,
+  looksLikeGamepad,
   normalizeStick,
   normalizeThrottle,
   readSwitch,
@@ -30,11 +33,15 @@ export interface ControlState extends FlightInput {
 
 export type InputSource = 'radio' | 'gamepad' | 'keyboard';
 
+/** Where a controller's profile comes from: set up by you, the browser's standard layout, a guess, or none yet. */
+export type ProfileKind = 'saved' | 'default' | 'guessed' | 'none';
+
 export interface GamepadInfo {
   index: number;
   id: string;
   standard: boolean;
   calibrated: boolean;
+  kind: ProfileKind;
 }
 
 const PROFILES_KEY = 'controllerProfiles';
@@ -82,6 +89,7 @@ export class InputManager {
         id: pad.id,
         standard: pad.mapping === 'standard',
         calibrated: pad.id in this.profiles,
+        kind: this.profileKind(pad),
       });
     }
     return list;
@@ -96,6 +104,19 @@ export class InputManager {
 
   getProfile(id: string): ControllerProfile | null {
     return this.profiles[id] ?? null;
+  }
+
+  /** The profile a connected controller uses right now (saved, default or guessed), and where it came from. */
+  effectiveProfile(index: number): { profile: ControllerProfile | null; kind: ProfileKind } {
+    const pad = navigator.getGamepads()[index];
+    if (!pad) return { profile: null, kind: 'none' };
+    return { profile: this.profileFor(pad), kind: this.profileKind(pad) };
+  }
+
+  /** Forget a saved profile: the controller goes back to its default or guessed layout. */
+  deleteProfile(id: string): void {
+    delete this.profiles[id];
+    saveJson(PROFILES_KEY, this.profiles);
   }
 
   saveProfile(profile: ControllerProfile): void {
@@ -117,7 +138,7 @@ export class InputManager {
     let specialDown: boolean;
     if (pad && profile) {
       this.readPad(pad, profile);
-      this.source = pad.mapping === 'standard' && !(pad.id in this.profiles) ? 'gamepad' : 'radio';
+      this.source = pad.mapping === 'standard' || looksLikeGamepad(pad.id) ? 'gamepad' : 'radio';
       this.activeId = pad.id;
       this.uncalibratedId = null;
       resetDown = readSwitch(profile.reset, this.rawScratch) || this.keys.has('KeyR');
@@ -147,9 +168,10 @@ export class InputManager {
     let firstAny: Gamepad | null = null;
     for (const pad of navigator.getGamepads()) {
       if (!pad || !pad.connected) continue;
-      if (pad.id === this.selectedId && (pad.id in this.profiles || pad.mapping === 'standard')) return pad;
+      const usable = this.profileKind(pad) !== 'none';
+      if (pad.id === this.selectedId && usable) return pad;
       if (!firstCalibrated && pad.id in this.profiles) firstCalibrated = pad;
-      if (!firstStandard && pad.mapping === 'standard') firstStandard = pad;
+      if (!firstStandard && usable) firstStandard = pad;
       if (!firstAny) firstAny = pad;
     }
     return firstCalibrated ?? firstStandard ?? firstAny;
@@ -159,7 +181,15 @@ export class InputManager {
     const saved = this.profiles[pad.id];
     if (saved) return saved;
     if (pad.mapping === 'standard') return standardGamepadProfile(pad.id, INPUT.deadband);
+    if (looksLikeGamepad(pad.id) && pad.axes.length >= 4) return guessedGamepadProfile(pad.id, INPUT.deadband);
     return null;
+  }
+
+  private profileKind(pad: Gamepad): ProfileKind {
+    if (pad.id in this.profiles) return 'saved';
+    if (pad.mapping === 'standard') return 'default';
+    if (looksLikeGamepad(pad.id) && pad.axes.length >= 4) return 'guessed';
+    return 'none';
   }
 
   private readPad(pad: Gamepad, profile: ControllerProfile): void {
@@ -169,12 +199,12 @@ export class InputManager {
     raw.buttons.length = pad.buttons.length;
     for (let i = 0; i < pad.buttons.length; i++) raw.buttons[i] = pad.buttons[i]?.value ?? 0;
 
-    const { axes, deadband } = profile;
+    const { axes, deadband, sensitivity } = profile;
     const s = this.state;
     s.throttle = normalizeThrottle(raw.axes[axes.throttle.axis] ?? 0, axes.throttle);
-    s.roll = normalizeStick(raw.axes[axes.roll.axis] ?? 0, axes.roll, deadband);
-    s.pitch = normalizeStick(raw.axes[axes.pitch.axis] ?? 0, axes.pitch, deadband);
-    s.yaw = normalizeStick(raw.axes[axes.yaw.axis] ?? 0, axes.yaw, deadband);
+    s.roll = applySensitivity(normalizeStick(raw.axes[axes.roll.axis] ?? 0, axes.roll, deadband), sensitivity);
+    s.pitch = applySensitivity(normalizeStick(raw.axes[axes.pitch.axis] ?? 0, axes.pitch, deadband), sensitivity);
+    s.yaw = applySensitivity(normalizeStick(raw.axes[axes.yaw.axis] ?? 0, axes.yaw, deadband), sensitivity);
     s.armSwitch = profile.arm ? readSwitch(profile.arm, raw) : null;
   }
 

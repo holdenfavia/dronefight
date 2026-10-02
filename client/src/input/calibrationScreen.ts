@@ -5,15 +5,18 @@ import {
   normalizeStick,
   normalizeThrottle,
   readSwitch,
+  applySensitivity,
+  SENSITIVITY_RANGE,
   type AxisCalibration,
   type ControllerProfile,
   type RawSnapshot,
   type StickChannel,
   type SwitchBinding,
 } from './calibration';
-import type { InputManager } from './inputManager';
+import type { InputManager, ProfileKind } from './inputManager';
 
-// Controller setup wizard (ADR-0006). Part of the input layer, so it may read raw values.
+// Controller setup (ADR-0006). Part of the input layer, so it may read raw values. A hub per controller
+// with three separate parts: calibrate sticks (keeps buttons), map buttons (keeps sticks), stick feel.
 
 type StepId = 'select' | 'range' | 'center' | StickChannel | 'arm' | 'reset' | 'fire' | 'special' | 'test';
 
@@ -24,9 +27,9 @@ interface Step {
 }
 
 const STEPS: Step[] = [
-  { id: 'select', title: 'Pick your controller', body: 'Plug in your radio over USB, then <b>move a stick</b>. Browsers only show a controller after it has been touched.' },
+  { id: 'select', title: 'Pick your controller', body: 'Plug in your radio or gamepad over USB, then <b>move a stick</b>. Browsers only show a controller after it has been touched.' },
   { id: 'range', title: 'Full range', body: 'Move <b>both sticks</b> slowly around their full range, every corner, two or three times.' },
-  { id: 'center', title: 'Rest position', body: 'Let the right stick center. Put <b>throttle all the way down</b> and the yaw stick centered. Hands off, then Next.' },
+  { id: 'center', title: 'Rest position', body: 'Let the right stick center. Put <b>throttle all the way down</b> and the yaw stick centered (on a gamepad, just let both sticks rest). Hands off, then Next.' },
   { id: 'throttle', title: 'Throttle', body: 'Push <b>throttle all the way UP</b> and hold it.' },
   { id: 'roll', title: 'Roll', body: 'Throttle back down. Hold the right stick <b>full RIGHT</b>.' },
   { id: 'pitch', title: 'Pitch', body: 'Hold the right stick <b>full FORWARD</b> (up).' },
@@ -52,10 +55,15 @@ export class CalibrationScreen {
   private fire: SwitchBinding | null = null;
   private special: SwitchBinding | null = null;
   private deadband: number = INPUT.deadband;
+  private sensitivity = 1;
   private pending: { axis: number; invert: boolean } | SwitchBinding | null = null;
-  /** Full setup, or just the buttons on an already-calibrated controller. */
+  /** The hub, or a wizard: sticks only (keeps buttons) or buttons only (keeps sticks). */
+  private view: 'hub' | 'wizard' = 'hub';
   private steps: Step[] = STEPS;
   private buttonsOnly = false;
+  /** The hub's controller (index into navigator.getGamepads()), and what its list looked like last render. */
+  private hubPad = -1;
+  private hubKey = '';
 
   constructor(
     private readonly root: HTMLElement,
@@ -63,20 +71,30 @@ export class CalibrationScreen {
     private readonly onClose: () => void,
   ) {}
 
-  /** Full setup: sticks, then buttons. */
-  open(): void {
-    this.start(false);
+  /** The controller hub: pick a controller, then calibrate sticks, map buttons, or adjust stick feel. */
+  openHub(padIndex = this.hubPad): void {
+    this.view = 'hub';
+    this.hubPad = padIndex;
+    this.hubKey = '';
+    this.renderHub();
   }
 
-  /** Quick remap of Arm / Reset / Fire / Special, keeping the stick calibration (ADR-0014). */
-  openButtons(): void {
-    this.start(true);
+  /** Sticks only: detects axes, range and center, and keeps the button bindings. */
+  openSticks(padIndex = -1): void {
+    this.start(false, padIndex);
   }
 
-  private start(buttonsOnly: boolean): void {
+  /** Buttons only: Arm / Reset / Fire / Special, keeping the stick calibration (ADR-0014). */
+  openButtons(padIndex = -1): void {
+    this.start(true, padIndex);
+  }
+
+  private start(buttonsOnly: boolean, padIndex: number): void {
+    this.view = 'wizard';
     this.buttonsOnly = buttonsOnly;
     const buttonSteps: StepId[] = ['select', 'arm', 'reset', 'fire', 'special', 'test'];
-    this.steps = buttonsOnly ? STEPS.filter((st) => buttonSteps.includes(st.id)) : STEPS;
+    const stickSteps: StepId[] = ['select', 'range', 'center', 'throttle', 'roll', 'pitch', 'yaw', 'test'];
+    this.steps = STEPS.filter((st) => (buttonsOnly ? buttonSteps : stickSteps).includes(st.id));
     this.step = 0;
     this.padIndex = -1;
     this.assigned = {};
@@ -84,11 +102,53 @@ export class CalibrationScreen {
     this.reset = null;
     this.fire = null;
     this.special = null;
+    this.deadband = INPUT.deadband;
+    this.sensitivity = 1;
+    if (padIndex >= 0 && this.choosePad(padIndex)) {
+      this.go(1);
+      return;
+    }
     this.render();
+  }
+
+  /** Leave a wizard: back to the hub for the same controller. */
+  private closeWizard(): void {
+    this.openHub(this.padIndex >= 0 ? this.padIndex : this.hubPad);
+  }
+
+  /**
+   * Start a wizard on this controller from whatever it uses now (saved, default or guessed), so the
+   * part you're not redoing is kept. Buttons only needs working sticks first.
+   */
+  private choosePad(index: number): boolean {
+    const pad = this.input.listGamepads().find((p) => p.index === index);
+    if (!pad) return false;
+    this.padIndex = index;
+    this.padId = pad.id;
+    this.rangeMin = [];
+    this.rangeMax = [];
+    const loaded = this.loadExisting(index);
+    if (this.buttonsOnly && !loaded) {
+      const live = this.root.querySelector('.calib-live');
+      if (live) live.innerHTML = '<div class="empty">This controller has no stick setup yet. Run Calibrate sticks first.</div>';
+      return false;
+    }
+    // Recalibrating sticks: detect every axis again (buttons and feel stay as loaded).
+    if (!this.buttonsOnly) {
+      this.assigned = {};
+      this.rangeMin = [];
+      this.rangeMax = [];
+      this.center = [];
+    }
+    return true;
   }
 
   /** Called every frame while the screen is visible. */
   tick(): void {
+    if (this.view === 'hub') {
+      this.tickHub();
+      return;
+    }
     const current = this.steps[this.step];
     if (!current) return;
     if (current.id === 'select') {
@@ -147,7 +207,7 @@ export class CalibrationScreen {
     this.root.innerHTML = `
       <div class="panel calib">
         <div class="panel-head">
-          <span class="kicker">${this.buttonsOnly ? 'Map buttons' : 'Controller setup'} · ${this.step + 1}/${this.steps.length}</span>
+          <span class="kicker">${this.buttonsOnly ? 'Map buttons' : 'Calibrate sticks'} · ${this.step + 1}/${this.steps.length}</span>
           <h2>${current.title}</h2>
         </div>
         <p class="calib-body">${current.body}</p>
@@ -162,7 +222,7 @@ export class CalibrationScreen {
           ${current.id !== 'select' ? `<button class="btn" data-next>${isTest ? 'Save' : 'Next'}</button>` : ''}
         </div>
       </div>`;
-    this.root.querySelector('[data-cancel]')?.addEventListener('click', () => this.onClose());
+    this.root.querySelector('[data-cancel]')?.addEventListener('click', () => this.closeWizard());
     this.root.querySelector('[data-back]')?.addEventListener('click', () => this.go(this.step - 1));
     this.root.querySelector('[data-skip]')?.addEventListener('click', () => {
       // Remapping buttons: Skip keeps the current binding. Full setup: Skip means "none".
@@ -225,7 +285,7 @@ export class CalibrationScreen {
       case 'test': {
         const profile = this.buildProfile();
         if (profile) this.input.saveProfile(profile);
-        this.onClose();
+        this.closeWizard();
         return;
       }
     }
@@ -250,6 +310,7 @@ export class CalibrationScreen {
       reset: this.reset,
       fire: this.fire,
       special: this.special,
+      sensitivity: this.sensitivity,
     };
   }
 
@@ -262,9 +323,9 @@ export class CalibrationScreen {
     return undefined;
   }
 
-  /** Buttons-only mode: start from the saved stick calibration and bindings. */
-  private loadExisting(id: string): boolean {
-    const profile = this.input.getProfile(id);
+  /** Start from the controller's current profile (saved, default or guessed): sticks, bindings and feel. */
+  private loadExisting(index: number): boolean {
+    const { profile } = this.input.effectiveProfile(index);
     if (!profile) return false;
     for (const ch of ['throttle', 'roll', 'pitch', 'yaw'] as const) {
       const cal = profile.axes[ch];
@@ -278,6 +339,7 @@ export class CalibrationScreen {
     this.reset = profile.reset;
     this.fire = profile.fire ?? null;
     this.special = profile.special ?? null;
+    this.sensitivity = profile.sensitivity ?? 1;
     return true;
   }
 
@@ -311,25 +373,13 @@ export class CalibrationScreen {
       .map(
         (p) => `<button class="pad-choice" data-pad="${p.index}">
           <span class="pad-name">${escapeHtml(p.id)}</span>
-          <span class="tag">${p.calibrated ? 'set up' : p.standard ? 'gamepad' : 'new'}</span>
+          <span class="tag">${KIND_TAG[p.kind]}</span>
         </button>`,
       )
       .join('');
     live.querySelectorAll<HTMLButtonElement>('[data-pad]').forEach((btn) =>
       btn.addEventListener('click', () => {
-        const index = Number(btn.dataset.pad);
-        const pad = pads.find((p) => p.index === index);
-        if (!pad) return;
-        this.padIndex = index;
-        this.padId = pad.id;
-        this.rangeMin = [];
-        this.rangeMax = [];
-        if (this.buttonsOnly && !this.loadExisting(pad.id)) {
-          const live = this.root.querySelector('.calib-live');
-          if (live) live.innerHTML = '<div class="empty">This controller isn\'t set up yet. Run the full Controller setup first.</div>';
-          return;
-        }
-        this.go(1);
+        if (this.choosePad(Number(btn.dataset.pad))) this.go(1);
       }),
     );
   }
@@ -359,14 +409,21 @@ export class CalibrationScreen {
   }
 
   private renderTest(raw: RawSnapshot): void {
-    const live = this.root.querySelector('.calib-live');
     const profile = this.buildProfile();
-    if (!live || !profile) return;
+    if (profile) this.renderPreview(raw, profile);
+  }
+
+  /** Live bars for throttle/roll/pitch/yaw as the game will see them, plus switch states. */
+  private renderPreview(raw: RawSnapshot, profile: ControllerProfile): void {
+    const live = this.root.querySelector('.calib-live');
+    if (!live) return;
+    const stick = (ch: 'roll' | 'pitch' | 'yaw') =>
+      applySensitivity(normalizeStick(raw.axes[profile.axes[ch].axis] ?? 0, profile.axes[ch], profile.deadband), profile.sensitivity);
     const values: [string, number, boolean][] = [
       ['Throttle', normalizeThrottle(raw.axes[profile.axes.throttle.axis] ?? 0, profile.axes.throttle), false],
-      ['Roll', normalizeStick(raw.axes[profile.axes.roll.axis] ?? 0, profile.axes.roll, this.deadband), true],
-      ['Pitch', normalizeStick(raw.axes[profile.axes.pitch.axis] ?? 0, profile.axes.pitch, this.deadband), true],
-      ['Yaw', normalizeStick(raw.axes[profile.axes.yaw.axis] ?? 0, profile.axes.yaw, this.deadband), true],
+      ['Roll', stick('roll'), true],
+      ['Pitch', stick('pitch'), true],
+      ['Yaw', stick('yaw'), true],
     ];
     if (live.childElementCount !== values.length + 1) {
       live.innerHTML =
@@ -390,6 +447,80 @@ export class CalibrationScreen {
     sw.textContent = `Arm: ${armText} · Reset: ${resetText} · Fire: ${fireText} · Special: ${specialText}`;
   }
 
+  // --- Hub
+
+  private renderHub(): void {
+    const pads = this.input.listGamepads();
+    const pad = pads.find((p) => p.index === this.hubPad) ?? pads[0];
+    this.hubPad = pad?.index ?? -1;
+    this.hubKey = pads.map((p) => p.index + p.id + p.kind).join('|');
+    const { profile, kind } = pad ? this.input.effectiveProfile(pad.index) : { profile: null, kind: 'none' as ProfileKind };
+    const sens = profile?.sensitivity ?? 1;
+    const db = profile?.deadband ?? INPUT.deadband;
+    this.root.innerHTML = `
+      <div class="panel calib">
+        <div class="panel-head"><span class="kicker">Controller setup</span><h2>${pad ? escapeHtml(shortName(pad.id)) : 'No controller'}</h2></div>
+        ${
+          pads.length > 1
+            ? `<div class="calib-pads">${pads.map((p) => `<button class="pad-choice ${p.index === this.hubPad ? 'on' : ''}" data-hub-pad="${p.index}"><span class="pad-name">${escapeHtml(shortName(p.id))}</span><span class="tag">${KIND_TAG[p.kind]}</span></button>`).join('')}</div>`
+            : ''
+        }
+        <p class="calib-body">${pad ? KIND_TEXT[kind] : 'Plug in your radio or gamepad over USB, then <b>move a stick</b>.'}</p>
+        ${
+          pad
+            ? `<div class="calib-parts">
+          <button class="btn" data-sticks>Calibrate sticks</button>
+          <button class="btn ${profile ? '' : 'ghost'}" data-buttons ${profile ? '' : 'disabled'}>Map buttons</button>
+        </div>
+        <div class="calib-sub">Stick feel</div>
+        <label class="field">Sensitivity <input type="range" min="${SENSITIVITY_RANGE.min}" max="${SENSITIVITY_RANGE.max}" step="0.05" value="${sens}" data-sens ${profile ? '' : 'disabled'}><span data-sens-value>${Math.round(sens * 100)}%</span></label>
+        <label class="field">Deadband <input type="range" min="0" max="0.15" step="0.005" value="${db}" data-db ${profile ? '' : 'disabled'}><span data-db-value>${db.toFixed(3)}</span></label>
+        <div class="calib-live"></div>`
+            : ''
+        }
+        <div class="actions">
+          ${kind === 'saved' ? '<button class="btn ghost" data-reset-profile>Reset to defaults</button>' : ''}
+          <button class="btn" data-done>Done</button>
+        </div>
+      </div>`;
+    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.onClose());
+    this.root.querySelector('[data-sticks]')?.addEventListener('click', () => this.openSticks(this.hubPad));
+    this.root.querySelector('[data-buttons]')?.addEventListener('click', () => this.openButtons(this.hubPad));
+    this.root.querySelectorAll<HTMLButtonElement>('[data-hub-pad]').forEach((b) =>
+      b.addEventListener('click', () => this.openHub(Number(b.dataset.hubPad))),
+    );
+    this.root.querySelector('[data-reset-profile]')?.addEventListener('click', () => {
+      if (pad) this.input.deleteProfile(pad.id);
+      this.openHub(this.hubPad);
+    });
+    // Stick feel saves as you slide (a default or guessed layout becomes your saved setup).
+    const feel = (key: 'sensitivity' | 'deadband', input: HTMLInputElement, label: string, format: (v: number) => string) => {
+      input.addEventListener('input', () => {
+        const current = this.input.effectiveProfile(this.hubPad).profile;
+        if (!current) return;
+        const value = Number(input.value);
+        this.input.saveProfile({ ...current, [key]: value });
+        const el = this.root.querySelector(label);
+        if (el) el.textContent = format(value);
+      });
+    };
+    const sensInput = this.root.querySelector<HTMLInputElement>('[data-sens]');
+    const dbInput = this.root.querySelector<HTMLInputElement>('[data-db]');
+    if (sensInput) feel('sensitivity', sensInput, '[data-sens-value]', (v) => `${Math.round(v * 100)}%`);
+    if (dbInput) feel('deadband', dbInput, '[data-db-value]', (v) => v.toFixed(3));
+  }
+
+  private tickHub(): void {
+    const pads = this.input.listGamepads();
+    const key = pads.map((p) => p.index + p.id + p.kind).join('|');
+    // Re-render when controllers come and go (but not when a slider just saved: the kind stays put).
+    if (key !== this.hubKey && !this.root.querySelector('input[type=range]:active')) this.renderHub();
+    if (this.hubPad < 0) return;
+    const raw = this.input.readRaw(this.hubPad);
+    const { profile } = this.input.effectiveProfile(this.hubPad);
+    if (raw && profile) this.renderPreview(raw, profile);
+  }
+
   private setStatus(text: string): void {
     const el = this.root.querySelector('.calib-status');
     if (el && el.textContent !== text) el.textContent = text;
@@ -399,6 +530,20 @@ export class CalibrationScreen {
     const btn = this.root.querySelector<HTMLButtonElement>('[data-next]');
     if (btn) btn.disabled = !enabled;
   }
+}
+
+const KIND_TAG: Record<ProfileKind, string> = { saved: 'set up', default: 'gamepad', guessed: 'guessed', none: 'new' };
+
+const KIND_TEXT: Record<ProfileKind, string> = {
+  saved: 'Using <b>your setup</b>. Recalibrate the sticks or remap buttons separately: each keeps the other.',
+  default: 'Using the <b>standard gamepad layout</b>: left stick throttle/yaw, right stick pitch/roll, RT fire, LT special, Y reset. It works as is; adjust the feel below or remap buttons.',
+  guessed: 'Using a <b>guessed gamepad layout</b> (left stick throttle/yaw, right stick pitch/roll, RT fire, LT special). Check the bars below; if a stick is wrong, Calibrate sticks.',
+  none: 'Not set up yet. <b>Calibrate sticks</b> first, then map your buttons.',
+};
+
+/** Gamepad ids are long ("Logitech Dual Action (STANDARD GAMEPAD Vendor: 046d Product: c216)"): keep the name. */
+function shortName(id: string): string {
+  return id.replace(/\s*\(.*\)\s*$/, '').trim() || id;
 }
 
 function describeSwitch(s: SwitchBinding): string {

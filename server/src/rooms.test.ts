@@ -30,12 +30,25 @@ function setup() {
 }
 
 describe('RoomManager', () => {
-  it('creates a room with a readable code and lets a friend join', () => {
+  it('creates a room with a two-digit code and lets a friend join', () => {
     const { rooms, a, b, code } = setup();
-    expect(code).toMatch(/^[A-HJ-NP-Z2-9]{4}$/);
+    expect(code).toMatch(/^[0-9]{2}$/);
     rooms.handle(b, { t: 'join', room: code });
     expect(b.last('joined')?.peers).toHaveLength(1);
     expect(a.last('peer-joined')).toBeDefined();
+  });
+
+  it('codes stay unique: 100 rooms all get different codes', () => {
+    const { rooms, code } = setup();
+    const codes = new Set<string>();
+    for (let i = 0; i < 99; i++) {
+      const c = new FakeConn();
+      rooms.connect(c);
+      rooms.handle(c, { t: 'create', map: 'yard' });
+      codes.add(c.last('joined')!.room);
+    }
+    expect(codes.size).toBe(99);
+    expect(codes.has(code)).toBe(false);
   });
 
   it('rejects unknown and full rooms', () => {

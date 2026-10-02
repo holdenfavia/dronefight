@@ -29,6 +29,16 @@ export interface ControllerProfile {
   fire?: SwitchBinding | null;
   /** Optional class ability, e.g. the wing's maneuver mode (ADR-0022). */
   special?: SwitchBinding | null;
+  /** Stick sensitivity for roll/pitch/yaw (1 = as calibrated). Thumbsticks often want less. */
+  sensitivity?: number;
+}
+
+/** Sensitivity slider range in Controller setup. */
+export const SENSITIVITY_RANGE = { min: 0.3, max: 1.5 } as const;
+
+/** Scale a -1..1 stick value by the profile's sensitivity, keeping it in range. */
+export function applySensitivity(value: number, sensitivity = 1): number {
+  return clamp(value * sensitivity, -1, 1);
 }
 
 export interface RawSnapshot {
@@ -110,6 +120,24 @@ export function detectSwitch(
   return null;
 }
 
+/**
+ * Controllers that look like gamepads by name (Logitech, 8BitDo, generic "USB gamepad"…). Radios
+ * (DJI, EdgeTX/OpenTX, Radiomaster, TBS…) don't match: they always go through Controller setup.
+ */
+export function looksLikeGamepad(id: string): boolean {
+  return /gamepad|game ?pad|controller|joypad|logitech|dual ?action|rumble|f310|f510|f710|xbox|8bitdo|wireless controller|dualsense|dualshock|pro controller|046d/i.test(id) &&
+    !/dji|opentx|edgetx|radiomaster|frsky|tbs|jumper|tx16|zorro|boxer/i.test(id);
+}
+
+/**
+ * Best guess for a gamepad the browser doesn't map to the "standard" layout (e.g. a Logitech in
+ * DirectInput mode): the usual axis order (left X/Y, right X/Y) and the usual button numbers.
+ * Shown as "guessed" so the pilot checks it, and Calibrate sticks fixes it if it's wrong.
+ */
+export function guessedGamepadProfile(id: string, deadband: number): ControllerProfile {
+  return { ...standardGamepadProfile(id, deadband), sensitivity: 0.8 };
+}
+
 /** Sensible default for gamepads the browser reports with the "standard" layout (Xbox/PlayStation). */
 export function standardGamepadProfile(id: string, deadband: number): ControllerProfile {
   const stick = (axis: number, invert: boolean): AxisCalibration => ({
@@ -135,5 +163,7 @@ export function standardGamepadProfile(id: string, deadband: number): Controller
     // Right trigger fires; left trigger is the class special (wing maneuver mode).
     fire: { kind: 'button', index: 7 },
     special: { kind: 'button', index: 6 },
+    // Thumbsticks are short and twitchy compared with radio gimbals.
+    sensitivity: 0.8,
   };
 }

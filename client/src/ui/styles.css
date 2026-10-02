@@ -842,3 +842,10 @@ body {
 .msl-bottom .lock { color: #ff7a4a; }
 .msl-hint { opacity: 0.7; font-size: 14px; align-self: center; }
 @keyframes msl-blink { 50% { opacity: 0.3; } }
+
+/* Controller hub: separate parts for sticks, buttons and feel. */
+.calib-pads { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.pad-choice.on { outline: 2px solid var(--orange, #ff6a00); }
+.calib-parts { display: flex; gap: 10px; margin: 6px 0 14px; }
+.calib-parts .btn { flex: 1; }
+.calib-sub { font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; font-size: 13px; margin: 4px 0 6px; opacity: 0.8; }

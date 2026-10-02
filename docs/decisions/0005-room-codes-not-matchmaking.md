@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-29
+- **Amended:** 2026-10-01: codes are **two digits** (`00`–`99`), easy to read out on a call; the server picks a free one.
 
 ## Context
 

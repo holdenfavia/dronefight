@@ -36,7 +36,7 @@ npm run server
 npm run dev
 ```
 
-In the game: **Play online → Create room**, then read the 4-letter code to your friend (or **Copy invite link**; `?room=CODE` joins automatically).
+In the game: **Play online → Create room**, then read the 2-digit code to your friend (or **Copy invite link**; `?room=CODE` joins automatically).
 
 - **Same Wi-Fi:** start the client with `npm run dev -- --host`, then your friend opens `http://<your-computer's-IP>:5173`. The client connects to the server on the same host, port 8787.
 - **Different houses:** use the deployed game (see **Deploy**).
@@ -143,6 +143,16 @@ In dev builds, `window.dronefight` exposes `renderer`, `world`, `drone`, `settin
 3. Check that the OS sees it: open https://gamepad-tester.com in Chrome and move the sticks. Bars should move.
 4. If nothing appears, install DJI Assistant 2 (Consumer Drones Series), connect the controller once, then retry.
 5. In the game, open **Controller setup** and follow the steps. It detects each stick, its direction, and optional arm/reset switches, then saves a profile for that controller in this browser.
+
+### Gamepads (Xbox, PlayStation, Logitech…)
+
+**Controller setup** opens a hub for the selected controller with separate parts:
+
+- **Calibrate sticks**: detects axes, range and center. Keeps your button bindings.
+- **Map buttons**: Arm / Reset / Fire / Special. Keeps your sticks. Skip keeps a binding.
+- **Stick feel**: sensitivity (30–150%, gamepads default to 80%) and deadband, saved as you slide, with a live preview.
+
+Gamepads the browser reports as "standard" (Xbox, PlayStation, Logitech in XInput "X" mode) work without setup: left stick throttle/yaw, right stick pitch/roll, RT fire, LT special, Y reset. Other gamepads recognized by name (e.g. a Logitech in DirectInput "D" mode) get a **guessed** layout: check the preview, and Calibrate sticks if a stick is wrong. Logitech F310/F710: the X/D switch on the back picks the mode; **X** is the easier one. Radios are never guessed. **Reset to defaults** forgets your saved setup.
 
 ### Other radios (EdgeTX/OpenTX)
 

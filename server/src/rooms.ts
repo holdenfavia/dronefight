@@ -1,5 +1,7 @@
 import {
   generateRoomCode,
+  ROOM_CODE_COUNT,
+  ROOM_CODE_LENGTH,
   isValidRoomCode,
   NET,
   type ClientMessage,
@@ -134,8 +136,11 @@ export class RoomManager {
   }
 
   private createRoom(map: MapId): Room {
+    // A random free code; with only 100 codes, fall back to scanning for any free one.
     let code = generateRoomCode(this.random);
-    for (let tries = 0; this.rooms.has(code) && tries < 100; tries++) code = generateRoomCode(this.random);
+    for (let n = 0; this.rooms.has(code) && n < ROOM_CODE_COUNT; n++) {
+      code = String((Number(code) + 1) % ROOM_CODE_COUNT).padStart(ROOM_CODE_LENGTH, '0');
+    }
     const players = new Map<string, Player>();
     // Match events are gameplay-critical (unlike snapshots), so they're always sent.
     const match = new Match(map, (msg, opts) => {
