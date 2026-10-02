@@ -28,7 +28,11 @@ const HISTORY_MS = 1500;
 const MAX_REWIND_MS = NET.maxDisplayDelayMs;
 /** Bullet simulation step. 350 m/s * 2 ms = 0.7 m, well under the hit sphere diameter. */
 const SUBSTEP_MS = 2;
-const TEAMS = 2;
+/** A match runs with at least this many pilots (ADR-0026). */
+const MIN_PILOTS = 2;
+/** Spawn offsets: a pilot already within `SPAWN_TAKEN_M` of a spawn means the next goes beside it, on rings this far apart. */
+const SPAWN_TAKEN_M = 3;
+const SPAWN_RING_M = 4;
 
 interface HistoryEntry {
   st: number;
@@ -129,9 +133,10 @@ export class Match {
 
   addPlayer(id: string, now: number, drone: DroneClassId = DEFAULT_DRONE): void {
     this.now = now;
+    // Each pilot gets the lowest free color slot (ADR-0026).
     const used = new Set([...this.pilots.values()].map((p) => p.team));
     let team = 0;
-    while (used.has(team) && team < TEAMS - 1) team++;
+    while (used.has(team)) team++;
     this.pilots.set(id, {
       id,
       team,
@@ -153,7 +158,9 @@ export class Match {
       lastSpawn: null,
       history: [],
     });
-    if (this.pilots.size >= TEAMS) this.startMatch(now);
+    const pilot = this.pilots.get(id)!;
+    if (this.pilots.size >= MIN_PILOTS && this.phase === 'waiting') this.startMatch(now);
+    else if (this.phase !== 'waiting') this.respawn(pilot, now); // joining a running match
     else this.broadcastState();
   }
 
@@ -162,7 +169,7 @@ export class Match {
     this.pilots.delete(id);
     this.bullets = this.bullets.filter((b) => b.shooter !== id);
     this.missiles = this.missiles.filter((m) => m.shooter !== id);
-    if (this.pilots.size < TEAMS) {
+    if (this.pilots.size < MIN_PILOTS) {
       this.phase = 'waiting';
       this.winner = null;
       this.bullets = [];
@@ -543,9 +550,10 @@ export class Match {
       .filter((p): p is Vec3 => !!p);
     const spawn = pickSpawn(this.map.spawns, opponents, pilot.lastSpawn, this.random);
     pilot.lastSpawn = spawn;
+    const base = this.map.spawns[spawn]!.pos;
+    const o = this.spawnOffset(pilot, base);
     // Until the next state arrives, the pilot is at the spawn: later spawns must avoid it too.
-    const at = this.map.spawns[spawn]!.pos;
-    pilot.history = [{ st: now, p: [at[0], at[1], at[2]], v: [0, 0, 0] }];
+    pilot.history = [{ st: now, p: [base[0] + o[0], base[1], base[2] + o[1]], v: [0, 0, 0] }];
     if (pilot.pendingDrone) pilot.drone = pilot.pendingDrone;
     pilot.pendingDrone = null;
     pilot.alive = true;
@@ -554,8 +562,30 @@ export class Match {
     pilot.protectedUntil = now + COMBAT.spawnProtectionMs;
     pilot.lastDamagedBy = null;
     this.protectedAnnounced.add(pilot.id);
-    this.emit({ t: 'respawn', id: pilot.id, spawn, drone: pilot.drone });
+    this.emit({ t: 'respawn', id: pilot.id, spawn, drone: pilot.drone, ...(o[0] || o[1] ? { o } : {}) });
     this.broadcastState();
+  }
+
+  /**
+   * With more pilots than spawns (ADR-0026), a spawn can already have someone on it: place this pilot
+   * beside it on the first free spot of rings around it, never on top of another pilot.
+   */
+  private spawnOffset(pilot: Pilot, base: readonly number[]): [number, number] {
+    const others = [...this.pilots.values()]
+      .filter((p) => p !== pilot && p.alive)
+      .map((p) => p.history[p.history.length - 1]?.p)
+      .filter((p): p is Vec3 => !!p);
+    const free = (dx: number, dz: number) => others.every((p) => Math.hypot(p[0] - base[0]! - dx, p[2] - base[2]! - dz) > SPAWN_TAKEN_M);
+    if (free(0, 0)) return [0, 0];
+    for (let ring = 1; ring <= 3; ring++) {
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        const dx = Math.round(Math.cos(a) * SPAWN_RING_M * ring * 100) / 100;
+        const dz = Math.round(Math.sin(a) * SPAWN_RING_M * ring * 100) / 100;
+        if (free(dx, dz)) return [dx, dz];
+      }
+    }
+    return [0, 0];
   }
 
   private startMatch(now: number): void {

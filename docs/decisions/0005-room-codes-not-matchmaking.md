@@ -1,6 +1,6 @@
 # ADR-0005: Room codes, not matchmaking
 
-- **Status:** Accepted
+- **Status:** Accepted (partly superseded by ADR-0026: free-for-all, up to 10 pilots)
 - **Date:** 2026-09-29
 - **Amended:** 2026-10-01: codes are **two digits** (`00`–`99`), easy to read out on a call; the server picks a free one.
 

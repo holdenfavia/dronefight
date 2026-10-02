@@ -155,4 +155,33 @@ describe('server pressure tests', () => {
     a.ws.close();
     b.ws.close();
   }, 15000);
+
+  it('free-for-all (ADR-0026): 6 pilots in one room all see each other, each in their own color', async () => {
+    const { a, b, port } = await room();
+    const code = (a.inbox.find((m) => m.t === 'joined') as Extract<ServerMessage, { t: 'joined' }>).room;
+    const others: Client[] = [];
+    for (let i = 0; i < 4; i++) {
+      const c = await connect(port);
+      c.send({ t: 'join', room: code });
+      await c.waitFor((m) => m.t === 'joined');
+      others.push(c);
+    }
+    const all = [a, b, ...others];
+    const ids = all.map((c) => (c.inbox.find((m) => m.t === 'joined') as Extract<ServerMessage, { t: 'joined' }>).you);
+    for (let tick = 0; tick < 5; tick++) {
+      all.forEach((c, i) => c.send(state([i * 10, 30, 0])));
+      await sleep(40);
+    }
+    await sleep(100);
+    for (const [i, c] of all.entries()) {
+      const seen = new Set(c.inbox.filter((m) => m.t === 'snap').map((m) => (m.t === 'snap' ? m.id : '')));
+      expect(seen.size, `pilot ${i} sees`).toBe(5);
+      expect(seen.has(ids[i]!)).toBe(false);
+    }
+    const match = [...a.inbox].reverse().find((m) => m.t === 'match') as Extract<ServerMessage, { t: 'match' }>;
+    expect(match.m.players).toHaveLength(6);
+    expect(new Set(match.m.players.map((p) => p.team)).size).toBe(6);
+    expect(match.m.phase).toBe('playing');
+    for (const c of all) c.ws.close();
+  });
 });

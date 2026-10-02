@@ -1,5 +1,6 @@
 import { DEFAULT_RATES, type AxisRates } from '../config';
 import { CalibrationScreen } from '../input/calibrationScreen';
+import { NET } from '../../../shared/protocol';
 import type { InputManager } from '../input/inputManager';
 import { droneClass, DRONE_ORDER } from '../../../shared/drones';
 import { getMap, MAP_ORDER } from '../../../shared/maps';
@@ -139,8 +140,8 @@ export class Menu {
           <div class="panel-head"><span class="kicker">Play online</span><h2>Your room</h2></div>
           <div class="room-code">${net.room}</div>
           <div class="room-map">${net.map ? getMap(net.map).name : ''}</div>
-          <div class="room-hint">read this code to your friend</div>
-          <div class="peer-status ${peerCount > 0 ? 'ok' : ''}">${peerCount > 0 ? '✓ Friend connected' : 'Waiting for your friend…'}</div>
+          <div class="room-hint">read this code to your friends · up to ${NET.maxPlayersPerRoom} pilots</div>
+          <div class="peer-status ${peerCount > 0 ? 'ok' : ''}">${peerCount > 0 ? `✓ ${peerCount + 1} pilots in the room` : 'Waiting for pilots…'}</div>
           <div class="actions">
             <button class="btn ghost" data-copy>Copy invite link</button>
             <button class="btn ghost" data-leave>Leave room</button>
@@ -165,7 +166,7 @@ export class Menu {
 
     this.root.innerHTML = `
       <div class="panel online">
-        <div class="panel-head"><span class="kicker">Play online</span><h2>1v1 room</h2></div>
+        <div class="panel-head"><span class="kicker">Play online</span><h2>Free-for-all room</h2></div>
         <button class="btn big" data-create ${busy ? 'disabled' : ''}>${busy ? 'Connecting…' : `Create room · ${getMap(this.settings.map).name}`}</button>
         <div class="divider">or join a friend</div>
         <form class="join-row" data-join>

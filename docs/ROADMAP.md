@@ -92,6 +92,9 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] 3D smoke becomes a stealth smoke trail (ADR-0024)
 - [x] Freestyle missile is flown from its own camera; drone hovers (ADR-0025)
 - [ ] Play-test the flown missile; tune rates, speed and fuel
+- [x] Two-digit room codes; Controller setup hub (sticks / buttons / feel, guessed gamepad layouts)
+- [x] Free-for-all rooms of up to 10 pilots (ADR-0026)
+- [ ] Play a free-for-all with 3+ pilots; check spawns, scoreboard, markers
 - [ ] Additional maps
 - [x] Sound (motors, hits, UI): procedural, ADR-0010
 - [ ] Sound tuning pass after real matches

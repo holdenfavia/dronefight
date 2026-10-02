@@ -19,7 +19,8 @@ export const NET = {
   maxDisplayDelayMs: 250,
   /** Server skips sending to a socket with more than this many bytes still unsent (drop, never queue). */
   maxBufferedBytes: 16 * 1024,
-  maxPlayersPerRoom: 2,
+  /** Free-for-all rooms (ADR-0026). */
+  maxPlayersPerRoom: 10,
   pingIntervalMs: 1000,
 } as const;
 
@@ -80,7 +81,7 @@ export type MatchPhase = 'waiting' | 'playing' | 'ended';
 
 export interface MatchPlayer {
   id: string;
-  /** 0 = orange, 1 = lime. */
+  /** Color slot 0..9 (ADR-0026): 0 = orange, 1 = lime, … */
   team: number;
   /** Current drone class (ADR-0013). */
   drone: DroneClassId;
@@ -135,7 +136,8 @@ export type ServerMessage =
   | { t: 'shot'; id: string; s: Shot }
   | { t: 'hit'; shooter: string; target: string; hp: number }
   | { t: 'death'; id: string; killer: string | null; cause: 'shot' | 'crash' }
-  | { t: 'respawn'; id: string; spawn: number; drone: DroneClassId }
+  /** `o`: offset (x, z metres) beside the spawn when another pilot is on it (ADR-0026). */
+  | { t: 'respawn'; id: string; spawn: number; drone: DroneClassId; o?: [number, number] }
   | { t: 'match'; m: MatchState }
   /** Someone used an ability (ADR-0016). */
   | { t: 'ability'; id: string; kind: 'smoke'; p: Vec3 }

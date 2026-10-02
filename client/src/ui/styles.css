@@ -93,9 +93,20 @@ body {
   box-shadow: 0 0 2px #000;
 }
 
+.osd-markers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Each pilot's marker takes their color (ADR-0026). */
+.osd-marker .osd-marker-diamond {
+  border-color: var(--pilot, #fff);
+}
+
 .osd-marker.edge .osd-marker-diamond {
-  border-color: var(--orange);
-  background: rgba(255, 106, 19, 0.35);
+  border-color: var(--pilot, var(--orange));
+  background: color-mix(in srgb, var(--pilot, #ff6a13) 35%, transparent);
 }
 
 .osd-marker-label {

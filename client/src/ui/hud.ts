@@ -21,13 +21,19 @@ export interface MarkerInfo {
   /** False when the pilot is behind you or off-screen and the marker is pinned to the edge. */
   onScreen: boolean;
   distance: number;
+  /** The pilot's color. */
+  color: string;
 }
 
 export interface CombatHudInfo {
   phase: 'waiting' | 'playing' | 'ended';
-  myTeam: number;
-  /** Score per team index. */
-  scores: [number, number];
+  /** Free-for-all (ADR-0026): your kills, your place (1 = leading), how many pilots, and the leader if it isn't you. */
+  myScore: number;
+  rank: number;
+  pilots: number;
+  leader: { name: string; score: number; color: string } | null;
+  /** Who won, once the match has ended. */
+  winnerName: string | null;
   killsToWin: number;
   hp: number;
   maxHp: number;
@@ -51,8 +57,8 @@ export interface HudInfo {
   showDebug: boolean;
   autoResetIn: number | null;
   net: NetHudInfo | null;
-  /** Edge arrow for a pilot who is off screen or behind you. */
-  marker: MarkerInfo | null;
+  /** Edge arrows for pilots who are off screen or behind you (ADR-0026: one per pilot). */
+  markers: readonly MarkerInfo[];
   /** Lead indicator: where to aim so your rounds meet them (ADR-0011). Screen px. */
   lead: { x: number; y: number } | null;
   combat: CombatHudInfo | null;
@@ -72,7 +78,6 @@ type El =
   | 'debug'
   | 'net'
   | 'marker'
-  | 'markerLabel'
   | 'score'
   | 'hp'
   | 'hpFill'
@@ -105,7 +110,7 @@ export class Hud {
       <div class="osd-hitmark" data-hitmark></div>
       <div class="osd-lead" data-lead></div>
       <div class="osd-banner" data-banner></div>
-      <div class="osd-marker" data-marker><span class="osd-marker-diamond"></span><span class="osd-marker-label" data-marker-label></span></div>
+      <div class="osd-markers" data-marker></div>
       <div class="osd-status" data-status></div>
       <div class="osd-hp" data-hp><span class="osd-label">HP</span><div class="osd-hp-bar"><div class="osd-hp-fill" data-hp-fill></div></div><span data-hp-text></span></div>
       <div class="msl" data-msl hidden>
@@ -135,7 +140,6 @@ export class Hud {
       debug: q('[data-debug]'),
       net: q('[data-net]'),
       marker: q('[data-marker]'),
-      markerLabel: q('[data-marker-label]'),
       score: q('[data-score]'),
       hp: q('[data-hp]'),
       hpFill: q('[data-hp-fill]'),
@@ -205,7 +209,7 @@ export class Hud {
     this.set(this.el.debug, debug);
 
     this.updateNet(info.net);
-    this.updateMarker(info.marker);
+    this.updateMarkers(info.markers);
     const lead = this.el.lead;
     lead.hidden = !info.lead;
     if (info.lead) lead.style.transform = `translate(${info.lead.x.toFixed(1)}px, ${info.lead.y.toFixed(1)}px)`;
@@ -242,12 +246,12 @@ export class Hud {
     this.el.hp.classList.toggle('low', pct <= 0.3);
     this.set(this.el.hpText, String(Math.round(c.hp)));
 
-    const [orange, lime] = c.scores;
-    const you = (team: number) => (team === c.myTeam ? ' (you)' : '');
-    this.set(this.el.score, `Orange${you(0)} ${orange} : ${lime} Lime${you(1)} · first to ${c.killsToWin}`);
+    const place = c.rank === 1 ? 'leading' : `${ordinal(c.rank)} of ${c.pilots}`;
+    const leader = c.leader ? ` · leader ${c.leader.name} ${c.leader.score}` : '';
+    this.set(this.el.score, `You ${c.myScore} · ${place}${leader} · first to ${c.killsToWin}`);
 
     let banner = c.toast ?? '';
-    if (c.phase === 'ended') banner = c.won ? 'VICTORY' : 'DEFEAT';
+    if (c.phase === 'ended') banner = c.won ? 'VICTORY' : `${(c.winnerName ?? 'Someone').toUpperCase()} WINS`;
     this.set(this.el.banner, banner);
     this.el.banner.classList.toggle('big', c.phase === 'ended');
   }
@@ -278,16 +282,25 @@ export class Hud {
     this.el.net.classList.toggle('warn', warn);
   }
 
-  private updateMarker(marker: MarkerInfo | null): void {
-    const m = this.el.marker;
-    if (!marker) {
-      m.hidden = true;
-      return;
+  private readonly markerEls: { root: HTMLElement; label: HTMLElement }[] = [];
+
+  private updateMarkers(markers: readonly MarkerInfo[]): void {
+    while (this.markerEls.length < markers.length) {
+      const root = document.createElement('div');
+      root.className = 'osd-marker';
+      root.innerHTML = '<span class="osd-marker-diamond"></span><span class="osd-marker-label"></span>';
+      this.el.marker.appendChild(root);
+      this.markerEls.push({ root, label: root.querySelector('.osd-marker-label') as HTMLElement });
     }
-    m.hidden = false;
-    m.style.transform = `translate(${marker.x.toFixed(1)}px, ${marker.y.toFixed(1)}px)`;
-    m.classList.toggle('edge', !marker.onScreen);
-    this.set(this.el.markerLabel, `${Math.round(marker.distance)} m`);
+    this.markerEls.forEach((el, i) => {
+      const marker = markers[i];
+      el.root.hidden = !marker;
+      if (!marker) return;
+      el.root.style.transform = `translate(${marker.x.toFixed(1)}px, ${marker.y.toFixed(1)}px)`;
+      el.root.style.setProperty('--pilot', marker.color);
+      el.root.classList.toggle('edge', !marker.onScreen);
+      this.set(el.label, `${Math.round(marker.distance)} m`);
+    });
   }
 
   private set(el: HTMLElement, text: string): void {
@@ -295,6 +308,11 @@ export class Hud {
     this.cache.set(el, text);
     el.textContent = text;
   }
+}
+
+function ordinal(n: number): string {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
+  return `${n}${s}`;
 }
 
 function restartAnimation(el: HTMLElement, cls: string): void {

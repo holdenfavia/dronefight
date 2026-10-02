@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { DEFAULT_MAP, getMap, type MapDef, type SpawnPoint } from '../../../shared/maps';
-import { COMBAT, TEAM_COLORS, TEAM_NAMES } from '../../../shared/combat';
+import { COMBAT, pilotColor, pilotName } from '../../../shared/combat';
 import { droneClass, type DroneClassId, type GunSound } from '../../../shared/drones';
 import type { MatchPlayer } from '../../../shared/protocol';
 import { buildColliders, raycastArena } from '../../../shared/raycast';
@@ -88,8 +88,11 @@ export class CombatClient {
   private smokeReadyAt = 0;
   private readonly hudInfo: CombatHudInfo = {
     phase: 'waiting',
-    myTeam: 0,
-    scores: [0, 0],
+    myScore: 0,
+    rank: 1,
+    pilots: 1,
+    leader: null,
+    winnerName: null,
     killsToWin: COMBAT.killsToWin,
     hp: 100,
     maxHp: 100,
@@ -107,7 +110,7 @@ export class CombatClient {
     private readonly hud: Hud,
     /** The FPV camera's position and axes, which the guns are mounted around (ADR-0009, ADR-0011). */
     private readonly aim: (origin: THREE.Vector3, forward: THREE.Vector3, right: THREE.Vector3, up: THREE.Vector3) => void,
-    /** Server respawned us: at this spawn, flying this class (ADR-0012, ADR-0013). */
+    /** Server respawned us: at this spawn (moved beside it if taken, ADR-0026), flying this class (ADR-0012, ADR-0013). */
     private readonly onRespawn: (spawn: SpawnPoint, drone: DroneClassId) => void,
     private readonly sounds: CombatSounds,
     private readonly effects: { smoke: SmokeTrails; missiles: Missiles },
@@ -226,9 +229,9 @@ export class CombatClient {
     return this.net.inRoom && !!m && m.phase !== 'waiting';
   }
 
-  /** Your team color, or orange outside a room. */
+  /** Your pilot color, or orange outside a room (ADR-0026). */
   get myColor(): string {
-    return TEAM_COLORS[this.net.team ?? 0] ?? TEAM_COLORS[0];
+    return pilotColor(this.net.team);
   }
 
   update(dt: number, control: ControlState, flying: boolean): void {
@@ -302,10 +305,14 @@ export class CombatClient {
     const me = this.me();
     const h = this.hudInfo;
     h.phase = m.phase;
-    h.myTeam = me?.team ?? 0;
-    h.scores[0] = 0;
-    h.scores[1] = 0;
-    for (const p of m.players) h.scores[p.team === 1 ? 1 : 0] = p.score;
+    // Free-for-all standings (ADR-0026).
+    const myScore = me?.score ?? 0;
+    h.myScore = myScore;
+    h.pilots = m.players.length;
+    h.rank = 1 + m.players.filter((p) => p.score > myScore).length;
+    const top = m.players.filter((p) => p.id !== this.net.you).sort((a, b) => b.score - a.score)[0];
+    h.leader = top && top.score >= myScore ? { name: pilotName(top.team), score: top.score, color: pilotColor(top.team) } : null;
+    h.winnerName = m.winner ? this.teamName(m.winner) : null;
     h.killsToWin = m.killsToWin;
     const cls = droneClass(me?.drone ?? this.drone.classId);
     h.maxHp = cls.maxHp;
@@ -322,9 +329,10 @@ export class CombatClient {
     return this.net.match?.players.find((p) => p.id === this.net.you);
   }
 
+  /** A pilot's color name ("Cyan"), which is how pilots are named in a room (ADR-0026). */
   private teamName(id: string | null): string {
-    const team = this.net.match?.players.find((p) => p.id === id)?.team ?? 0;
-    return TEAM_NAMES[team] ?? 'Opponent';
+    const slot = this.net.match?.players.find((p) => p.id === id)?.team;
+    return slot === undefined ? 'Pilot' : pilotName(slot);
   }
 
   /** Launch a guided missile (ADR-0016) from the current barrel, along the line of sight. */
@@ -427,9 +435,11 @@ export class CombatClient {
             this.sounds.stinger('death');
           } else if (ev.killer === you) {
             this.sounds.stinger('kill');
-            this.showToast(ev.cause === 'shot' ? 'Kill +1' : 'They crashed · kill +1', now);
+            this.showToast(ev.cause === 'shot' ? `${this.teamName(ev.id)} down · kill +1` : `${this.teamName(ev.id)} crashed · kill +1`, now);
+          } else if (ev.killer) {
+            this.showToast(`${this.teamName(ev.killer)} got ${this.teamName(ev.id)}`, now);
           } else {
-            this.showToast(`${this.teamName(ev.id)} crashed`, now);
+            this.showToast(`${this.teamName(ev.id)} ${ev.cause === 'shot' ? 'blew up' : 'crashed'}`, now);
           }
           break;
         case 'ability':
@@ -449,7 +459,9 @@ export class CombatClient {
         case 'respawn':
           if (ev.id === you) {
             this.respawnDeadline = null;
-            this.onRespawn(this.map.spawns[ev.spawn] ?? this.map.spawns[0]!, ev.drone);
+            const base = this.map.spawns[ev.spawn] ?? this.map.spawns[0]!;
+            const o = ev.o ?? [0, 0];
+            this.onRespawn({ pos: [base.pos[0] + o[0], base.pos[1], base.pos[2] + o[1]], yawDeg: base.yawDeg }, ev.drone);
             if (this.toast) this.toast = null;
           }
           break;
@@ -470,13 +482,13 @@ export class CombatClient {
         continue;
       }
       const shooter = this.net.match?.players.find((p) => p.id === shot.id);
-      const team = shooter?.team ?? 1;
+      const team = shooter?.team;
       const gun = droneClass(shooter?.drone ?? 'freestyle');
       this.shotOrigin.set(px, py, pz);
       this.shotDir.set(dx, dy, dz);
       const wall = raycastArena(this.colliders, px, py, pz, dx, dy, dz, gun.range);
       const maxDist = this.propHit(this.shotOrigin, this.shotDir, wall, gun.bulletSpeed, shot.s.ts)?.dist ?? wall;
-      this.tracers.spawn(this.shotOrigin, this.shotDir, maxDist, TEAM_COLORS[team] ?? TEAM_COLORS[1], gun.bulletSpeed);
+      this.tracers.spawn(this.shotOrigin, this.shotDir, maxDist, pilotColor(team ?? 1), gun.bulletSpeed);
       if (gun.gunSound === 'vulcan') {
         this.sounds.remoteCannon(shot.id);
       } else if (gun.gunSound === 'shotgun') {

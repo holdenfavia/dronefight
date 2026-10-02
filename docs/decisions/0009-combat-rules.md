@@ -1,6 +1,6 @@
 # ADR-0009: Combat rules
 
-- **Status:** Accepted, amended by ADR-0011 (weapon origin, hit radius, damage, how the other pilot is shown) and ADR-0012 (spawns)
+- **Status:** Accepted, amended by ADR-0011 (weapon origin, hit radius, damage, how the other pilot is shown) and ADR-0012 (spawns) (partly superseded by ADR-0026: free-for-all, up to 10 pilots)
 - **Date:** 2026-09-29
 
 ## Context

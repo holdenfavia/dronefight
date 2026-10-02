@@ -20,7 +20,7 @@ import { createClassModel, setDronePropColor } from './render/droneModel';
 import { RemoteDrones } from './render/remoteDrones';
 import { Tracers } from './render/tracers';
 import { Trails } from './render/trails';
-import { COMBAT, TEAM_COLORS } from '../../shared/combat';
+import { COMBAT, pilotColor } from '../../shared/combat';
 import { droneClass, type DroneClassId } from '../../shared/drones';
 import { BoundaryGrid } from './world/boundaryGrid';
 import { WING } from './sim/wingModel';
@@ -64,7 +64,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const randomSpawn = (map: MapDef) => map.spawns[Math.floor(Math.random() * map.spawns.length)] ?? map.spawns[0]!;
   const drone = new Drone(physics, randomSpawn(currentMap), settings.drone);
   // Your own model (chase view), drawn at the size others see you at (ADR-0011, ADR-0013).
-  let droneModel = createClassModel(drone.classId, TEAM_COLORS[0]);
+  let droneModel = createClassModel(drone.classId, pilotColor(0));
   world.scene.add(droneModel);
   const boundaryGrid = new BoundaryGrid(world.scene);
   boundaryGrid.setHalfSize(currentMap.halfSize);
@@ -362,10 +362,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const projected = new THREE.Vector3();
   const toTarget = new THREE.Vector3();
   const camForward = new THREE.Vector3();
-  const marker: MarkerInfo = { x: 0, y: 0, onScreen: true, distance: 0 };
-
-  /** Screen marker for the other pilot, pinned to the screen edge when off-screen or behind. */
-  function markerFor(target: THREE.Vector3): MarkerInfo {
+  /** Screen marker for a pilot, pinned to the screen edge when off-screen or behind (written into `marker`). */
+  function markerFor(target: THREE.Vector3, marker: MarkerInfo): MarkerInfo {
     const cam = rig.camera;
     const w = container.clientWidth;
     const h = container.clientHeight;
@@ -416,6 +414,40 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     return lead;
   }
 
+  // Edge arrows for every pilot you can't see (ADR-0026): smoking pilots have none (ADR-0024).
+  const markerPool: MarkerInfo[] = [];
+  const markers: MarkerInfo[] = [];
+  function pilotMarkers(): readonly MarkerInfo[] {
+    markers.length = 0;
+    for (const v of remotes.views) {
+      if (v.concealed) continue;
+      const m = markerPool[markers.length] ?? (markerPool[markers.length] = { x: 0, y: 0, onScreen: true, distance: 0, color: '' });
+      markerFor(v.position, m);
+      if (m.onScreen) continue;
+      m.color = pilotColor(v.team ?? 1);
+      markers.push(m);
+    }
+    return markers;
+  }
+
+  /** Lead indicator on the pilot nearest your crosshair (ADR-0026), skipping smoking, holding or crashed ones. */
+  const toPilot = new THREE.Vector3();
+  function pilotLead(): { x: number; y: number } | null {
+    if (paused) return null;
+    rig.camera.getWorldDirection(camForward);
+    let best: (typeof remotes.views)[number] | null = null;
+    let bestDot = -Infinity;
+    for (const v of remotes.views) {
+      if (v.concealed || v.mode === 'hold' || v.crashed) continue;
+      const dot = toPilot.subVectors(v.position, rig.camera.position).normalize().dot(camForward);
+      if (dot > bestDot) {
+        bestDot = dot;
+        best = v;
+      }
+    }
+    return best ? leadFor(best.position, best.velocity) : null;
+  }
+
   /** Lead indicator on the practice bot nearest the crosshair (ADR-0017). */
   function practiceLead(): { x: number; y: number } | null {
     if (!training.active || paused) return null;
@@ -429,8 +461,14 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     netInfo.status = net.status;
     netInfo.room = net.room;
     netInfo.pingMs = net.clock.rtt;
-    const view = remotes.views[0];
-    netInfo.peer = net.peers.size > 0 ? { delayMs: view?.delayMs ?? 0, staleMs: view ? view.staleMs : Infinity } : null;
+    // Several pilots (ADR-0026): show the worst one, since Hard rule 1 applies to each.
+    let delayMs = 0;
+    let staleMs = remotes.views.length ? 0 : Infinity;
+    for (const v of remotes.views) {
+      delayMs = Math.max(delayMs, v.delayMs);
+      staleMs = Math.max(staleMs, v.staleMs);
+    }
+    netInfo.peer = net.peers.size > 0 ? { delayMs, staleMs } : null;
     return netInfo;
   }
 
@@ -508,7 +546,6 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     if (!drone.crashed) smokeSources.push({ id: combat.selfId, position: drone.currPos });
     for (const v of remotes.views) if (!v.crashed) smokeSources.push(v);
     combatEffects.smoke.update(smokeSources);
-    const remote = remotes.views[0];
     combat.update(frameDt, control, !paused);
     // Riding our missile: the camera is its nose, and you can see your own drone hovering (ADR-0025).
     const ridden = combat.flying;
@@ -523,7 +560,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     particles.update(rig.camera, frameDt);
     training.setActive(!net.inRoom && currentMap.id === 'training');
     training.update(paused ? 0 : frameDt, rig.camera);
-    trails.update(remotes.views, rig.camera, (team) => TEAM_COLORS[team ?? 1] ?? TEAM_COLORS[1]);
+    trails.update(remotes.views, rig.camera, (team) => pilotColor(team ?? 1));
     setDronePropColor(droneModel, combat.myColor);
 
     // Audio: ears at the camera, motors follow the quad (ADR-0010).
@@ -552,12 +589,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       autoResetIn: drone.crashed && !combat.inMatch ? Math.max(0, CRASH.autoResetSeconds - drone.crashTime) : null,
       net: netHud(),
       combat: combat.hudState(),
-      // Edge arrow only when they're off screen; on screen, the trail and glow show them.
-      // Smoke hides the other pilot's marker and lead circle too (ADR-0016).
-      marker: remote && !remote.concealed && !markerFor(remote.position).onScreen ? marker : null,
-      lead: remote && !remote.concealed && !paused && remote.mode !== 'hold' && !remote.crashed
-        ? leadFor(remote.position, remote.velocity)
-        : practiceLead(),
+      // Edge arrows only for pilots off screen; on screen, trails and glow show them.
+      // Smoking pilots get no arrow and no lead circle (ADR-0024).
+      markers: pilotMarkers(),
+      lead: training.active ? practiceLead() : pilotLead(),
       training: training.active ? training.statsText() : null,
       missile: combat.missileHud(missileTargetList()),
       special:

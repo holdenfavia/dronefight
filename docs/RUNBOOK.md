@@ -36,7 +36,7 @@ npm run server
 npm run dev
 ```
 
-In the game: **Play online → Create room**, then read the 2-digit code to your friend (or **Copy invite link**; `?room=CODE` joins automatically).
+In the game: **Play online → Create room**, then read the 2-digit code to your friends (free-for-all, up to 10 pilots, ADR-0026) (or **Copy invite link**; `?room=CODE` joins automatically).
 
 - **Same Wi-Fi:** start the client with `npm run dev -- --host`, then your friend opens `http://<your-computer's-IP>:5173`. The client connects to the server on the same host, port 8787.
 - **Different houses:** use the deployed game (see **Deploy**).
@@ -64,6 +64,9 @@ Keyboard flight is for testing only.
 Every physics and feel constant lives in `client/src/config.ts` (thrust-to-weight, drag, motor spool, rate tracking, prop wash, crash threshold). Rates and camera are adjustable in-game under **Settings**. Current baseline (guarded by tests in `client/src/sim/flightModel.test.ts`): hover near 25% throttle, idle lift ~5% of weight (zero throttle drops almost like free fall), flat terminal fall ~16 m/s, full-throttle punch ~160 km/h, forward top speed ~170 km/h, full stick reaches max rate in ~25 ms, prop wash very light (max 12°/s shake, only when dropping faster than 4 m/s; set `propWash.maxDegPerSec` to 0 to remove it). Gravity is real (9.81 m/s²); fix floatiness with idle thrust and drag, not gravity.
 
 ### Combat
+
+Rooms are **free-for-all** for up to 10 pilots (ADR-0026): everyone is an enemy, first to 10 kills wins, each pilot has their own color (named by color in toasts and the scoreboard). You can join a running match. More pilots than spawns? You spawn a few metres beside a taken one.
+
 
 Rules are in ADR-0009. Tunable numbers (fire rate, round speed, damage, HP, respawn and protection times, hit radius, kills to win) are in `shared/combat.ts`, used by both client and server. Restart the server after changing them.
 

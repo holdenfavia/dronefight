@@ -248,6 +248,78 @@ describe('Match (ADR-0009)', () => {
   });
 });
 
+describe('free-for-all (ADR-0026)', () => {
+  it('up to 10 pilots, each with their own color; a late joiner spawns into the running match', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match('yard', (msg) => log.push(msg));
+    match.addPlayer('p0', 0);
+    expect(match.state().phase).toBe('waiting');
+    match.addPlayer('p1', 0);
+    expect(match.state().phase).toBe('playing');
+    for (let i = 2; i < 10; i++) match.addPlayer(`p${i}`, 100 * i);
+    const slots = match.state().players.map((p) => p.team);
+    expect(new Set(slots).size).toBe(10);
+    expect(log.some((m) => m.t === 'respawn' && m.id === 'p9')).toBe(true);
+    expect(match.state().players.find((p) => p.id === 'p9')?.protected).toBe(true);
+  });
+
+  it('a freed color slot is reused by the next pilot', () => {
+    const match = new Match('yard', () => {});
+    for (let i = 0; i < 4; i++) match.addPlayer(`p${i}`, 0);
+    match.removePlayer('p1', 10);
+    match.addPlayer('new', 20);
+    expect(match.state().players.find((p) => p.id === 'new')?.team).toBe(1);
+  });
+
+  it('with more pilots than spawns, nobody spawns on top of anyone', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match('yard', (msg) => log.push(msg));
+    for (let i = 0; i < 10; i++) match.addPlayer(`p${i}`, 0);
+    // Latest respawn per pilot: the spawn plus any offset.
+    const at = new Map<string, Vec3>();
+    for (const m of log) {
+      if (m.t !== 'respawn') continue;
+      const s = MAPS.yard.spawns[m.spawn]!.pos;
+      at.set(m.id, [s[0] + (m.o?.[0] ?? 0), s[1], s[2] + (m.o?.[1] ?? 0)]);
+    }
+    const points = [...at.values()];
+    expect(points).toHaveLength(10);
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        expect(Math.hypot(points[i]![0] - points[j]![0], points[i]![2] - points[j]![2])).toBeGreaterThan(3);
+      }
+    }
+  });
+
+  it('everyone is an enemy: a third pilot can shoot either of the others', () => {
+    const t = setup();
+    t.match.addPlayer('C', t.getNow());
+    t.advance(afterProtection);
+    // C, a third pilot off to the side, shoots B.
+    const posC: Vec3 = [-100, 30, -40];
+    t.match.onState('C', droneAt(posC), t.getNow());
+    t.advance(afterProtection);
+    const target = t.posB();
+    const d: Vec3 = [target[0] - posC[0], target[1] - posC[1], target[2] - posC[2]];
+    const len = Math.hypot(...d);
+    t.match.onState('C', droneAt(posC), t.getNow());
+    t.match.onShot('C', { ts: t.getNow(), p: posC, d: [d[0] / len, d[1] / len, d[2] / len] }, t.getNow());
+    t.advance(200);
+    expect(t.log.some((m) => m.t === 'hit' && m.shooter === 'C' && m.target === 'B')).toBe(true);
+  });
+
+  it('drops back to waiting below two pilots', () => {
+    const match = new Match('yard', () => {});
+    match.addPlayer('a', 0);
+    match.addPlayer('b', 0);
+    match.addPlayer('c', 0);
+    match.removePlayer('b', 10);
+    expect(match.state().phase).toBe('playing');
+    match.removePlayer('c', 20);
+    expect(match.state().phase).toBe('waiting');
+  });
+});
+
 describe('drone classes (ADR-0013)', () => {
   it("uses the shooter's damage and the target's health", () => {
     const t = setup();

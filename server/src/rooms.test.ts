@@ -56,11 +56,18 @@ describe('RoomManager', () => {
     rooms.handle(b, { t: 'join', room: 'ZZZZ' });
     expect(b.last('error')?.code).toBe('room-not-found');
     rooms.handle(b, { t: 'join', room: code });
-    const c = new FakeConn();
-    rooms.connect(c);
-    rooms.handle(c, { t: 'join', room: code });
-    expect(c.last('error')?.code).toBe('room-full');
-    expect(NET.maxPlayersPerRoom).toBe(2);
+    // Fill the room to 10 (ADR-0026); the 11th is turned away.
+    expect(NET.maxPlayersPerRoom).toBe(10);
+    for (let i = 2; i < NET.maxPlayersPerRoom; i++) {
+      const c = new FakeConn();
+      rooms.connect(c);
+      rooms.handle(c, { t: 'join', room: code });
+      expect(c.last('joined')?.room).toBe(code);
+    }
+    const late = new FakeConn();
+    rooms.connect(late);
+    rooms.handle(late, { t: 'join', room: code });
+    expect(late.last('error')?.code).toBe('room-full');
   });
 
   it('forwards state stamped with server time, only to the other player', () => {

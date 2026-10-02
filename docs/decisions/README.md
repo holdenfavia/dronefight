@@ -8,11 +8,11 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0002](0002-typescript-vite.md) | TypeScript (strict) + Vite for the client; TypeScript for the server | Accepted |
 | [0003](0003-custom-flight-model-rapier.md) | Custom acro flight model; Rapier only for collisions | Superseded by 0008 |
 | [0004](0004-netcode-latest-state-wins.md) | Netcode: latest state wins, ~100 ms interpolation, no backlog replay, server-side hits | Accepted |
-| [0005](0005-room-codes-not-matchmaking.md) | Node WebSocket server with room codes (two digits since 2026-10-01); no matchmaking | Accepted |
+| [0005](0005-room-codes-not-matchmaking.md) | Node WebSocket server with room codes (two digits since 2026-10-01); no matchmaking | Accepted (room size superseded by 0026) |
 | [0006](0006-controller-gamepad-calibration.md) | Radios via Gamepad API behind a mapping/calibration layer | Accepted |
 | [0007](0007-art-direction.md) | Art direction: bright industrial, orange/black/white, inspired by Flight Division's feel only | Accepted (Playground exception: 0019) |
 | [0008](0008-rapier-integrates-flight-forces.md) | Custom flight model computes forces; Rapier applies all forces (incl. real gravity) and integrates motion | Accepted |
-| [0009](0009-combat-rules.md) | Combat: tracer rounds, 100 HP, server-decided hits with limited lag compensation, crash = death, first to 5; lime second color | Accepted (amended by 0011, 0012) |
+| [0009](0009-combat-rules.md) | Combat: tracer rounds, 100 HP, server-decided hits with limited lag compensation, crash = death, first to 5; lime second color | Accepted (amended by 0011, 0012; teams and first-to-5 superseded by 0026) |
 | [0010](0010-procedural-audio.md) | Procedural audio (Web Audio): throttle-following motors, positional other pilots, synthesized effects; no audio files | Accepted |
 | [0011](0011-combat-readability.md) | Combat readability: 1.5 m drones (visual) and hit radius, damage 20, twin converging guns, trails, glow, lead indicator | Accepted (amended by 0012) |
 | [0012](0012-maps-and-random-spawns.md) | Maps as shared data (Downtown, Yard), host picks map, 8 random spawns kept away from opponents, 0.75 m hitbox, mountains/clouds scenery | Accepted |
@@ -29,3 +29,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0023](0023-destructible-props.md) | Destructible props: movers and per-map explosives (parked cars, barrels, propane, water tanks) blow up when shot; server-authoritative online, chain reactions, blast damage in matches, 30 s respawn | Accepted |
 | [0024](0024-smoke-trail-stealth.md) | 3D quad smoke is a 6 s stealth smoke trail: the other pilot sees only your frame (no glow, trail, lead dot or marker); 10 s cooldown | Accepted |
 | [0025](0025-piloted-missile.md) | Freestyle missile is flown from its own camera (sticks, throttle, thrust vectoring, fuel ≤10 s); drone auto-hovers and can be shot; client flies it, server validates and decides hits | Accepted |
+| [0026](0026-free-for-all-rooms.md) | Free-for-all rooms of up to 10 pilots: match starts at 2, join mid-match, first to 10 kills, 10 pilot colors, spawn offsets | Accepted |

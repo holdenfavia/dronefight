@@ -8,7 +8,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 
 ## Players and platform
 
-- Built for two friends first (1v1). Room codes, no public matchmaking (ADR-0005).
+- Built for a group of friends: free-for-all rooms of up to 10 pilots (ADR-0026). Two-digit room codes, no public matchmaking (ADR-0005).
 - Desktop browsers. Chrome/Edge are the primary targets (best Gamepad API support). Safari/Firefox are best-effort.
 - Mobile/touch is out of scope.
 
@@ -48,7 +48,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 - 100 HP, 20 per hit. Server decides hits (0.75 m hit radius, matching the drawn drone), with limited lag compensation (≤ 250 ms rewind).
 - Other pilots are drawn ~1.5 m across with a glow and a fading trail; a lead indicator shows where to aim (ADR-0011). Physics stay real 5".
 - Crash = death. The kill goes to the other pilot if they damaged you in the last 5 s.
-- Respawn after 3 s at a random spawn away from your opponent (8 per map, ADR-0012). First to 5 kills wins, then a new match starts.
+- Respawn after 3 s at a random spawn away from other pilots (8 per map, ADR-0012). Free-for-all: first to 10 kills wins, then a new match starts (ADR-0026).
 - Solo mode has no combat.
 
 ## Maps (ADR-0012)
@@ -66,7 +66,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 Inspired by the *feel* of Flight Division, never its assets:
 - Bright sunny blue skies, soft clean lighting.
 - Orange / black / white palette. Orange steel scaffolding, concrete, platforms, ramps, gaps to thread.
-- Pilot colors: orange and lime `#b6f000` (ADR-0009).
+- Pilot colors: one per pilot, orange and lime `#b6f000` first (ADR-0009, ADR-0026).
 - Stylized-realistic and clean, not gritty.
 - UI: bold condensed all-caps type, with occasional hand-written accent notes.
 - Performance beats fidelity: baked lighting, instancing, compressed textures.
@@ -88,4 +88,4 @@ These must never be broken without a superseding decision:
 
 ## Out of scope (for now)
 
-Public matchmaking, accounts/login, rankings, mobile, VR, more than 2 players per room, angle/horizon mode.
+Public matchmaking, accounts/login, rankings, mobile, VR, more than 10 players per room, teams, angle/horizon mode.

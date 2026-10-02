@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { NET } from '../../../shared/protocol';
 import type { NetClient } from '../net/netClient';
 import { createSampledState, type SampleMode } from '../net/snapshotBuffer';
-import { TEAM_COLORS } from '../../../shared/combat';
+import { pilotColor } from '../../../shared/combat';
 import type { DroneClassId } from '../../../shared/drones';
 import { DRONE_VISUAL } from '../config';
 import { createClassModel, setDronePropColor } from './droneModel';
@@ -110,7 +110,7 @@ export class RemoteDrones {
       }
       const glow = this.glows.get(peer.id);
       const team = player?.team;
-      const color = TEAM_COLORS[team ?? 1] ?? TEAM_COLORS[1];
+      const color = pilotColor(team ?? 1);
       setDronePropColor(model, color);
       const s = peer.buffer.sample(renderTime, this.sample);
       model.visible = s.mode !== 'empty';
