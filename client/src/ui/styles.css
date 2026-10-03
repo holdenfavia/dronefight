@@ -917,3 +917,11 @@ body {
 .level-bar { height: 10px; border: 2px solid #111; border-radius: 6px; overflow: hidden; background: #fff; }
 .level-bar div { height: 100%; background: var(--orange, #ff6a13); }
 .level-hint { font-size: 12px; opacity: 0.7; margin-bottom: 10px; }
+
+/* Signed in: unmistakable on the start screen. */
+.account-btn.signed-in {
+  background: #e7f7dc;
+  border-color: #2e8b2e;
+  color: #1d5e1d;
+}
+.signed-in-mark { font-weight: 900; }

@@ -124,16 +124,19 @@ export class Menu {
     this.updateControllerStatus();
   }
 
-  /** Start-screen entry to the account: "Sign in" for guests, your name once signed in. Hidden if sign-in isn't set up. */
+  /**
+   * Start-screen entry to the account: plainly "✓ Signed in" (green, with your name and level) once you
+   * are, "Sign in (optional)" for guests. Hidden if sign-in isn't set up.
+   */
   private accountButton(): string {
     const a = this.account;
     if (!a.available) return '';
-    const label =
-      a.status === 'signed-in'
-        ? `✓ ${escapeHtml(a.profile.name || a.user?.label || 'Signed in')}${a.xp !== null ? ` · Lv ${levelProgress(a.xp).level}` : ''} ▸`
-        : a.status === 'loading'
-          ? 'Account…'
-          : 'Sign in (optional) ▸';
+    if (a.status === 'signed-in') {
+      const name = escapeHtml(a.profile.name || a.user?.label || '');
+      const level = a.xp !== null ? ` · Lv ${levelProgress(a.xp).level}` : '';
+      return `<button class="btn ghost account-btn signed-in" data-account><span class="signed-in-mark">✓ Signed in</span>${name ? ` · ${name}` : ''}${level}</button>`;
+    }
+    const label = a.status === 'loading' ? 'Checking sign-in…' : 'Sign in (optional) ▸';
     return `<button class="btn ghost account-btn" data-account>${label}</button>`;
   }
 

@@ -77,7 +77,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const input = new InputManager();
   if (import.meta.env.DEV) {
     // Handy for poking at the game from the browser console while developing.
-    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get training() { return training; }, get combatEffects() { return combatEffects; }, get props() { return props; }, get combat() { return combat; }, get hud() { return hud; } } });
+    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get training() { return training; }, get combatEffects() { return combatEffects; }, get props() { return props; }, get combat() { return combat; }, get hud() { return hud; }, get account() { return account; } } });
   }
   const rig = new CameraRig(settings);
   rig.uptiltOverride = drone.classId === 'wing' ? WING.cameraUptiltDeg : null;
