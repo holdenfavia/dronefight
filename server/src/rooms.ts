@@ -125,10 +125,10 @@ export class RoomManager {
         player.room?.match.onShot(player.id, msg.s, this.now());
         break;
       case 'loadout':
-        player.room?.match.onLoadout(player.id, msg.drone, this.now());
+        player.room?.match.onLoadout(player.id, msg.loadout, this.now());
         break;
       case 'ability':
-        player.room?.match.onAbility(player.id, msg.p, this.now());
+        player.room?.match.onAbility(player.id, msg.kind, msg.p, this.now());
         break;
       case 'detonate':
         player.room?.match.onDetonate(player.id, msg.rid, msg.p, this.now());

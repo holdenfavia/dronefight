@@ -78,6 +78,33 @@ export const QUAD_3D: QuadParams = {
   threeD: { reverseEfficiency: 0.7, centerDeadband: 0.04 },
 };
 
+/**
+ * 3" racer (ADR-0033): light and twitchy. Physics mass and thrust-to-weight are for its default loadout;
+ * other loadouts scale them (shared/loadout.ts loadFactor).
+ */
+export const RACER: QuadParams = {
+  ...QUAD,
+  massKg: 0.35,
+  halfExtents: { x: 0.08, y: 0.03, z: 0.08 },
+  thrustToWeight: 8,
+  motorTau: 0.015,
+  rateTau: 0.007,
+  dragQuadratic: { x: 0.007, y: 0.013, z: 0.007 },
+  dragLinear: 0.005,
+};
+
+/** X8 heavy lifter (ADR-0033): eight motors, big, slow to turn. */
+export const X8: QuadParams = {
+  ...QUAD,
+  massKg: 1.6,
+  halfExtents: { x: 0.2, y: 0.06, z: 0.2 },
+  thrustToWeight: 4,
+  motorTau: 0.04,
+  rateTau: 0.03,
+  dragQuadratic: { x: 0.026, y: 0.05, z: 0.026 },
+  dragLinear: 0.018,
+};
+
 export const CRASH = {
   /** Instant change in velocity (m/s) within one physics step that counts as a crash. */
   impactDeltaV: 7,

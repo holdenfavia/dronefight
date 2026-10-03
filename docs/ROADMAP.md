@@ -114,8 +114,10 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [ ] Sign in on two devices and check the profile follows
 - [x] Step 3 code: progress table (server-only writes), token check, XP from kills/assists/props/finish/win, levels, +XP pop-up and level-ups (ADR-0032)
 - [ ] Run 0002_progress.sql and set SUPABASE_SECRET_KEY on Fly (RUNBOOK); play a match signed in and check XP lands
-- [ ] Loadout system: weapons and specials split from drone classes; Loadout screen with live preview, paint and pilot name shown to others
-- [ ] First content batch: rail gun, burst rifle, afterburner, shield, 3" racer (sidegrades, everything unlocked while balancing)
+- [x] Loadout system (ADR-0033): bodies with thrust/weight/hardpoints, weapons and specials as weighted modules, physics from weight, Loadout screen, server-validated
+- [x] First content batch: rail gun, burst rifle, afterburner, shield, 3" racer, X8 heavy lifter (everything unlocked while balancing)
+- [ ] Play-test builds and balance weights, damage and thrust
+- [ ] Loadout screen: live 3D preview, paint and pilot name shown to others
 - [ ] Unlock track: levels unlock bodies, modules and paints
 - [ ] More content: flak, laser, rocket pod, flares, mines, cinewhoop, 7" long range, X8 gunship
 - [ ] Badges, challenges, friends leaderboard

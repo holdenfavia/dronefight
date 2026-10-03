@@ -21,10 +21,11 @@ import { RemoteDrones } from './render/remoteDrones';
 import { Tracers } from './render/tracers';
 import { Trails } from './render/trails';
 import { COMBAT, pilotColor } from '../../shared/combat';
-import { droneClass, type DroneClassId } from '../../shared/drones';
+import { droneClass } from '../../shared/drones';
 import { BoundaryGrid } from './world/boundaryGrid';
 import { WING } from './sim/wingModel';
-import { loadSettings, saveSettings } from './settings';
+import { currentLoadout, loadSettings, saveSettings } from './settings';
+import type { Loadout } from '../../shared/loadout';
 import { Drone } from './sim/drone';
 import { addGround, ArenaColliders, createPhysics } from './sim/physics';
 import { Hud, type MarkerInfo, type NetHudInfo } from './ui/hud';
@@ -68,8 +69,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   movingProps.setMap(currentMap, props);
   const randomSpawn = (map: MapDef) => map.spawns[Math.floor(Math.random() * map.spawns.length)] ?? map.spawns[0]!;
   const drone = new Drone(physics, randomSpawn(currentMap), settings.drone);
+  drone.setLoadout(currentLoadout(settings));
   // Your own model (chase view), drawn at the size others see you at (ADR-0011, ADR-0013).
-  let droneModel = createClassModel(drone.classId, pilotColor(0));
+  let droneModel = createClassModel(drone.classId, pilotColor(0), drone.loadout);
   world.scene.add(droneModel);
   const boundaryGrid = new BoundaryGrid(world.scene);
   boundaryGrid.setHalfSize(currentMap.halfSize);
@@ -150,8 +152,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       up.set(0, 1, 0).applyQuaternion(aimRot);
       origin.set(0, 0.03, -0.05).applyQuaternion(drone.currRot).add(drone.currPos);
     },
-    (spawn, cls) => {
-      if (cls !== drone.classId) applyClass(cls);
+    (spawn, loadout) => {
+      applyLoadout(loadout);
       drone.respawnAt(spawn);
       input.resetKeyboardThrottle(drone.restingThrottle);
     },
@@ -239,11 +241,12 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       if (!net.inRoom) switchMap(settings.map);
     },
     onDroneChanged: () => {
-      net.setLoadout(settings.drone);
+      // Body or build changed (ADR-0033): solo now; in a match at your next respawn.
+      net.setLoadout(currentLoadout(settings));
       if (combat.inMatch) {
-        combat.notify(`${droneClass(settings.drone).name} on next respawn`);
+        combat.notify(`${droneClass(settings.drone).name} build on next respawn`);
       } else {
-        applyClass(settings.drone);
+        applyLoadout(currentLoadout(settings));
         respawn();
       }
     },
@@ -252,12 +255,12 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       paused = true;
       if (net.inRoom) net.leave();
       switchMap(settings.map);
-      if (drone.classId !== settings.drone) applyClass(settings.drone);
+      applyLoadout(currentLoadout(settings));
       respawn();
     },
   }, account);
   menuRef = menu;
-  net.setLoadout(settings.drone);
+  net.setLoadout(currentLoadout(settings));
   // XP (ADR-0032): the server learns who you are from your sign-in token.
   account.onToken = (token) => net.setAuthToken(token);
   net.setAuthToken(account.accessToken);
@@ -268,10 +271,12 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   }
 
   /** Change what you're flying: flight model, collider, model and motor sound (ADR-0013). */
-  function applyClass(cls: DroneClassId): void {
-    drone.setClass(cls);
+  /** Fly a loadout (ADR-0033): flight model and weight, collider, model, motor sound. */
+  function applyLoadout(loadout: Loadout): void {
+    const cls = loadout.body;
+    drone.setLoadout(loadout);
     world.scene.remove(droneModel);
-    droneModel = createClassModel(cls, combat.myColor);
+    droneModel = createClassModel(cls, combat.myColor, loadout);
     droneModel.visible = settings.camera.view === 'chase';
     world.scene.add(droneModel);
     motorSound.dispose();
@@ -633,7 +638,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       training: training.active ? training.statsText() : null,
       missile: combat.missileHud(missileTargetList()),
       special:
-        drone.classId === 'wing'
+        drone.loadout.special === 'maneuver'
           ? { label: 'MANEUVER', value: drone.stalled ? 'STALL' : drone.maneuverActive ? 'ON' : 'OFF' }
           : combat.specialReadout(),
     });

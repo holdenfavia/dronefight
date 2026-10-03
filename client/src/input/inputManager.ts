@@ -29,6 +29,8 @@ export interface ControlState extends FlightInput {
   special: boolean;
   /** True for one poll when the class special is pressed. */
   specialPressed: boolean;
+  /** True for one poll when Switch weapon is pressed (guns / missiles, ADR-0033). */
+  switchPressed: boolean;
 }
 
 export type InputSource = 'radio' | 'gamepad' | 'keyboard';
@@ -60,6 +62,7 @@ export class InputManager {
     fire: false,
     special: false,
     specialPressed: false,
+    switchPressed: false,
   };
   source: InputSource = 'keyboard';
   /** Gamepad.id of a connected controller with no profile yet, if that's all we have. */
@@ -72,6 +75,7 @@ export class InputManager {
   private keyboardThrottle = 0;
   private resetWasDown = false;
   private specialWasDown = false;
+  private switchWasDown = false;
   private readonly rawScratch: { axes: number[]; buttons: number[] } = { axes: [], buttons: [] };
 
   constructor() {
@@ -136,6 +140,7 @@ export class InputManager {
 
     let resetDown: boolean;
     let specialDown: boolean;
+    let switchDown: boolean;
     if (pad && profile) {
       this.readPad(pad, profile);
       this.source = pad.mapping === 'standard' || looksLikeGamepad(pad.id) ? 'gamepad' : 'radio';
@@ -144,6 +149,7 @@ export class InputManager {
       resetDown = readSwitch(profile.reset, this.rawScratch) || this.keys.has('KeyR');
       this.state.fire = readSwitch(profile.fire ?? null, this.rawScratch) || this.keys.has('Space');
       specialDown = readSwitch(profile.special ?? null, this.rawScratch) || this.keys.has('KeyE');
+      switchDown = readSwitch(profile.weaponSwitch ?? null, this.rawScratch) || this.keys.has('KeyQ');
     } else {
       this.readKeyboard(dt);
       this.source = 'keyboard';
@@ -152,6 +158,7 @@ export class InputManager {
       resetDown = this.keys.has('KeyR');
       this.state.fire = this.keys.has('Space');
       specialDown = this.keys.has('KeyE');
+      switchDown = this.keys.has('KeyQ');
     }
 
     this.state.resetPressed = resetDown && !this.resetWasDown;
@@ -159,6 +166,8 @@ export class InputManager {
     this.state.special = specialDown;
     this.state.specialPressed = specialDown && !this.specialWasDown;
     this.specialWasDown = specialDown;
+    this.state.switchPressed = switchDown && !this.switchWasDown;
+    this.switchWasDown = switchDown;
     return this.state;
   }
 

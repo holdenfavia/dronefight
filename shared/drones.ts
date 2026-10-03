@@ -1,31 +1,25 @@
-// Drone classes (ADR-0013): per-class combat stats shared by client and server.
+// Drone bodies (ADR-0013, ADR-0033): what every client and the server agree on about a body. Weapons and
+// specials are modules (shared/weapons.ts, shared/specials.ts); a loadout puts them together (shared/loadout.ts).
 // Flight tuning lives client-side in client/src/sim/ (the server never simulates flight).
 
-export type DroneClassId = 'freestyle' | 'quad3d' | 'wing';
+export type DroneClassId = 'freestyle' | 'quad3d' | 'wing' | 'racer' | 'x8';
 
-/** How a class's gun sounds (ADR-0014). */
-export type GunSound = 'standard' | 'vulcan' | 'shotgun';
+/** Which flight model a body uses. */
+export type FlightKind = 'quad' | 'quad3d' | 'wing';
 
 export interface DroneClass {
   id: DroneClassId;
   name: string;
   /** Short description for the menu. */
   blurb: string;
+  flight: FlightKind;
   maxHp: number;
-  /** Damage each round (or pellet) does. */
-  damage: number;
-  /** Shots per second. A shotgun shot is several pellets. */
-  fireRate: number;
-  /** Rounds per shot: 1 for guns, several for a shotgun (ADR-0014). */
-  pellets: number;
-  /** Pellet spread: half-angle of the cone (degrees). 0 for guns. */
-  spreadDeg: number;
-  /** This class's round speed (m/s). */
-  bulletSpeed: number;
-  /** How far rounds travel (m). */
-  range: number;
-  gunSound: GunSound;
-  /** Hit sphere radius (m): matches the drawn size (ADR-0012). */
+  /** Frame weight with battery (kg), and max static thrust (kgf). Thrust over total weight sets how it flies (ADR-0033). */
+  frameKg: number;
+  thrustKg: number;
+  /** Weapon hardpoints, and whether it has a special slot. */
+  hardpoints: number;
+  /** Hit sphere radius (m): matches the drawn size (ADR-0012, ADR-0029). */
   hitRadius: number;
   /** Model scale when drawn (the base models are real size). */
   visualScale: number;
@@ -36,15 +30,12 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     id: 'freestyle',
     name: 'Freestyle 5"',
     blurb: 'All-rounder acro quad',
+    flight: 'quad',
     maxHp: 100,
-    // Fast time-to-kill (ADR-0028): 3 hits.
-    damage: 34,
-    fireRate: 12,
-    pellets: 1,
-    spreadDeg: 0,
-    bulletSpeed: 350,
-    range: 300,
-    gunSound: 'standard',
+    frameKg: 0.65,
+    // Default loadout (gun + missile pod, 1.02 kg) at the tuned thrust-to-weight of 8.
+    thrustKg: 8.16,
+    hardpoints: 2,
     // Drawn and hit at 3x (ADR-0029): ~4.5 m across, 2.25 m hit radius.
     hitRadius: 2.25,
     visualScale: 14.4,
@@ -52,40 +43,59 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
   quad3d: {
     id: 'quad3d',
     name: '3D quad',
-    blurb: 'Reversible thrust, hover inverted. Choked double-barrel shotgun',
+    blurb: 'Reversible thrust: hover inverted, back up',
+    flight: 'quad3d',
     maxHp: 90,
-    // Choked shotgun (ADR-0014): 8 pellets in a tight cone, twice a second. A full close blast one-shots a quad (ADR-0028).
-    damage: 14,
-    fireRate: 2,
-    pellets: 8,
-    spreadDeg: 1.5,
-    bulletSpeed: 320,
-    range: 150,
-    gunSound: 'shotgun',
-    // Drawn and hit at 3x (ADR-0029): ~4.5 m across, 2.25 m hit radius.
+    frameKg: 0.6,
+    // Default loadout (shotgun + smoke, 1.05 kg) at the tuned thrust-to-weight of 7.
+    thrustKg: 7.35,
+    hardpoints: 2,
     hitRadius: 2.25,
     visualScale: 14.4,
   },
   wing: {
     id: 'wing',
     name: 'FPV wing',
-    blurb: "Fast, can't hover. Rotary cannon, maneuver mode on Special (E)",
+    blurb: "Fast, can't hover; lift from the wing, so weight raises its stall speed",
+    flight: 'wing',
     maxHp: 130,
-    // Rotary cannon (ADR-0014): very fast, light rounds; 10 rounds kill a Freestyle (ADR-0028).
-    damage: 10,
-    fireRate: 50,
-    pellets: 1,
-    spreadDeg: 0,
-    bulletSpeed: 480,
-    range: 300,
-    gunSound: 'vulcan',
+    frameKg: 1.0,
+    // Default loadout (cannon, 1.35 kg) at the tuned thrust (16 N for the 1 kg airframe = T/W 1.63).
+    thrustKg: 2.2,
+    hardpoints: 2,
     hitRadius: 2.7,
     // Base wing model spans ~0.9 m; drawn ~5.4 m (ADR-0029).
     visualScale: 6,
   },
+  racer: {
+    id: 'racer',
+    name: '3" racer',
+    blurb: 'Tiny, light and twitchy. One hardpoint, 70 HP, small hitbox',
+    flight: 'quad',
+    maxHp: 70,
+    frameKg: 0.35,
+    // Default loadout (gun, 0.47 kg) at thrust-to-weight 8.
+    thrustKg: 3.76,
+    hardpoints: 1,
+    hitRadius: 1.6,
+    visualScale: 14.4,
+  },
+  x8: {
+    id: 'x8',
+    name: 'X8 heavy lifter',
+    blurb: 'Eight motors, four hardpoints, 180 HP. Big and slow',
+    flight: 'quad',
+    maxHp: 180,
+    frameKg: 2.0,
+    // Default loadout (2 guns + burst rifle + missile pod + shield, 3.19 kg) at thrust-to-weight 4.
+    thrustKg: 12.76,
+    hardpoints: 4,
+    hitRadius: 3.2,
+    visualScale: 14.4,
+  },
 };
 
-export const DRONE_ORDER: readonly DroneClassId[] = ['freestyle', 'quad3d', 'wing'];
+export const DRONE_ORDER: readonly DroneClassId[] = ['freestyle', 'quad3d', 'wing', 'racer', 'x8'];
 export const DEFAULT_DRONE: DroneClassId = 'freestyle';
 
 export function isDroneClassId(x: unknown): x is DroneClassId {

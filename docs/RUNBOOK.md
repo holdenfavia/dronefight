@@ -85,10 +85,20 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 - Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s); 3D quad double-barrel shotgun (2 blasts/s, 8 pellets). To put Special (or Fire) on your radio without redoing the sticks, use **Settings → Map buttons**. There, Skip keeps a button's current binding.
 - Combat stats per class are in `shared/drones.ts` (server and client). Quad flight tuning is in `client/src/config.ts` (`QUAD`, `QUAD_3D`); wing tuning in `client/src/sim/wingModel.ts` (`WING`).
 
+### Loadouts (ADR-0033)
+
+**Play → Loadout** (or **Loadout** in the pause menu) builds your drone: pick a body, a weapon for each hardpoint and a special. The panel shows total weight, thrust, **T/W** and hover throttle, and says Agile / Heavy and sluggish / Barely flies / **Too heavy to take off** (red). Nothing is blocked. Each body remembers its build (per browser).
+
+- Numbers: bodies in `shared/drones.ts` (`frameKg`, `thrustKg`, `hardpoints`), weapons in `shared/weapons.ts`, specials in `shared/specials.ts`, defaults and weight math in `shared/loadout.ts`. The client scales simulated mass by (build weight ÷ default build weight) with thrust fixed, so defaults fly exactly as tuned (`loadedParams` in `client/src/sim/drone.ts`). Body flight tuning: `QUAD`, `QUAD_3D`, `RACER`, `X8` in `client/src/config.ts`, `WING` in `wingModel.ts`.
+- **Fire** shoots every gun at its own rate. Missile pods are a second group: **Special** switches guns/missiles if your special slot is empty; otherwise use **Switch weapon** (Q, gamepad RB, or map it in Settings → Map buttons).
+- The server checks every loadout and uses the firing weapon's stats; a weapon you don't carry can't fire.
+
 ### Class specials (ADR-0016, ADR-0022)
 
 | Class | Special (E / mapped button) |
 |---|---|
+| Afterburner (any body) | **Hold** Special: +60% thrust while the fuel bar lasts (2 s; refills in 6 s) |
+| Shield (any body) | **Tap** Special: absorbs the next 40 damage for 3 s; 12 s cooldown. Others see a blue bubble |
 | FPV wing | **Hold** (or flip a switch mapped to Special) for **maneuver mode**: pitch ×2, roll ×1.3, sharper when slow, weaker nose-into-wind pull, so a hard pull stalls you. HUD shows MANEUVER OFF / ON / STALL |
 | 3D quad | **Tap** for a smoke trail (ADR-0024): for 6 s the other pilot sees only your frame (no glow, trail, marker or lead dot); you leave a thin smoke trail; 10 s cooldown |
 | Freestyle 5" | **Tap** to switch Guns / **missile**. Fire launches it and **you fly it** from its camera (ADR-0025): sticks steer (roll/pitch/yaw), throttle sets speed (~60–120 m/s) and turn authority (thrust vectoring). Fuel ~6 s at full throttle, up to 10 s slow, then a 1.5 s glide. **Fire again or Special detonates** it right there. Your drone auto-hovers meanwhile, turns to watch the missile, then the blast for 1.5 s, and **can be shot**; if it dies the missile blows. Pod of 3, one in flight. Fuse 4 m, **one-shot kill** within 5 m, splash to 10 m (ADR-0027) |

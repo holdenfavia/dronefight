@@ -6,6 +6,9 @@ import { CalibrationScreen } from '../input/calibrationScreen';
 import { NET } from '../../../shared/protocol';
 import type { InputManager } from '../input/inputManager';
 import { droneClass, DRONE_ORDER } from '../../../shared/drones';
+import { cleanLoadout, defaultLoadout, handling, missilePods, thrustToWeight, totalKg, type Loadout } from '../../../shared/loadout';
+import { SPECIAL_ORDER, SPECIALS, specialFits, type SpecialId } from '../../../shared/specials';
+import { WEAPON_ORDER, WEAPONS, type WeaponId } from '../../../shared/weapons';
 import { getMap, MAP_ORDER } from '../../../shared/maps';
 import type { NetClient } from '../net/netClient';
 import { maxRate } from '../sim/rates';
@@ -31,6 +34,8 @@ export class Menu {
   private screen: Screen = 'main';
   /** You started flying (solo, or Start in a room): Escape then opens the pause menu, not the start screen. */
   private flying = false;
+  /** Where the Loadout screen's Done goes back to (Play, the room screen, or the pause menu). */
+  private droneReturn: Screen = 'main';
   private readonly calibration: CalibrationScreen;
 
   constructor(
@@ -46,13 +51,21 @@ export class Menu {
     this.show('main');
   }
 
+  /** The screen shown before the current one (for the Loadout screen's Done). */
+  private lastScreen: Screen = 'main';
+
   show(screen: Screen): void {
+    if (screen !== this.screen) this.lastScreen = this.screen;
     this.screen = screen;
     this.visible = true;
     this.root.hidden = false;
     if (screen === 'main') this.renderMain();
     else if (screen === 'pause') this.renderPause();
-    else if (screen === 'drone') this.renderDrone();
+    else if (screen === 'drone') {
+      // Done goes back where you came from (Play, the room, or the pause menu).
+      if (this.lastScreen !== 'drone') this.droneReturn = this.lastScreen;
+      this.renderDrone();
+    }
     else if (screen === 'settings') this.renderSettings();
     else if (screen === 'play') this.renderPlay();
     else if (screen === 'room') this.renderRoom();
@@ -143,7 +156,7 @@ export class Menu {
       <div class="panel pause-menu">
         <div class="panel-head"><span class="kicker">Paused</span><h2>${escapeHtml(where)}</h2></div>
         <button class="btn big" data-resume>Resume</button>
-        <button class="btn ghost" data-drone>Drone: ${droneClass(this.settings.drone).name} ▸</button>
+        <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
         ${inRoom ? `<button class="btn ghost" data-room>Room ${this.net.room}: invite ▸</button>` : ''}
         <button class="btn ghost" data-settings>Settings</button>
         <button class="btn ghost leave" data-leave>Leave game</button>
@@ -163,35 +176,90 @@ export class Menu {
     });
   }
 
-  /** Drone configuration: pick a drone (weapon and special modules and paint join it later, ADR-0030). */
+  /**
+   * Loadout (ADR-0033): pick a body, put a weapon on each hardpoint and a special in the slot. Weight against
+   * thrust is shown as you build, with plain warnings, but nothing is blocked: bad builds are allowed.
+   */
   private renderDrone(): void {
+    const s = this.settings;
     const inMatch = this.net.inRoom && this.net.match?.phase === 'playing';
+    const body = droneClass(s.drone);
+    const lo = s.loadouts[s.drone];
+    const kg = totalKg(lo);
+    const tw = thrustToWeight(lo);
+    const feel = handling(tw);
+    // Quads hover where thrust equals weight: throttle^1.5 = 1 / (T/W) (config throttleExponent).
+    const hover = body.flight === 'wing' ? null : tw > 1 ? Math.pow(1 / tw, 1 / 1.5) : null;
+    const weaponOptions = (current: WeaponId | null) =>
+      [`<option value="" ${current === null ? 'selected' : ''}>Empty</option>`]
+        .concat(WEAPON_ORDER.map((id) => `<option value="${id}" ${current === id ? 'selected' : ''}>${WEAPONS[id].name} · ${WEAPONS[id].kg} kg</option>`))
+        .join('');
+    const specialOptions = [`<option value="" ${lo.special === null ? 'selected' : ''}>None${missilePods(lo) > 0 ? ' (Special switches guns/missiles)' : ''}</option>`]
+      .concat(
+        SPECIAL_ORDER.filter((id) => specialFits(id, s.drone)).map(
+          (id) => `<option value="${id}" ${lo.special === id ? 'selected' : ''}>${SPECIALS[id].name} · ${SPECIALS[id].kg} kg</option>`,
+        ),
+      )
+      .join('');
+    const twPct = Math.min(100, (tw / 8) * 100);
     this.root.innerHTML = `
-      <div class="panel drone-config">
-        <div class="panel-head"><span class="kicker">Drone</span><h2>Pick your drone</h2></div>
-        <div class="drone-cards">
-          ${DRONE_ORDER.map((id) => {
-            const c = droneClass(id);
-            return `<button class="drone-card ${id === this.settings.drone ? 'on' : ''}" data-pick="${id}">
-              <span class="drone-name">${c.name}</span><span class="drone-card-blurb">${c.blurb}</span>
-              <span class="drone-stats">${c.maxHp} HP · ${c.damage * c.pellets} dmg/shot · ${c.fireRate}/s</span>
-            </button>`;
-          }).join('')}
+      <div class="panel loadout">
+        <div class="panel-head"><span class="kicker">Loadout</span><h2>Build your drone</h2></div>
+        <div class="body-tabs">
+          ${DRONE_ORDER.map((id) => `<button class="body-tab ${id === s.drone ? 'on' : ''}" data-body="${id}">${droneClass(id).name}</button>`).join('')}
         </div>
-        <p class="hint">${inMatch ? 'In a match, your new drone arrives at your next respawn.' : 'Takes effect right away.'}</p>
-        <div class="actions"><button class="btn" data-done>Done</button></div>
+        <p class="body-blurb">${body.blurb}</p>
+        <div class="body-stats">${body.maxHp} HP · frame ${body.frameKg} kg · thrust ${body.thrustKg.toFixed(1)} kgf · ${body.hardpoints} hardpoint${body.hardpoints > 1 ? 's' : ''}</div>
+        <div class="slots">
+          ${lo.weapons
+            .map(
+              (w, i) => `<label class="slot"><span>Hardpoint ${i + 1}</span><select data-slot="${i}">${weaponOptions(w)}</select></label>
+              ${w ? `<div class="slot-blurb">${WEAPONS[w].blurb}</div>` : ''}`,
+            )
+            .join('')}
+          <label class="slot"><span>Special</span><select data-special>${specialOptions}</select></label>
+          ${lo.special ? `<div class="slot-blurb">${SPECIALS[lo.special].blurb}</div>` : ''}
+        </div>
+        <div class="tw ${feel.level}">
+          <div class="tw-row"><b>${kg.toFixed(2)} kg</b> total · thrust ${body.thrustKg.toFixed(1)} kgf · <b>T/W ${tw.toFixed(1)}</b>${hover !== null ? ` · hovers at ${Math.round(hover * 100)}% throttle` : ''}</div>
+          <div class="tw-bar"><div style="width:${twPct.toFixed(0)}%"></div></div>
+          <div class="tw-label">${feel.label}${body.flight === 'wing' && tw < 1.4 ? ' · stalls fast when this heavy' : ''}</div>
+        </div>
+        <p class="hint">${inMatch ? 'In a match, your new build arrives at your next respawn.' : 'Takes effect right away.'}</p>
+        <div class="actions">
+          <button class="btn ghost" data-default>Default build</button>
+          <button class="btn" data-done>Done</button>
+        </div>
       </div>`;
-    this.root.querySelectorAll<HTMLButtonElement>('[data-pick]').forEach((b) =>
+    const save = (l: Loadout) => {
+      s.loadouts[s.drone] = cleanLoadout(l, s.drone);
+      saveSettings(s);
+      this.callbacks.onDroneChanged();
+      this.renderDrone();
+    };
+    this.root.querySelectorAll<HTMLButtonElement>('[data-body]').forEach((b) =>
       b.addEventListener('click', () => {
-        const id = b.dataset.pick as (typeof DRONE_ORDER)[number];
-        if (id === this.settings.drone) return;
-        this.settings.drone = id;
-        saveSettings(this.settings);
+        const id = b.dataset.body as (typeof DRONE_ORDER)[number];
+        if (id === s.drone) return;
+        s.drone = id;
+        saveSettings(s);
         this.callbacks.onDroneChanged();
         this.renderDrone();
       }),
     );
-    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show(this.home));
+    this.root.querySelectorAll<HTMLSelectElement>('[data-slot]').forEach((sel) =>
+      sel.addEventListener('change', () => {
+        const weapons = [...lo.weapons];
+        weapons[Number(sel.dataset.slot)] = (sel.value || null) as WeaponId | null;
+        save({ ...lo, weapons });
+      }),
+    );
+    this.root.querySelector<HTMLSelectElement>('[data-special]')?.addEventListener('change', (e) => {
+      const v = (e.target as HTMLSelectElement).value;
+      save({ ...lo, special: (v || null) as SpecialId | null });
+    });
+    this.root.querySelector('[data-default]')?.addEventListener('click', () => save(defaultLoadout(s.drone)));
+    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show(this.droneReturn));
   }
 
   /**
@@ -266,21 +334,13 @@ export class Menu {
     });
   }
 
-  private nextDrone(): void {
-    const i = DRONE_ORDER.indexOf(this.settings.drone);
-    this.settings.drone = DRONE_ORDER[(i + 1) % DRONE_ORDER.length] ?? DRONE_ORDER[0]!;
-    saveSettings(this.settings);
-    this.callbacks.onDroneChanged();
-  }
-
   /** Play: pick drone and map, then fly solo, create a room, or type a friend's two-digit code. */
   private renderPlay(): void {
     const busy = this.net.status === 'connecting' || this.net.status === 'reconnecting';
     this.root.innerHTML = `
       <div class="panel play">
         <div class="panel-head"><span class="kicker">Play</span><h2>Pick and go</h2></div>
-        <button class="btn ghost" data-drone>Drone: ${droneClass(this.settings.drone).name} ▸</button>
-        <div class="drone-blurb">${droneClass(this.settings.drone).blurb}</div>
+        <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
         <button class="btn ghost" data-map>Map: ${getMap(this.settings.map).name} ▸</button>
         <div class="play-modes">
           <button class="btn big" data-solo>Solo</button>
@@ -294,10 +354,7 @@ export class Menu {
         <div class="join-status" data-join-status></div>
         <div class="actions"><button class="btn ghost" data-back>Back</button></div>
       </div>`;
-    this.root.querySelector('[data-drone]')?.addEventListener('click', () => {
-      this.nextDrone();
-      this.renderPlay();
-    });
+    this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
     this.root.querySelector('[data-map]')?.addEventListener('click', () => {
       const i = MAP_ORDER.indexOf(this.settings.map);
       this.settings.map = MAP_ORDER[(i + 1) % MAP_ORDER.length] ?? MAP_ORDER[0]!;

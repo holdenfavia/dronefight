@@ -29,6 +29,8 @@ export interface ControllerProfile {
   fire?: SwitchBinding | null;
   /** Optional class ability, e.g. the wing's maneuver mode (ADR-0022). */
   special?: SwitchBinding | null;
+  /** Optional: switch between guns and missile pods when the special slot is taken (ADR-0033). */
+  weaponSwitch?: SwitchBinding | null;
   /** Stick sensitivity for roll/pitch/yaw (1 = as calibrated). Thumbsticks often want less. */
   sensitivity?: number;
 }
@@ -163,6 +165,8 @@ export function standardGamepadProfile(id: string, deadband: number): Controller
     // Right trigger fires; left trigger is the class special (wing maneuver mode).
     fire: { kind: 'button', index: 7 },
     special: { kind: 'button', index: 6 },
+    // Right bumper switches guns / missiles (ADR-0033).
+    weaponSwitch: { kind: 'button', index: 5 },
     // Thumbsticks are short and twitchy compared with radio gimbals.
     sensitivity: 0.8,
   };

@@ -38,7 +38,8 @@ export class RemoteAudio {
           voice: new MotorVoice(this.engine, panner, wing ? WING_MOTOR : QUAD_MOTORS),
           panner,
           wing,
-          cannon: wing ? new CannonVoice(this.engine, panner, 1.4) : null,
+          // Any drone can carry a rotary cannon now (ADR-0033).
+          cannon: new CannonVoice(this.engine, panner, 1.4),
         };
         this.voices.set(view.id, entry);
       }

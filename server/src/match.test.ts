@@ -3,6 +3,9 @@ import { SMOKE } from '../../shared/abilities.js';
 import { launchMissile, MISSILE, MISSILE_MAX_AGE, quatRotate, stepMissile, type MissileInput, type MissileState } from '../../shared/missile.js';
 import { COMBAT } from '../../shared/combat.js';
 import { DRONE_CLASSES } from '../../shared/drones.js';
+import type { Loadout } from '../../shared/loadout.js';
+import { SHIELD } from '../../shared/specials.js';
+import { WEAPONS, type WeaponId } from '../../shared/weapons.js';
 import type { DroneState, ServerMessage, Vec3 } from '../../shared/protocol.js';
 import { interceptTime } from '../../shared/lead.js';
 import { MAPS, SPAWN_SAFE_DISTANCE } from '../../shared/maps/index.js';
@@ -48,10 +51,10 @@ function setup() {
     }
   };
   /** A fires at a point, with the shot stamped as if A sees the world normally. */
-  const fireAt = (target: Vec3, ts = now) => {
+  const fireAt = (target: Vec3, ts = now, w: WeaponId = 'gun') => {
     const d: Vec3 = [target[0] - posA[0], target[1] - posA[1], target[2] - posA[2]];
     const len = Math.hypot(...d);
-    match.onShot('A', { ts, p: posA, d: [d[0] / len, d[1] / len, d[2] / len] }, now);
+    match.onShot('A', { ts, p: posA, d: [d[0] / len, d[1] / len, d[2] / len], w }, now);
   };
   const hp = (id: string) => match.state().players.find((p) => p.id === id)?.hp;
   const score = (id: string) => match.state().players.find((p) => p.id === id)?.score;
@@ -73,7 +76,7 @@ function setup() {
     fly: (rid: number, dir: Vec3, input: (m: MissileState) => MissileInput = () => ({ throttle: 1, roll: 0, pitch: 0, yaw: 0 })) => {
       const len = Math.hypot(...dir);
       const d: Vec3 = [dir[0] / len, dir[1] / len, dir[2] / len];
-      match.onShot('A', { ts: now, p: posA, d, w: 'rocket', rid }, now);
+      match.onShot('A', { ts: now, p: posA, d, w: 'missile', rid }, now);
       missileA = { rid, m: launchMissile(posA, d), input };
     },
     /** A's client stops reporting the missile (e.g. the tab froze). */
@@ -86,8 +89,10 @@ function setup() {
 
 /** Both test pilots fly the default class unless a test changes it. */
 const FS = DRONE_CLASSES.freestyle;
+/** The Freestyle's default gun (ADR-0033). */
+const GUN = WEAPONS.gun;
 const afterProtection = COMBAT.spawnProtectionMs + 100;
-const shotInterval = 1000 / FS.fireRate;
+const shotInterval = 1000 / GUN.fireRate;
 
 describe('Match (ADR-0009)', () => {
   it('starts when two pilots join, on opposite teams', () => {
@@ -103,7 +108,7 @@ describe('Match (ADR-0009)', () => {
     t.advance(afterProtection);
     t.fireAt(t.posB());
     t.advance(200);
-    expect(t.hp('B')).toBe(FS.maxHp - FS.damage);
+    expect(t.hp('B')).toBe(FS.maxHp - GUN.damage);
     expect(t.log.some((m) => m.t === 'hit' && m.shooter === 'A' && m.target === 'B')).toBe(true);
   });
 
@@ -130,7 +135,7 @@ describe('Match (ADR-0009)', () => {
   it('enough hits kill, score, and respawn after the delay', () => {
     const t = setup();
     t.advance(afterProtection);
-    const hitsToKill = Math.ceil(FS.maxHp / FS.damage);
+    const hitsToKill = Math.ceil(FS.maxHp / GUN.damage);
     for (let i = 0; i < hitsToKill; i++) {
       t.fireAt(t.posB());
       t.advance(shotInterval + 1);
@@ -150,18 +155,18 @@ describe('Match (ADR-0009)', () => {
     t.advance(500);
     // A's screen shows B 100 ms in the past (interpolation buffer), and the round takes ~57 ms to fly
     // 20 m, so A leads B to where it will be *on A's screen* when the round arrives. That counts.
-    const flight = 20 / FS.bulletSpeed;
+    const flight = 20 / GUN.speed;
     const seen: Vec3 = [t.posB()[0] - 20 * (0.1 - flight), t.posB()[1], t.posB()[2]];
     t.fireAt(seen);
     t.advance(200);
-    expect(t.hp('B')).toBe(FS.maxHp - FS.damage);
+    expect(t.hp('B')).toBe(FS.maxHp - GUN.damage);
 
     // Aiming where B was 600 ms ago is beyond the rewind limit: miss.
     t.advance(shotInterval + 1);
     const stale: Vec3 = [t.posB()[0] - 20 * 0.6, t.posB()[1], t.posB()[2]];
     t.fireAt(stale, t.getNow() - 500);
     t.advance(200);
-    expect(t.hp('B')).toBe(FS.maxHp - FS.damage);
+    expect(t.hp('B')).toBe(FS.maxHp - GUN.damage);
   });
 
   it('aiming at the lead indicator hits a fast crossing target (ADR-0011)', () => {
@@ -171,13 +176,13 @@ describe('Match (ADR-0009)', () => {
     t.setB([-100 - 20, 30, -40], [30, 0, 0]);
     t.advance(300);
     // As many shots as a kill takes: every one must land.
-    const shots = Math.ceil(FS.maxHp / FS.damage);
+    const shots = Math.ceil(FS.maxHp / GUN.damage);
     let hits = 0;
     for (let i = 0; i < shots; i++) {
       const b = t.posB();
       const seen: Vec3 = [b[0] - 30 * 0.1, b[1], b[2]];
       const d = [seen[0] - t.posA[0], seen[1] - t.posA[1], seen[2] - t.posA[2]] as const;
-      const tt = interceptTime(d[0], d[1], d[2], 30, 0, 0, FS.bulletSpeed) ?? 0;
+      const tt = interceptTime(d[0], d[1], d[2], 30, 0, 0, GUN.speed) ?? 0;
       const before = t.hp('B') ?? 0;
       t.fireAt([seen[0] + 30 * tt, seen[1], seen[2]]);
       t.advance(shotInterval + 1);
@@ -305,7 +310,7 @@ describe('free-for-all (ADR-0026)', () => {
     const d: Vec3 = [target[0] - posC[0], target[1] - posC[1], target[2] - posC[2]];
     const len = Math.hypot(...d);
     t.match.onState('C', droneAt(posC), t.getNow());
-    t.match.onShot('C', { ts: t.getNow(), p: posC, d: [d[0] / len, d[1] / len, d[2] / len] }, t.getNow());
+    t.match.onShot('C', { ts: t.getNow(), p: posC, d: [d[0] / len, d[1] / len, d[2] / len], w: 'gun' }, t.getNow());
     t.advance(200);
     expect(t.log.some((m) => m.t === 'hit' && m.shooter === 'C' && m.target === 'B')).toBe(true);
   });
@@ -372,20 +377,18 @@ describe('XP events (ADR-0032)', () => {
 });
 
 describe('fast gun time-to-kill (ADR-0028)', () => {
-  const hitsToKill = (shooter: keyof typeof DRONE_CLASSES, target: keyof typeof DRONE_CLASSES) =>
-    Math.ceil(DRONE_CLASSES[target].maxHp / DRONE_CLASSES[shooter].damage);
+  const hitsToKill = (weapon: WeaponId, target: keyof typeof DRONE_CLASSES) => Math.ceil(DRONE_CLASSES[target].maxHp / WEAPONS[weapon].damage);
 
   it('Freestyle gun: 3 hits on quads, 4 on a wing', () => {
-    expect(hitsToKill('freestyle', 'freestyle')).toBe(3);
-    expect(hitsToKill('freestyle', 'quad3d')).toBe(3);
-    expect(hitsToKill('freestyle', 'wing')).toBe(4);
+    expect(hitsToKill('gun', 'freestyle')).toBe(3);
+    expect(hitsToKill('gun', 'quad3d')).toBe(3);
+    expect(hitsToKill('gun', 'wing')).toBe(4);
   });
 
   it('a full close shotgun blast one-shots a quad; the cannon kills in about 0.2 s', () => {
-    const sg = DRONE_CLASSES.quad3d;
+    const sg = WEAPONS.shotgun;
     expect(sg.damage * sg.pellets).toBeGreaterThanOrEqual(DRONE_CLASSES.freestyle.maxHp);
-    const cannon = DRONE_CLASSES.wing;
-    expect((hitsToKill('wing', 'freestyle') - 1) / cannon.fireRate).toBeLessThanOrEqual(0.2);
+    expect((hitsToKill('cannon', 'freestyle') - 1) / WEAPONS.cannon.fireRate).toBeLessThanOrEqual(0.2);
   });
 });
 
@@ -408,9 +411,13 @@ describe('drone classes (ADR-0013)', () => {
     t.match.onState('A', droneAt(t.posA), t.getNow());
     t.match.onState('B', droneAt(t.posB()), t.getNow());
     t.advance(afterProtection);
-    t.fireAt(t.posB());
+    // The wing's default loadout carries the rotary cannon, not the gun.
+    t.fireAt(t.posB(), t.getNow(), 'gun');
     t.advance(200);
-    expect(t.hp('B')).toBe(DRONE_CLASSES.quad3d.maxHp - DRONE_CLASSES.wing.damage);
+    expect(t.hp('B')).toBe(DRONE_CLASSES.quad3d.maxHp);
+    t.fireAt(t.posB(), t.getNow(), 'cannon');
+    t.advance(200);
+    expect(t.hp('B')).toBe(DRONE_CLASSES.quad3d.maxHp - WEAPONS.cannon.damage);
   });
 
   it('switches immediately outside a running match', () => {
@@ -590,7 +597,7 @@ describe('piloted missiles (ADR-0025) and smoke (ADR-0024)', () => {
     const t = setup();
     t.advance(afterProtection);
     for (let rid = 30; rid < 34; rid++) t.fly(rid, [0, 1, 0]);
-    const relayed = t.log.filter((m) => m.t === 'shot' && m.s.w === 'rocket').map((m) => (m.t === 'shot' ? m.s.rid : -1));
+    const relayed = t.log.filter((m) => m.t === 'shot' && m.s.w === 'missile').map((m) => (m.t === 'shot' ? m.s.rid : -1));
     expect(relayed).toEqual([30, 31, 32]);
   });
 
@@ -599,7 +606,7 @@ describe('piloted missiles (ADR-0025) and smoke (ADR-0024)', () => {
     const match = new Match('yard', (msg) => log.push(msg));
     match.addPlayer('A', 0);
     match.onState('A', droneAt([0, 20, 0]), 0);
-    match.onShot('A', { ts: 0, p: [0, 20, 0], d: [0, 0, -1], w: 'rocket', rid: 1 }, 0);
+    match.onShot('A', { ts: 0, p: [0, 20, 0], d: [0, 0, -1], w: 'missile', rid: 1 }, 0);
     for (let now = 0; now < 2000; now += 16) match.tick(now);
     expect(log.some((m) => m.t === 'boom' && m.rid === 1)).toBe(true);
     expect(log.some((m) => m.t === 'hit')).toBe(false);
@@ -621,10 +628,10 @@ describe('piloted missiles (ADR-0025) and smoke (ADR-0024)', () => {
     match.addPlayer('A', 0, 'quad3d');
     match.addPlayer('B', 0);
     match.onState('A', droneAt([0, 10, 0]), 0);
-    match.onAbility('A', [0, 10, 0], 100);
-    match.onAbility('A', [0, 10, 0], 5000);
-    match.onAbility('A', [0, 10, 0], 100 + SMOKE.cooldownMs + 1);
-    match.onAbility('B', [0, 10, 0], 200);
+    match.onAbility('A', 'smoke', [0, 10, 0], 100);
+    match.onAbility('A', 'smoke', [0, 10, 0], 5000);
+    match.onAbility('A', 'smoke', [0, 10, 0], 100 + SMOKE.cooldownMs + 1);
+    match.onAbility('B', 'smoke', [0, 10, 0], 200);
     const smokes = log.filter((m) => m.t === 'ability');
     expect(smokes).toHaveLength(2);
     expect(smokes.every((m) => m.t === 'ability' && m.id === 'A')).toBe(true);
@@ -677,7 +684,7 @@ describe('destructible props (ADR-0023)', () => {
       match.onState('A', droneAt(p), now);
       const d: Vec3 = [tankPos[0] - p[0], tankPos[1] - p[1], tankPos[2] - p[2]];
       const len = Math.hypot(...d);
-      match.onShot('A', { ts: now, p, d: [d[0] / len, d[1] / len, d[2] / len] }, now);
+      match.onShot('A', { ts: now, p, d: [d[0] / len, d[1] / len, d[2] / len], w: 'gun' }, now);
       match.tick(now);
     }
     match.tick(now + 1000);
@@ -687,42 +694,118 @@ describe('destructible props (ADR-0023)', () => {
   });
 });
 
-describe('fire-rate token bucket (ADR-0014)', () => {
-  /** Try to fire every `stepMs` for `ms`, starting from a full bucket. Returns rounds accepted. */
-  function spam(cls: keyof typeof DRONE_CLASSES, ms: number, stepMs: number): number {
-    const gun = DRONE_CLASSES[cls];
-    const pilot = { ammo: 0, ammoAt: -100_000 };
+describe('fire-rate token bucket (ADR-0014, ADR-0033)', () => {
+  const pilotWith = (...weapons: (WeaponId | null)[]) => ({ loadout: { body: 'x8', weapons, special: null } as Loadout, ammo: new Map() });
+  /** Try to fire every `stepMs` for `ms`. Returns rounds accepted. */
+  function spam(pilot: ReturnType<typeof pilotWith>, id: WeaponId, ms: number, stepMs: number): number {
     let accepted = 0;
-    for (let t = 0; t < ms; t += stepMs) if (takeRound(pilot, gun, t)) accepted++;
+    for (let t = 0; t < ms; t += stepMs) if (takeRound(pilot, id, t)) accepted++;
     return accepted;
   }
 
-  for (const cls of ['freestyle', 'quad3d', 'wing'] as const) {
-    it(`${cls}: sustained rate is capped at its rounds per second (plus a small burst)`, () => {
-      const gun = DRONE_CLASSES[cls];
-      const perSecond = gun.fireRate * gun.pellets;
-      const burst = Math.max(gun.pellets * 2, perSecond * 0.2);
-      const accepted = spam(cls, 1000, 1);
+  for (const id of ['gun', 'shotgun', 'cannon', 'rail', 'burst'] as const) {
+    it(`${id}: sustained rate is capped at its rounds per second (plus a small burst)`, () => {
+      const w = WEAPONS[id];
+      const perSecond = w.fireRate * w.pellets;
+      const capacity = Math.max(w.pellets * 2, perSecond * 0.2, (w.burst?.rounds ?? 0) + 1);
+      const accepted = spam(pilotWith(id), id, 1000, 1);
       expect(accepted).toBeGreaterThanOrEqual(perSecond);
-      expect(accepted).toBeLessThanOrEqual(Math.ceil(perSecond + burst));
+      expect(accepted).toBeLessThanOrEqual(Math.ceil(perSecond + capacity));
     });
   }
 
+  it('two of the same gun fire twice as fast; an unmounted weapon never fires', () => {
+    const one = spam(pilotWith('gun'), 'gun', 2000, 1);
+    const two = spam(pilotWith('gun', 'gun'), 'gun', 2000, 1);
+    expect(two).toBeGreaterThan(one * 1.8);
+    expect(spam(pilotWith('gun'), 'rail', 2000, 1)).toBe(0);
+  });
+
   it('a 50/s cannon arriving in network bunches is not dropped', () => {
-    // 50 rounds/s arriving as bunches of 5 every 100 ms: all should be accepted.
-    const gun = DRONE_CLASSES.wing;
-    const pilot = { ammo: 0, ammoAt: -100_000 };
+    const pilot = pilotWith('cannon');
     let accepted = 0;
-    for (let t = 0; t < 2000; t += 100) for (let i = 0; i < 5; i++) if (takeRound(pilot, gun, t)) accepted++;
+    for (let t = 0; t < 2000; t += 100) for (let i = 0; i < 5; i++) if (takeRound(pilot, 'cannon', t)) accepted++;
     expect(accepted).toBe(100);
   });
 
-  it('a full shotgun blast (8 pellets at once) is accepted', () => {
-    const gun = DRONE_CLASSES.quad3d;
-    const pilot = { ammo: 0, ammoAt: -100_000 };
+  it('a full shotgun blast (8 pellets at once) and a whole rifle burst are accepted', () => {
+    const sg = pilotWith('shotgun');
     let accepted = 0;
-    for (let i = 0; i < gun.pellets; i++) if (takeRound(pilot, gun, 0)) accepted++;
-    expect(accepted).toBe(gun.pellets);
+    for (let i = 0; i < WEAPONS.shotgun.pellets; i++) if (takeRound(sg, 'shotgun', 0)) accepted++;
+    expect(accepted).toBe(WEAPONS.shotgun.pellets);
+    const rifle = pilotWith('burst');
+    let burst = 0;
+    for (let i = 0; i < 3; i++) if (takeRound(rifle, 'burst', i * 65)) burst++;
+    expect(burst).toBe(3);
+  });
+});
+
+describe('loadouts on the server (ADR-0033)', () => {
+  it('a shot from a weapon you do not carry is ignored', () => {
+    const t = setup();
+    t.advance(afterProtection);
+    t.fireAt(t.posB(), t.getNow(), 'rail');
+    t.advance(200);
+    expect(t.hp('B')).toBe(FS.maxHp);
+  });
+
+  it('a custom loadout uses its weapons: a rail gun does 75', () => {
+    const t = setup();
+    t.match.onLoadout('A', { body: 'freestyle', weapons: ['rail', 'gun'], special: null }, t.getNow());
+    t.match.onState('A', droneAt(t.posA, [0, 0, 0], true), t.getNow());
+    t.advance(COMBAT.respawnMs + 100);
+    t.match.onState('A', droneAt(t.posA), t.getNow());
+    t.setB([-100, 30, -20]);
+    t.advance(afterProtection);
+    expect(t.match.state().players.find((p) => p.id === 'A')?.loadout.weapons).toEqual(['rail', 'gun']);
+    t.fireAt(t.posB(), t.getNow(), 'rail');
+    t.advance(200);
+    expect(t.hp('B')).toBe(FS.maxHp - WEAPONS.rail.damage);
+  });
+
+  it('bad loadouts are cleaned: extra weapons dropped, specials that do not fit removed', () => {
+    const match = new Match('yard', () => {});
+    match.addPlayer('A', 0, { body: 'racer', weapons: ['rail', 'rail'], special: 'maneuver' });
+    expect(match.state().players[0]?.loadout).toEqual({ body: 'racer', weapons: ['rail'], special: null });
+  });
+
+  it('missile pods: a loadout without one cannot launch; two pods hold six', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match('yard', (m) => log.push(m));
+    match.addPlayer('A', 0, { body: 'x8', weapons: ['missile', 'missile', null, null], special: null });
+    match.addPlayer('B', 0, 'racer');
+    for (const [id, p] of [['A', [0, 30, 0]], ['B', [50, 30, 0]]] as const) match.onState(id, droneAt([...p] as Vec3), 10);
+    let launched = 0;
+    for (let rid = 1; rid <= 8; rid++) {
+      const before = log.filter((m) => m.t === 'shot').length;
+      match.onShot('A', { ts: 10, p: [0, 30, 0], d: [0, 1, 0], w: 'missile', rid }, 10);
+      if (log.filter((m) => m.t === 'shot').length > before) launched++;
+    }
+    expect(launched).toBe(6);
+    const before = log.filter((m) => m.t === 'shot').length;
+    match.onShot('B', { ts: 10, p: [50, 30, 0], d: [0, 1, 0], w: 'missile', rid: 1 }, 10);
+    expect(log.filter((m) => m.t === 'shot').length).toBe(before);
+  });
+
+  it('shield: soaks the next 40 damage for 3 s, then cools down', () => {
+    const t = setup();
+    t.match.onLoadout('B', { body: 'freestyle', weapons: ['gun', null], special: 'shield' }, t.getNow());
+    t.match.onState('B', droneAt(t.posB(), [0, 0, 0], true), t.getNow());
+    t.advance(COMBAT.respawnMs + 100);
+    t.setB([-100, 30, -20]);
+    t.advance(afterProtection);
+    t.match.onAbility('B', 'shield', t.posB(), t.getNow());
+    expect(t.match.state().players.find((p) => p.id === 'B')?.shielded).toBe(true);
+    t.fireAt(t.posB());
+    t.advance(200);
+    // 34 absorbed, shield has 6 left.
+    expect(t.hp('B')).toBe(FS.maxHp);
+    t.fireAt(t.posB());
+    t.advance(200);
+    expect(t.hp('B')).toBe(FS.maxHp - (2 * GUN.damage - SHIELD.absorb));
+    // Can't raise it again until the cooldown is over.
+    t.match.onAbility('B', 'shield', t.posB(), t.getNow());
+    expect(t.match.state().players.find((p) => p.id === 'B')?.shielded).toBeFalsy();
   });
 });
 

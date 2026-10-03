@@ -65,10 +65,10 @@ describe('server pressure tests', () => {
       if (r < 0.1) return '{not json';
       if (r < 0.2) return { t: 'state', s: { ts: n(), p: [n(), n(), n()], q: [0, 0, 0, 1], v: [n(), n(), n()], m: n(), armed: true, crashed: Math.random() < 0.1, k: Math.random() < 0.5 ? [n(), n(), n(), n(), n(), n(), n()] : undefined } };
       if (r < 0.25) return { t: 'detonate', rid: n(), p: [n(), n(), n()] };
-      if (r < 0.35) return { t: 'shot', s: { ts: n(), p: [n(), n(), n()], d: [n(), n(), n()] } };
-      if (r < 0.5) return { t: 'shot', s: { ts: n(), p: [n(), n(), n()], d: [n(), n(), n()], w: 'rocket', rid: n() } };
+      if (r < 0.35) return { t: 'shot', s: { ts: n(), p: [n(), n(), n()], d: [n(), n(), n()], w: ['gun', 'rail', 'laser', 7][Math.floor(Math.random() * 4)] } };
+      if (r < 0.5) return { t: 'shot', s: { ts: n(), p: [n(), n(), n()], d: [n(), n(), n()], w: 'missile', rid: n() } };
       if (r < 0.6) return { t: 'ability', kind: 'smoke', p: [n(), n(), n()] };
-      if (r < 0.7) return { t: 'loadout', drone: ['freestyle', 'quad3d', 'wing', 'tank', 42][Math.floor(Math.random() * 5)] };
+      if (r < 0.7) return { t: 'loadout', loadout: { body: ['freestyle', 'x8', 'wing', 'tank', 42][Math.floor(Math.random() * 5)], weapons: [n(), 'rail', 'rail', 'rail', 'rail', 'rail'], special: ['shield', 'maneuver', 9][Math.floor(Math.random() * 3)] } };
       if (r < 0.8) return { t: ['create', 'join', 'leave', 'ping', 'bogus'][Math.floor(Math.random() * 5)], room: 'ZZZZ', id: n(), ct: n() };
       return { t: 'state', s: 'nope' };
     };
@@ -133,7 +133,7 @@ describe('server pressure tests', () => {
     const dz = posB[2] - posA[2];
     const l = Math.hypot(dx, dz);
     const dir: Vec3 = [(dx / l) * 0.87, 0, dz / l + 0.5];
-    a.send({ t: 'shot', s: { ts: 0, p: posA, d: dir, w: 'rocket', rid: 1 } });
+    a.send({ t: 'shot', s: { ts: 0, p: posA, d: dir, w: 'missile', rid: 1 } });
     missile = launchMissile(posA, dir);
     last = performance.now();
     const boom = (await a.waitFor((m) => m.t === 'boom' && m.rid === 1, 4000)) as Extract<ServerMessage, { t: 'boom' }>;
@@ -149,7 +149,7 @@ describe('server pressure tests', () => {
     expect(hit).toBeDefined();
     expect(a.inbox.some((m) => m.t === 'hit' && m.target === aId)).toBe(false);
     // The other pilot saw the launch and the missile's flight.
-    expect(b.inbox.some((m) => m.t === 'shot' && m.s.w === 'rocket')).toBe(true);
+    expect(b.inbox.some((m) => m.t === 'shot' && m.s.w === 'missile')).toBe(true);
     expect(b.inbox.filter((m) => m.t === 'missile').length).toBeGreaterThan(3);
     expect(DRONE_CLASSES.freestyle.maxHp).toBeGreaterThan(0);
     a.ws.close();

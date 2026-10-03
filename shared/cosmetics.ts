@@ -60,6 +60,8 @@ export const DEFAULT_LOOKS: Record<DroneClassId, DroneLook> = {
   freestyle: { body: 'carbon', pattern: 'solid', accent: 'white' },
   quad3d: { body: 'carbon', pattern: 'carbonweave', accent: 'carbon' },
   wing: { body: 'white', pattern: 'solid', accent: 'carbon' },
+  racer: { body: 'red', pattern: 'stripes', accent: 'white' },
+  x8: { body: 'gunmetal', pattern: 'solid', accent: 'orange' },
 };
 
 export const NAME_MAX = 16;

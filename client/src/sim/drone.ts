@@ -2,7 +2,9 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { Euler, Quaternion, Vector3 } from 'three';
 import type { DroneClassId } from '../../../shared/drones';
 import type { SpawnPoint } from '../../../shared/maps';
-import { CRASH, INPUT, QUAD, QUAD_3D, SIM, type QuadParams, type Rates } from '../config';
+import { CRASH, INPUT, QUAD, QUAD_3D, RACER, SIM, X8, type QuadParams, type Rates } from '../config';
+import { defaultLoadout, loadFactor, type Loadout } from '../../../shared/loadout';
+import { AFTERBURNER } from '../../../shared/specials';
 import type { ControlState } from '../input/inputManager';
 import { createFlightOutput, stepFlight, throttleSafeToArm, type FlightState } from './flightModel';
 import type { Physics } from './physics';
@@ -49,7 +51,15 @@ export function lookAngvel(rot: Quaternion, from: Vector3, target: Vector3, upti
   return out.set(HOVER_QE.x / s, HOVER_QE.y / s, HOVER_QE.z / s).multiplyScalar(Math.min(angle * HOVER.lookRate, HOVER.maxLookRate));
 }
 
-const QUAD_PARAMS: Record<Exclude<DroneClassId, 'wing'>, QuadParams> = { freestyle: QUAD, quad3d: QUAD_3D };
+const QUAD_PARAMS: Record<Exclude<DroneClassId, 'wing'>, QuadParams> = { freestyle: QUAD, quad3d: QUAD_3D, racer: RACER, x8: X8 };
+
+/**
+ * A quad's flight parameters for a loadout `k` times heavier than its tuned default (ADR-0033): more mass,
+ * the same thrust (so a lower thrust-to-weight), and slower response as the load grows.
+ */
+export function loadedParams(base: QuadParams, k: number): QuadParams {
+  return { ...base, massKg: base.massKg * k, thrustToWeight: base.thrustToWeight / k, rateTau: base.rateTau * Math.sqrt(k) };
+}
 
 /**
  * The local drone: a Rapier rigid body driven by its class's flight model (ADR-0008, ADR-0013).
@@ -65,6 +75,9 @@ export class Drone {
   armBlocked = false;
   /** Wing maneuver mode: Special is held (ADR-0022). */
   maneuverActive = false;
+  /** Afterburner (ADR-0033): burning now, and fuel left (0..1). */
+  afterburnerActive = false;
+  afterburnerFuel = 1;
   /** Hold a hover in place, ignoring the sticks (while you fly a missile, ADR-0025). */
   autoHover = false;
   /** While hovering, turn so the FPV camera (tilted up by `uptiltDeg`) looks at this point (ADR-0027). */
@@ -89,6 +102,10 @@ export class Drone {
   private readonly spawnRot = new Quaternion();
   private collider: RAPIER.Collider | null = null;
   private droneClass: DroneClassId = 'freestyle';
+  /** The loadout and the flight parameters it gives (ADR-0033); boosted = with the afterburner lit. */
+  private loadoutNow: Loadout = defaultLoadout('freestyle');
+  private params: QuadParams = QUAD;
+  private boosted: QuadParams = QUAD;
 
   constructor(
     private readonly physics: Physics,
@@ -105,13 +122,32 @@ export class Drone {
     return this.droneClass;
   }
 
-  /** Switch flight model and collision shape. Takes effect immediately; callers respawn after (ADR-0013). */
+  get loadout(): Loadout {
+    return this.loadoutNow;
+  }
+
+  /** Switch to a body's default loadout. */
   setClass(id: DroneClassId): void {
+    this.setLoadout(defaultLoadout(id));
+  }
+
+  /**
+   * Fly this loadout (ADR-0033): its body's flight model and collision shape, with mass scaled by how much
+   * heavier it is than the body's default. Takes effect immediately; callers respawn after.
+   */
+  setLoadout(loadout: Loadout): void {
+    const id = loadout.body;
+    this.loadoutNow = loadout;
     this.droneClass = id;
+    const k = loadFactor(loadout);
+    if (id !== 'wing') {
+      this.params = loadedParams(QUAD_PARAMS[id], k);
+      this.boosted = { ...this.params, thrustToWeight: this.params.thrustToWeight * (1 + AFTERBURNER.thrustBoost) };
+    }
     const { rapier, world } = this.physics;
     if (this.collider) world.removeCollider(this.collider, false);
     const e = id === 'wing' ? WING.halfExtents : QUAD_PARAMS[id].halfExtents;
-    const mass = id === 'wing' ? WING.massKg : QUAD_PARAMS[id].massKg;
+    const mass = id === 'wing' ? WING.massKg * k : this.params.massKg;
     const desc = rapier.ColliderDesc.cuboid(e.x, e.y, e.z).setMass(mass).setRestitution(0.2).setFriction(0.6);
     this.collider = world.createCollider(desc, this.body);
   }
@@ -153,6 +189,8 @@ export class Drone {
     this.crashed = false;
     this.crashTime = 0;
     this.maneuverActive = false;
+    this.afterburnerActive = false;
+    this.afterburnerFuel = 1;
     this.state.motorOutput = 0;
     this.readBody();
     this.prevPos.copy(this.currPos);
@@ -161,7 +199,7 @@ export class Drone {
 
   /** Arming rules, run once per frame. Throttle must be in its safe position to arm, like Betaflight. */
   updateArming(control: ControlState): void {
-    const params = this.droneClass === 'wing' ? QUAD : QUAD_PARAMS[this.droneClass];
+    const params = this.droneClass === 'wing' ? QUAD : this.params;
     const throttleLow = throttleSafeToArm(control.throttle, params, INPUT.armThrottleMax);
     if (this.crashed) {
       this.armed = false;
@@ -189,7 +227,10 @@ export class Drone {
    */
   handleSpecial(control: ControlState): boolean {
     const was = this.maneuverActive;
-    this.maneuverActive = this.droneClass === 'wing' && control.special && !this.crashed;
+    const special = this.loadoutNow.special;
+    this.maneuverActive = special === 'maneuver' && this.droneClass === 'wing' && control.special && !this.crashed;
+    // Afterburner (ADR-0033): held, while there's fuel.
+    this.afterburnerActive = special === 'afterburner' && control.special && this.armed && !this.crashed && this.afterburnerFuel > 0;
     return this.maneuverActive && !was;
   }
 
@@ -214,10 +255,15 @@ export class Drone {
       this.hover();
       return;
     }
+    // Afterburner fuel burns while lit and refills while not.
+    const burning = this.afterburnerActive && this.afterburnerFuel > 0;
+    this.afterburnerFuel = burning
+      ? Math.max(0, this.afterburnerFuel - dt / AFTERBURNER.fuelSeconds)
+      : Math.min(1, this.afterburnerFuel + dt / AFTERBURNER.refillSeconds);
     const out =
       this.droneClass === 'wing'
-        ? stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive)
-        : stepFlight(control, this.state, rates, this.armed, dt, this.out, QUAD_PARAMS[this.droneClass]);
+        ? stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive, burning ? 1 + AFTERBURNER.thrustBoost : 1)
+        : stepFlight(control, this.state, rates, this.armed, dt, this.out, burning ? this.boosted : this.params);
     this.state.motorOutput = out.motorOutput;
     this.state.time += dt;
     this.body.setAngvel(out.angvel, true);

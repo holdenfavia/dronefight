@@ -12,9 +12,13 @@ export class Sfx {
   constructor(private readonly engine: AudioEngine) {}
 
   /** One shot. With a position it's the other pilot's gun, heard from where they are. */
-  shot(style: 'standard' | 'shotgun' = 'standard', from?: Position): void {
+  shot(style: 'standard' | 'shotgun' | 'rail' = 'standard', from?: Position): void {
     if (style === 'shotgun') {
       this.shotgun(from);
+      return;
+    }
+    if (style === 'rail') {
+      this.rail(from);
       return;
     }
     const out = this.output(from, from ? 0.9 : 0.55);
@@ -65,6 +69,16 @@ export class Sfx {
     const t = this.engine.now;
     this.noise(out, t, 0.02, { type: 'highpass', freq: 3000 }, 0.5, 0.018);
     this.noise(out, t + 0.07, 0.025, { type: 'bandpass', freq: 1800 }, 0.6, 0.02);
+  }
+
+  /** Rail gun (ADR-0033): a charged zap, a supersonic crack, and a ringing tail. */
+  rail(from?: Position): void {
+    const out = this.output(from, from ? 1.1 : 0.7);
+    const t = this.engine.now;
+    this.tone(out, t, 'sawtooth', 2400, 300, 0.12, 0.25);
+    this.noise(out, t, 0.04, { type: 'highpass', freq: 3000 }, 0.9, 0.035);
+    this.tone(out, t + 0.01, 'sine', 900, 880, 0.5, 0.12);
+    this.tone(out, t, 'sine', 120, 40, 0.18, 0.5);
   }
 
   /** Wing maneuver mode engages (ADR-0022): a short, soft whoosh (it's used a lot). */

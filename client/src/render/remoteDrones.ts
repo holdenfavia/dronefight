@@ -3,9 +3,10 @@ import { NET } from '../../../shared/protocol';
 import type { NetClient } from '../net/netClient';
 import { createSampledState, type SampleMode } from '../net/snapshotBuffer';
 import { pilotColor } from '../../../shared/combat';
-import type { DroneClassId } from '../../../shared/drones';
 import { DRONE_VISUAL } from '../config';
 import { createClassModel, setDronePropColor } from './droneModel';
+import { droneClass, type DroneClassId } from '../../../shared/drones';
+import { defaultLoadout } from '../../../shared/loadout';
 
 export interface RemoteView {
   id: string;
@@ -48,6 +49,8 @@ function glowTexture(): THREE.CanvasTexture {
 }
 
 export class RemoteDrones {
+  private readonly bubbleGeo = new THREE.SphereGeometry(1, 24, 16);
+  private readonly bubbleMat = new THREE.MeshBasicMaterial({ color: '#7fd8ff', transparent: true, opacity: 0.22, depthWrite: false, toneMapped: false });
   private readonly models = new Map<string, THREE.Group>();
   private readonly glows = new Map<string, THREE.Sprite>();
   private readonly glowMap = glowTexture();
@@ -79,19 +82,29 @@ export class RemoteDrones {
     for (const peer of net.peers.values()) {
       const player = net.match?.players.find((p) => p.id === peer.id);
       const cls = player?.drone ?? 'freestyle';
+      const loadout = player?.loadout ?? defaultLoadout(cls);
+      const key = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}`;
       let model = this.models.get(peer.id);
-      // Their class changed (ADR-0013): swap the model.
-      if (model && model.userData.droneClass !== cls) {
+      // Their body or build changed (ADR-0013, ADR-0033): swap the model.
+      if (model && model.userData.loadoutKey !== key) {
         this.scene.remove(model);
         this.models.delete(peer.id);
         model = undefined;
       }
       if (!model) {
         // Drawn at the class's readable size; their physics stay real size (ADR-0011, ADR-0013).
-        model = createClassModel(cls, '#f4f2ee');
+        model = createClassModel(cls, '#f4f2ee', loadout);
+        // A shield bubble (ADR-0033), shown while their shield is up.
+        const bubble = new THREE.Mesh(this.bubbleGeo, this.bubbleMat);
+        bubble.scale.setScalar(droneClass(cls).hitRadius / droneClass(cls).visualScale);
+        bubble.visible = false;
+        bubble.name = 'shield';
+        model.add(bubble);
         this.models.set(peer.id, model);
         this.scene.add(model);
       }
+      const bubble = model.getObjectByName('shield');
+      if (bubble) bubble.visible = !!player?.shielded;
       if (!this.glows.has(peer.id)) {
         // Constant on-screen size, so they stay visible far away. Walls still hide it.
         const glow = new THREE.Sprite(

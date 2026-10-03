@@ -108,6 +108,8 @@ export function stepWing(
   out: FlightOutput,
   /** Special held: maneuver mode (ADR-0022). */
   maneuver = false,
+  /** Thrust multiplier (afterburner, ADR-0033). */
+  thrustScale = 1,
 ): FlightOutput {
   const rot = state.rotation;
   invRot.copy(rot).invert();
@@ -118,7 +120,7 @@ export function stepWing(
   const t = Math.max(0, Math.min(1, input.throttle));
   const motorTarget = armed ? Math.pow(t, WING.throttleExponent) : 0;
   out.motorOutput = state.motorOutput + (motorTarget - state.motorOutput) * (1 - Math.exp(-dt / WING.motorTau));
-  out.force.copy(forward).multiplyScalar(out.motorOutput * WING.maxThrustN);
+  out.force.copy(forward).multiplyScalar(out.motorOutput * WING.maxThrustN * thrustScale);
 
   // --- Aerodynamics. Air moves opposite to the wing, so the flow direction is -velocity.
   const speed = state.linvel.length();

@@ -1,4 +1,6 @@
-import { isDroneClassId, type DroneClassId } from './drones.js';
+import type { DroneClassId } from './drones.js';
+import { cleanLoadout, type Loadout } from './loadout.js';
+import { isWeaponId, type WeaponId } from './weapons.js';
 import type { XpReason } from './progression.js';
 import { isMapId, type MapId } from './maps/index.js';
 
@@ -73,8 +75,8 @@ export interface Shot {
   p: Vec3;
   /** Normalized direction. */
   d: Vec3;
-  /** Guided missile instead of a round (Freestyle, ADR-0016), with the shooter's id for it. */
-  w?: 'rocket';
+  /** Which hardpoint weapon fired (ADR-0033). `missile` launches a flown missile with the shooter's id `rid`. */
+  w: WeaponId;
   rid?: number;
 }
 
@@ -84,13 +86,16 @@ export interface MatchPlayer {
   id: string;
   /** Color slot 0..9 (ADR-0026): 0 = orange, 1 = lime, … */
   team: number;
-  /** Current drone class (ADR-0013). */
+  /** Current drone body (ADR-0013) and its full loadout (ADR-0033), for models, sounds and the scoreboard. */
   drone: DroneClassId;
+  loadout: Loadout;
   score: number;
   hp: number;
   alive: boolean;
   /** Spawn protection active. */
   protected: boolean;
+  /** Shield up (ADR-0033). */
+  shielded?: boolean;
   /** Level, for signed-in pilots (ADR-0032). */
   level?: number;
 }
@@ -116,13 +121,14 @@ export type ClientMessage =
   | { t: 'state'; s: DroneState }
   | { t: 'shot'; s: Shot }
   /** Choose a drone class; applies at the next respawn during a match (ADR-0013). */
-  | { t: 'loadout'; drone: DroneClassId }
+  /** Your loadout (ADR-0033); in a match it applies at your next respawn. */
+  | { t: 'loadout'; loadout: Loadout }
   /** Who you are, for XP (ADR-0032): your Supabase access token. Optional; guests never send it. */
   | { t: 'auth'; token: string }
   /** Blow up the missile you're flying, here (ADR-0025). */
   | { t: 'detonate'; rid: number; p: Vec3 }
   /** Use a class ability at a position (3D smoke, ADR-0024). */
-  | { t: 'ability'; kind: 'smoke'; p: Vec3 }
+  | { t: 'ability'; kind: 'smoke' | 'shield'; p: Vec3 }
   | { t: 'ping'; id: number; ct: number };
 
 // ---- Server -> client
@@ -143,10 +149,10 @@ export type ServerMessage =
   | { t: 'hit'; shooter: string; target: string; hp: number }
   | { t: 'death'; id: string; killer: string | null; cause: 'shot' | 'crash' }
   /** `o`: offset (x, z metres) beside the spawn when another pilot is on it (ADR-0026). */
-  | { t: 'respawn'; id: string; spawn: number; drone: DroneClassId; o?: [number, number] }
+  | { t: 'respawn'; id: string; spawn: number; loadout: Loadout; o?: [number, number] }
   | { t: 'match'; m: MatchState }
   /** Someone used an ability (ADR-0016). */
-  | { t: 'ability'; id: string; kind: 'smoke'; p: Vec3 }
+  | { t: 'ability'; id: string; kind: 'smoke' | 'shield'; p: Vec3 }
   /** A missile exploded here (server-decided, ADR-0016). `id` is the shooter, `rid` their missile id. */
   | { t: 'boom'; id: string; rid: number; p: Vec3 }
   /** Where a guided missile is now (sent ~20x/s while it flies). */
@@ -209,19 +215,19 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case 'detonate':
       return isNum(m.rid) && isVec(m.p, 3) ? { t: 'detonate', rid: m.rid, p: m.p as Vec3 } : null;
     case 'ability':
-      return m.kind === 'smoke' && isVec(m.p, 3) ? { t: 'ability', kind: 'smoke', p: m.p as Vec3 } : null;
+      return (m.kind === 'smoke' || m.kind === 'shield') && isVec(m.p, 3) ? { t: 'ability', kind: m.kind, p: m.p as Vec3 } : null;
     case 'loadout':
-      return isDroneClassId(m.drone) ? { t: 'loadout', drone: m.drone } : null;
+      return typeof m.loadout === 'object' && m.loadout !== null ? { t: 'loadout', loadout: cleanLoadout(m.loadout) } : null;
     case 'shot': {
       const s = m.s as Record<string, unknown> | null;
       if (typeof s !== 'object' || s === null || !isNum(s.ts) || !isVec(s.p, 3) || !isVec(s.d, 3)) return null;
       const d = s.d as Vec3;
       const len = Math.hypot(d[0], d[1], d[2]);
       if (len < 0.5 || len > 1.5) return null;
-      const shot: Shot = { ts: s.ts, p: s.p as Vec3, d: [d[0] / len, d[1] / len, d[2] / len] };
-      if (s.w === 'rocket') {
+      if (!isWeaponId(s.w)) return null;
+      const shot: Shot = { ts: s.ts, p: s.p as Vec3, d: [d[0] / len, d[1] / len, d[2] / len], w: s.w };
+      if (s.w === 'missile') {
         if (!isNum(s.rid)) return null;
-        shot.w = 'rocket';
         shot.rid = s.rid;
       }
       return { t: 'shot', s: shot };

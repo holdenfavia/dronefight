@@ -202,9 +202,9 @@ export function splashDamage(distance: number): number {
 }
 
 /** Pod regeneration shared by server (authoritative) and client (HUD mirror). */
-export function refillPod(ammo: number, lastMs: number, nowMs: number): { ammo: number; at: number } {
-  if (ammo >= MISSILE.pod) return { ammo: MISSILE.pod, at: nowMs };
-  return { ammo: Math.min(MISSILE.pod, ammo + (nowMs - lastMs) / MISSILE.regenMs), at: nowMs };
+export function refillPod(ammo: number, lastMs: number, nowMs: number, size: number = MISSILE.pod): { ammo: number; at: number } {
+  if (ammo >= size) return { ammo: size, at: nowMs };
+  return { ammo: Math.min(size, ammo + (nowMs - lastMs) / MISSILE.regenMs), at: nowMs };
 }
 
 /**

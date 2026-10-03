@@ -1,7 +1,10 @@
 import * as THREE from 'three/webgpu';
 import { DEFAULT_MAP, getMap, type MapDef, type SpawnPoint } from '../../../shared/maps';
 import { COMBAT, pilotColor, pilotName } from '../../../shared/combat';
-import { droneClass, type DroneClassId, type GunSound } from '../../../shared/drones';
+import { droneClass } from '../../../shared/drones';
+import { guns, missilePods, type Loadout } from '../../../shared/loadout';
+import { SHIELD } from '../../../shared/specials';
+import { WEAPONS, type GunSound, type WeaponId } from '../../../shared/weapons';
 import type { MatchPlayer } from '../../../shared/protocol';
 import { buildColliders, raycastArena } from '../../../shared/raycast';
 import type { ControlState } from '../input/inputManager';
@@ -76,8 +79,13 @@ export class CombatClient {
   private readonly propO: V3 = [0, 0, 0];
   private readonly propD: V3 = [0, 0, 0];
   private readonly propAt = new THREE.Vector3();
-  /** Freestyle: which weapon Special has selected, and the missile pod mirror (ADR-0016). */
+  /** Weapon group Fire uses (guns or missile pods, ADR-0033), and the missile pod mirror (ADR-0025). */
   weapon: 'guns' | 'missiles' = 'guns';
+  /** Per-hardpoint cooldowns (s) and rounds left in a burst (burst rifle). */
+  private hardpointCooldown: number[] = [];
+  private burstLeft: number[] = [];
+  /** Shield (ADR-0033): when it's ready again (performance.now() ms). */
+  private shieldReadyAt = 0;
   private missilePod: number = MISSILE.pod;
   private missilePodAt = performance.now();
   private nextMissileId = 1;
@@ -110,19 +118,35 @@ export class CombatClient {
     private readonly hud: Hud,
     /** The FPV camera's position and axes, which the guns are mounted around (ADR-0009, ADR-0011). */
     private readonly aim: (origin: THREE.Vector3, forward: THREE.Vector3, right: THREE.Vector3, up: THREE.Vector3) => void,
-    /** Server respawned us: at this spawn (moved beside it if taken, ADR-0026), flying this class (ADR-0012, ADR-0013). */
-    private readonly onRespawn: (spawn: SpawnPoint, drone: DroneClassId) => void,
+    /** Server respawned us: at this spawn (moved beside it if taken, ADR-0026), flying this loadout (ADR-0012, ADR-0033). */
+    private readonly onRespawn: (spawn: SpawnPoint, loadout: Loadout) => void,
     private readonly sounds: CombatSounds,
     private readonly effects: { smoke: SmokeTrails; missiles: Missiles },
   ) {}
 
-  /** Round speed for the lead indicator; null with guided missiles selected (you steer them, no lead). */
+  /** Round speed for the lead indicator: your first gun's; null with missiles selected (you fly them) or no guns. */
   get projectileSpeed(): number | null {
-    return this.missilesSelected ? null : droneClass(this.drone.classId).bulletSpeed;
+    if (this.missilesSelected) return null;
+    const first = guns(this.drone.loadout)[0];
+    return first ? WEAPONS[first].speed : null;
   }
 
   private get missilesSelected(): boolean {
-    return this.drone.classId === 'freestyle' && this.weapon === 'missiles';
+    return this.weapon === 'missiles' && missilePods(this.drone.loadout) > 0;
+  }
+
+  /** Missiles your pods hold (3 per pod). */
+  private get podSize(): number {
+    return MISSILE.pod * missilePods(this.drone.loadout);
+  }
+
+  /** Switch Fire between guns and missile pods, if you carry both. */
+  private switchWeapon(): void {
+    const l = this.drone.loadout;
+    if (guns(l).length === 0 || missilePods(l) === 0) return;
+    this.weapon = this.weapon === 'guns' ? 'missiles' : 'guns';
+    this.sounds.weaponSwitch();
+    this.notify(this.weapon === 'missiles' ? 'Missile' : 'Guns');
   }
 
   private get myId(): string {
@@ -168,19 +192,23 @@ export class CombatClient {
     };
   }
 
-  /** HUD readout for this class's special (ADR-0015/0016). The wing's maneuver mode is reported by the game. */
+  /** HUD readout: your missile group or special (ADR-0033). Maneuver mode is reported by the game. */
   specialReadout(): { label: string; value: string } | null {
     const now = performance.now();
-    if (this.drone.classId === 'freestyle') {
-      if (this.weapon === 'guns') return { label: 'WEAPON', value: 'GUNS' };
+    const l = this.drone.loadout;
+    if (this.missilesSelected) {
       if (this.flying) return { label: 'MISSILE', value: 'FIRE: DETONATE' };
-      const pod = refillPod(this.missilePod, this.missilePodAt, now).ammo;
-      return { label: 'MISSILE', value: `${Math.floor(pod)}/${MISSILE.pod}` };
+      const pod = refillPod(this.missilePod, this.missilePodAt, now, this.podSize).ammo;
+      return { label: 'MISSILE', value: `${Math.floor(pod)}/${this.podSize}` };
     }
-    if (this.drone.classId === 'quad3d') {
-      const wait = this.smokeReadyAt - now;
-      return { label: 'SMOKE', value: wait > 0 ? `${Math.ceil(wait / 1000)}s` : 'READY' };
+    const wait = (until: number) => (until - now > 0 ? `${Math.ceil((until - now) / 1000)}s` : 'READY');
+    if (l.special === 'smoke') return { label: 'SMOKE', value: wait(this.smokeReadyAt) };
+    if (l.special === 'shield') {
+      const up = this.net.match?.players.find((p) => p.id === this.net.you)?.shielded;
+      return { label: 'SHIELD', value: up ? 'UP' : wait(this.shieldReadyAt) };
     }
+    if (l.special === 'afterburner') return { label: 'BURNER', value: this.drone.afterburnerActive ? 'ON' : `${Math.round(this.drone.afterburnerFuel * 100)}%` };
+    if (missilePods(l) > 0 && guns(l).length > 0) return { label: 'WEAPON', value: 'GUNS' };
     return null;
   }
 
@@ -194,26 +222,34 @@ export class CombatClient {
     return this.myId;
   }
 
-  /** Tap-Special abilities: Freestyle weapon switch (or detonate while flying a missile), 3D smoke. (The wing's maneuver mode is a hold, handled by the drone.) */
+  /**
+   * Tap specials (ADR-0033): detonate the missile you're flying; smoke; shield; or, with an empty special
+   * slot, switch guns/missiles. Holds (maneuver mode, afterburner) are handled by the drone.
+   */
   private handleSpecial(control: ControlState, alive: boolean): void {
+    if (control.switchPressed) this.switchWeapon();
     if (!control.specialPressed) return;
     if (this.flying) {
       this.effects.missiles.detonateLocal(this.myId);
       return;
     }
-    if (this.drone.classId === 'freestyle') {
-      this.weapon = this.weapon === 'guns' ? 'missiles' : 'guns';
-      this.sounds.weaponSwitch();
-      this.notify(this.weapon === 'missiles' ? 'Guided missile' : 'Guns');
-    } else if (this.drone.classId === 'quad3d') {
-      const now = performance.now();
+    const special = this.drone.loadout.special;
+    const now = performance.now();
+    const p = this.drone.currPos;
+    const r = (x: number) => Math.round(x * 100) / 100;
+    if (special === null) this.switchWeapon();
+    else if (special === 'smoke') {
       if (!alive || this.drone.crashed || now < this.smokeReadyAt) return;
       this.smokeReadyAt = now + SMOKE.cooldownMs;
-      const p = this.drone.currPos;
       this.effects.smoke.start(this.myId);
       this.sounds.smoke();
-      const r = (x: number) => Math.round(x * 100) / 100;
-      this.net.sendAbility([r(p.x), r(p.y), r(p.z)]);
+      this.net.sendAbility('smoke', [r(p.x), r(p.y), r(p.z)]);
+    } else if (special === 'shield') {
+      if (!alive || this.drone.crashed || now < this.shieldReadyAt) return;
+      this.shieldReadyAt = now + SHIELD.cooldownMs;
+      this.sounds.weaponSwitch();
+      this.notify('Shield up');
+      this.net.sendAbility('shield', [r(p.x), r(p.y), r(p.z)]);
     }
   }
 
@@ -243,8 +279,10 @@ export class CombatClient {
     // so a 50/s cannon keeps its rate at 60 FPS (ADR-0014).
     this.fireCooldown -= dt;
     const me = this.me();
-    const gun = droneClass(this.drone.classId);
-    if (this.drone.classId !== 'freestyle') this.weapon = 'guns';
+    const loadout = this.drone.loadout;
+    // Only a group you carry can be selected.
+    if (missilePods(loadout) === 0) this.weapon = 'guns';
+    else if (guns(loadout).length === 0) this.weapon = 'missiles';
     const alive = !this.inMatch || (me?.alive ?? false);
     if (flying) this.handleSpecial(control, alive);
     const canFire = flying && this.drone.armed && !this.drone.crashed && alive;
@@ -262,7 +300,7 @@ export class CombatClient {
     this.effects.missiles.update(dt, flying ? mi : null);
     const firing = control.fire && canFire && !ours;
     if (firing && this.missilesSelected) {
-      const pod = refillPod(this.missilePod, this.missilePodAt, performance.now());
+      const pod = refillPod(this.missilePod, this.missilePodAt, performance.now(), this.podSize);
       this.missilePod = pod.ammo;
       this.missilePodAt = pod.at;
       if (firePressed && this.effects.missiles.inFlight(this.myId) < MISSILE.maxInFlight && this.missilePod >= 1 && this.fireCooldown <= 0) {
@@ -270,17 +308,36 @@ export class CombatClient {
         this.fireMissile();
         this.fireCooldown = 0.3;
       }
-    } else if (firing) {
-      const interval = 1 / gun.fireRate;
-      for (let i = 0; i < MAX_SHOTS_PER_FRAME && this.fireCooldown <= 0; i++) {
-        this.fire();
-        this.fireCooldown += interval;
-      }
-      this.fireCooldown = Math.max(this.fireCooldown, -interval);
-    } else if (this.fireCooldown < 0) {
-      this.fireCooldown = 0;
     }
-    this.sounds.cannon(firing && gun.gunSound === 'vulcan' && !this.missilesSelected);
+    // Guns (ADR-0033): every gun on a hardpoint fires at its own rate while Fire is held.
+    const gunsFiring = firing && !this.missilesSelected;
+    let soundsThisFrame = 0;
+    loadout.weapons.forEach((id, i) => {
+      if (!id || WEAPONS[id].kind !== 'gun') return;
+      const w = WEAPONS[id];
+      this.hardpointCooldown[i] = (this.hardpointCooldown[i] ?? 0) - dt;
+      if (!gunsFiring) {
+        // Let go: a cooldown never banks up, and a burst stops.
+        this.hardpointCooldown[i] = Math.max(0, this.hardpointCooldown[i]!);
+        this.burstLeft[i] = 0;
+        return;
+      }
+      const period = 1 / w.fireRate;
+      for (let n = 0; n < MAX_SHOTS_PER_FRAME && this.hardpointCooldown[i]! <= 0; n++) {
+        this.fire(id, i, loadout.weapons.length, soundsThisFrame++ === 0);
+        if (w.burst) {
+          // A burst: rounds `spacingMs` apart, then the rest of the cycle (rounds per `rounds / fireRate` s).
+          const left = (this.burstLeft[i] || w.burst.rounds) - 1;
+          this.burstLeft[i] = left;
+          this.hardpointCooldown[i]! += left > 0 ? w.burst.spacingMs / 1000 : w.burst.rounds * period - (w.burst.rounds - 1) * (w.burst.spacingMs / 1000);
+        } else {
+          this.hardpointCooldown[i]! += period;
+        }
+      }
+      this.hardpointCooldown[i] = Math.max(this.hardpointCooldown[i]!, -period);
+    });
+    if (!firing && this.fireCooldown < 0) this.fireCooldown = 0;
+    this.sounds.cannon(gunsFiring && loadout.weapons.includes('cannon'));
 
     if (this.toast && now > this.toast.until) this.toast = null;
 
@@ -351,26 +408,35 @@ export class CombatClient {
     this.effects.missiles.launchLocal(this.myId, rid, o, d);
     this.sounds.rocketLaunch();
     const r = (x: number) => Math.round(x * 1000) / 1000;
-    this.net.sendShot({ ts: Math.round(this.net.serverNow()), p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)], w: 'rocket', rid });
+    this.net.sendShot({ ts: Math.round(this.net.serverNow()), p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)], w: 'missile', rid });
   }
 
-  private fire(): void {
+  /**
+   * One shot from the weapon on hardpoint `slot` of `slots` (ADR-0033). Hardpoints sit side by side around
+   * the camera; a lone gun alternates left/right like the old twin guns (ADR-0011). All converge ahead.
+   */
+  private fire(id: WeaponId, slot: number, slots: number, withSound: boolean): void {
     this.aim(this.origin, this.dir, this.right, this.up);
-    // Both guns converge on a point straight ahead of the camera.
     this.converge.copy(this.origin).addScaledVector(this.dir, COMBAT.convergence);
+    let side: number;
+    if (slots <= 1) {
+      side = this.barrel;
+      this.barrel = -this.barrel;
+    } else {
+      side = (2 * slot) / (slots - 1) - 1;
+    }
     this.origin
       .addScaledVector(this.dir, COMBAT.muzzleForward)
-      .addScaledVector(this.right, COMBAT.gunSide * this.barrel)
+      .addScaledVector(this.right, COMBAT.gunSide * side)
       .addScaledVector(this.up, -COMBAT.gunDrop);
     this.dir.subVectors(this.converge, this.origin).normalize();
-    this.barrel = -this.barrel;
 
-    const gun = droneClass(this.drone.classId);
+    const gun = WEAPONS[id];
     const o = this.origin;
     const ts = Math.round(this.net.serverNow());
     const r = (x: number) => Math.round(x * 1000) / 1000;
     const spread = (gun.spreadDeg * Math.PI) / 180;
-    // One pellet for a gun; a choked cone of pellets for the shotgun (ADR-0014).
+    // One round, or a choked cone of pellets for the shotgun (ADR-0014).
     for (let i = 0; i < gun.pellets; i++) {
       const d = this.pelletDir.copy(this.dir);
       if (spread > 0) {
@@ -380,17 +446,17 @@ export class CombatClient {
         d.addScaledVector(this.right, radius * Math.cos(angle)).addScaledVector(this.up, radius * Math.sin(angle)).normalize();
       }
       let maxDist = raycastArena(this.colliders, o.x, o.y, o.z, d.x, d.y, d.z, gun.range);
-      const prop = this.propHit(o, d, maxDist, gun.bulletSpeed);
+      const prop = this.propHit(o, d, maxDist, gun.speed);
       if (prop) {
         maxDist = prop.dist;
         this.propAt.copy(o).addScaledVector(d, prop.dist);
-        this.onPropRound?.(prop.i, gun.damage, (prop.dist / gun.bulletSpeed) * 1000, this.propAt);
+        this.onPropRound?.(prop.i, gun.damage, (prop.dist / gun.speed) * 1000, this.propAt);
       }
-      this.tracers.spawn(o, d, maxDist, this.myColor, gun.bulletSpeed);
-      this.onLocalRound?.(o, d, gun.bulletSpeed, gun.damage, maxDist);
-      this.net.sendShot({ ts, p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)] });
+      this.tracers.spawn(o, d, maxDist, this.myColor, gun.speed);
+      this.onLocalRound?.(o, d, gun.speed, gun.damage, maxDist);
+      this.net.sendShot({ ts, p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)], w: id });
     }
-    if (gun.gunSound !== 'vulcan') this.sounds.shot(gun.gunSound);
+    if (withSound && gun.sound !== 'vulcan') this.sounds.shot(gun.sound);
   }
 
   /** The first standing prop a round from `o` along `d` hits before `maxDist`, if any. */
@@ -461,7 +527,7 @@ export class CombatClient {
             this.respawnDeadline = null;
             const base = this.map.spawns[ev.spawn] ?? this.map.spawns[0]!;
             const o = ev.o ?? [0, 0];
-            this.onRespawn({ pos: [base.pos[0] + o[0], base.pos[1], base.pos[2] + o[1]], yawDeg: base.yawDeg }, ev.drone);
+            this.onRespawn({ pos: [base.pos[0] + o[0], base.pos[1], base.pos[2] + o[1]], yawDeg: base.yawDeg }, ev.loadout);
             if (this.toast) this.toast = null;
           }
           break;
@@ -476,27 +542,28 @@ export class CombatClient {
     for (const shot of this.net.remoteShots.splice(0)) {
       const [px, py, pz] = shot.s.p;
       const [dx, dy, dz] = shot.s.d;
-      if (shot.s.w === 'rocket') {
+      if (shot.s.w === 'missile') {
         this.effects.missiles.launchRemote(shot.id, shot.s.rid ?? 0, this.shotOrigin.set(px, py, pz), this.shotDir.set(dx, dy, dz));
         this.sounds.rocketLaunch(this.shotOrigin);
         continue;
       }
       const shooter = this.net.match?.players.find((p) => p.id === shot.id);
       const team = shooter?.team;
-      const gun = droneClass(shooter?.drone ?? 'freestyle');
+      // Each shot names the weapon that fired it (ADR-0033).
+      const gun = WEAPONS[shot.s.w];
       this.shotOrigin.set(px, py, pz);
       this.shotDir.set(dx, dy, dz);
       const wall = raycastArena(this.colliders, px, py, pz, dx, dy, dz, gun.range);
-      const maxDist = this.propHit(this.shotOrigin, this.shotDir, wall, gun.bulletSpeed, shot.s.ts)?.dist ?? wall;
-      this.tracers.spawn(this.shotOrigin, this.shotDir, maxDist, pilotColor(team ?? 1), gun.bulletSpeed);
-      if (gun.gunSound === 'vulcan') {
+      const maxDist = this.propHit(this.shotOrigin, this.shotDir, wall, gun.speed, shot.s.ts)?.dist ?? wall;
+      this.tracers.spawn(this.shotOrigin, this.shotDir, maxDist, pilotColor(team ?? 1), gun.speed);
+      if (gun.sound === 'vulcan') {
         this.sounds.remoteCannon(shot.id);
-      } else if (gun.gunSound === 'shotgun') {
-        const last = this.lastBlast.get(shot.id) ?? -Infinity;
-        if (Math.abs(shot.s.ts - last) > SAME_BLAST_MS) this.sounds.shot('shotgun', this.shotOrigin);
-        this.lastBlast.set(shot.id, shot.s.ts);
       } else {
-        this.sounds.shot('standard', this.shotOrigin);
+        // Pellets (or several guns) firing together make one sound.
+        const key = `${shot.id}:${shot.s.w}`;
+        const last = this.lastBlast.get(key) ?? -Infinity;
+        if (Math.abs(shot.s.ts - last) > SAME_BLAST_MS) this.sounds.shot(gun.sound, this.shotOrigin);
+        this.lastBlast.set(key, shot.s.ts);
       }
     }
   }

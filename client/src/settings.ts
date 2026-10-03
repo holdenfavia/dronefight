@@ -1,5 +1,6 @@
 import { CAMERA_DEFAULTS, DEFAULT_RATES, type Rates } from './config';
-import { DEFAULT_DRONE, isDroneClassId, type DroneClassId } from '../../shared/drones';
+import { DEFAULT_DRONE, DRONE_ORDER, isDroneClassId, type DroneClassId } from '../../shared/drones';
+import { cleanLoadout, defaultLoadout, type Loadout } from '../../shared/loadout';
 import { DEFAULT_MAP, isMapId, type MapId } from '../../shared/maps';
 import { loadJson, saveJson } from './storage';
 
@@ -13,8 +14,18 @@ export interface Settings {
   audio: { volume: number; own: number; others: number; muted: boolean };
   /** Map for solo play and for rooms you create (ADR-0012). */
   map: MapId;
-  /** Drone class to fly (ADR-0013). */
+  /** Drone body to fly (ADR-0013), and the loadout you built for each body (ADR-0033). */
   drone: DroneClassId;
+  loadouts: Record<DroneClassId, Loadout>;
+}
+
+/** The loadout you fly now: your build for the selected body. */
+export function currentLoadout(s: Settings): Loadout {
+  return s.loadouts[s.drone];
+}
+
+function allDefaults(): Record<DroneClassId, Loadout> {
+  return Object.fromEntries(DRONE_ORDER.map((id) => [id, defaultLoadout(id)])) as Record<DroneClassId, Loadout>;
 }
 
 const KEY = 'settings';
@@ -31,6 +42,7 @@ export function defaultSettings(): Settings {
     audio: { volume: 0.7, own: 0.8, others: 1, muted: false },
     map: DEFAULT_MAP,
     drone: DEFAULT_DRONE,
+    loadouts: allDefaults(),
   };
 }
 
@@ -49,6 +61,10 @@ export function loadSettings(): Settings {
     audio: { ...d.audio, ...saved.audio },
     map: isMapId(saved.map) ? saved.map : d.map,
     drone: isDroneClassId(saved.drone) ? saved.drone : d.drone,
+    // Each saved build is re-validated (older saves, or modules that changed) and keeps its body.
+    loadouts: Object.fromEntries(
+      DRONE_ORDER.map((id) => [id, saved.loadouts?.[id] ? cleanLoadout({ ...saved.loadouts[id], body: id }, id) : d.loadouts[id]]),
+    ) as Record<DroneClassId, Loadout>,
   };
 }
 

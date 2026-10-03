@@ -19,12 +19,13 @@ A browser FPV dogfighting game that **feels like real acro flying**. Friends ope
 - Custom flight model computes thrust, drag, prop wash and rate commands. Rapier applies all forces, with real gravity (9.81 m/s²), and handles motion and collisions. Tuned by feel (ADR-0008).
 - Adjustable FPV camera tilt (uptilt) and FOV.
 
-## Drone classes (ADR-0013)
+## Drones and loadouts (ADR-0013, ADR-0033)
 
-- **Freestyle 5"** (default), **3D quad** (reversible thrust; throttle center = zero), **FPV wing** (fixed-wing; can't hover; spawns airborne).
-- Full classes: health, damage, fire rate, round speed and size differ per class. Picked in the menu; in a match it applies at your next respawn.
-- Weapons (ADR-0014): Freestyle standard gun; wing rotary cannon (50/s, BRRRT); 3D quad choked double-barrel shotgun (2/s, 8 pellets).
-- Specials (ADR-0016/0022): wing **maneuver mode** (hold Special or flip a switch: much more pitch, a bit more roll, easier to stall), 3D quad **smoke trail** (tap: 6 s where the other pilot sees only your frame, no glow/trail/lead dot/marker, ADR-0024), Freestyle **piloted missile** (tap to switch guns/missile; fire and you fly it from its camera with throttle and thrust vectoring, ≤10 s on fuel, while your drone hovers exposed; **one-shot kill** within 5 m, ADR-0018/0025/0027).
+- **Bodies:** Freestyle 5" (default), 3D quad (reversible thrust; throttle center = zero), FPV wing (can't hover; spawns airborne), 3" racer (1 hardpoint, light, 70 HP), X8 heavy lifter (4 hardpoints, 180 HP). Each has frame weight, thrust, hardpoints, HP and size.
+- **Loadout:** a weapon per hardpoint plus one special, all with weight. Total weight against thrust sets how it flies; overloaded drones are sluggish, and at T/W ≤ 1 they can't take off. Nothing is blocked. Each body's default build flies exactly as originally tuned.
+- **Weapons:** gun (3-hit kill, ADR-0028), choked shotgun, rotary cannon (50/s), missile pod (you fly the missile; one-shot within 5 m, ADR-0025/0027), rail gun (75, near-instant, very heavy), burst rifle (3-round bursts). Fire shoots all guns; missile pods are a second group (Special switches when the special slot is empty, else Switch weapon / Q).
+- **Specials:** maneuver mode (wing only, ADR-0022), smoke trail (ADR-0024), afterburner (hold: +60% thrust, limited fuel), shield (tap: absorbs 40 damage for 3 s).
+- Built in the Loadout screen (Play or pause menu); in a match a new build arrives at your next respawn. Everything is unlocked for now (levels gate it later, ADR-0032).
 
 ## Controls
 

@@ -2,7 +2,10 @@ import { getMap, pickSpawn, type MapDef, type MapId } from '../../shared/maps/in
 import { SMOKE } from '../../shared/abilities.js';
 import { MISSILE, MISSILE_MAX_AGE, missileImpact, refillPod, splashDamage } from '../../shared/missile.js';
 import { COMBAT } from '../../shared/combat.js';
-import { DEFAULT_DRONE, droneClass, type DroneClass, type DroneClassId } from '../../shared/drones.js';
+import { DEFAULT_DRONE, droneClass, type DroneClassId } from '../../shared/drones.js';
+import { cleanLoadout, count, defaultLoadout, missilePods, type Loadout } from '../../shared/loadout.js';
+import { SHIELD } from '../../shared/specials.js';
+import { WEAPONS, type WeaponId } from '../../shared/weapons.js';
 import {
   NET,
   type DroneState,
@@ -45,8 +48,10 @@ interface Pilot {
   id: string;
   team: number;
   /** Current class, and the one to switch to at next respawn (ADR-0013). */
+  /** Body and full loadout (ADR-0033), and the one to switch to at next respawn. */
   drone: DroneClassId;
-  pendingDrone: DroneClassId | null;
+  loadout: Loadout;
+  pendingLoadout: Loadout | null;
   score: number;
   hp: number;
   alive: boolean;
@@ -60,8 +65,11 @@ interface Pilot {
   level: number | null;
   lastCrashed: boolean;
   /** Token bucket for fire-rate checks (ADR-0014): rounds available, and when it was last refilled. */
-  ammo: number;
-  ammoAt: number;
+  ammo: Map<WeaponId, { ammo: number; at: number }>;
+  /** Shield (ADR-0033): absorbs damage until `shieldUntil` or until `shieldHp` runs out. */
+  shieldUntil: number;
+  shieldHp: number;
+  shieldReadyAt: number;
   /** Freestyle missile pod (ADR-0025) and the 3D smoke cooldown (ADR-0024). */
   missiles: number;
   missilesAt: number;
@@ -138,7 +146,8 @@ export class Match {
     this.props = new PropField(this.map);
   }
 
-  addPlayer(id: string, now: number, drone: DroneClassId = DEFAULT_DRONE): void {
+  addPlayer(id: string, now: number, choice: Loadout | DroneClassId = DEFAULT_DRONE): void {
+    const loadout = asLoadout(choice);
     this.now = now;
     // Each pilot gets the lowest free color slot (ADR-0026).
     const used = new Set([...this.pilots.values()].map((p) => p.team));
@@ -147,10 +156,11 @@ export class Match {
     this.pilots.set(id, {
       id,
       team,
-      drone,
-      pendingDrone: null,
+      drone: loadout.body,
+      loadout,
+      pendingLoadout: null,
       score: 0,
-      hp: droneClass(drone).maxHp,
+      hp: droneClass(loadout.body).maxHp,
       alive: true,
       protectedUntil: 0,
       respawnAt: null,
@@ -159,9 +169,11 @@ export class Match {
       damagedBy: new Map(),
       level: null,
       lastCrashed: false,
-      ammo: 0,
-      ammoAt: now,
-      missiles: MISSILE.pod,
+      ammo: new Map(),
+      shieldUntil: 0,
+      shieldHp: 0,
+      shieldReadyAt: 0,
+      missiles: podSize(loadout),
       missilesAt: now,
       smokeReadyAt: 0,
       lastSpawn: null,
@@ -185,8 +197,7 @@ export class Match {
       this.missiles = [];
       for (const p of this.pilots.values()) {
         p.score = 0;
-        if (p.pendingDrone) p.drone = p.pendingDrone;
-        p.pendingDrone = null;
+        applyPending(p);
         p.hp = droneClass(p.drone).maxHp;
         p.alive = true;
         p.respawnAt = null;
@@ -203,20 +214,20 @@ export class Match {
     this.broadcastState();
   }
 
-  /** Class change: immediate outside a running match or while dead; otherwise at the next respawn (ADR-0013). */
-  onLoadout(id: string, drone: DroneClassId, now: number): void {
+  /** Loadout change (ADR-0033): immediate outside a running match; otherwise at the next respawn (ADR-0013). */
+  onLoadout(id: string, choice: Loadout | DroneClassId, now: number): void {
     const pilot = this.pilots.get(id);
-    if (!pilot || pilot.drone === drone) {
-      if (pilot) pilot.pendingDrone = null;
+    if (!pilot) return;
+    const loadout = asLoadout(choice);
+    if (sameLoadout(pilot.loadout, loadout)) {
+      pilot.pendingLoadout = null;
       return;
     }
     this.now = now;
+    pilot.pendingLoadout = loadout;
     if (this.phase !== 'playing') {
-      pilot.drone = drone;
-      pilot.pendingDrone = null;
-      pilot.hp = droneClass(drone).maxHp;
-    } else {
-      pilot.pendingDrone = drone;
+      applyPending(pilot);
+      pilot.hp = droneClass(pilot.drone).maxHp;
     }
     this.broadcastState();
   }
@@ -245,7 +256,9 @@ export class Match {
     const last = pilot.history[pilot.history.length - 1];
     const muzzleOk = !!last && Math.hypot(shot.p[0] - last.p[0], shot.p[1] - last.p[1], shot.p[2] - last.p[2]) <= COMBAT.maxMuzzleOffset;
 
-    if (shot.w === 'rocket') {
+    // Only weapons actually mounted can fire (ADR-0033).
+    if (count(pilot.loadout, shot.w) === 0) return;
+    if (shot.w === 'missile') {
       // Missiles fly in every phase (they only do damage in a running match), and are relayed to others
       // only once accepted, so nobody sees a ghost launch (ADR-0016).
       if (!pilot.alive || !muzzleOk || !this.takeMissile(pilot, st)) return;
@@ -260,8 +273,8 @@ export class Match {
     // Rounds fly in every phase (props can be shot any time, ADR-0023); they hit pilots only in a match.
     if (!pilot.alive) return;
     // Allow jitter in arrival times, but not a faster gun.
-    const gun = droneClass(pilot.drone);
-    if (!takeRound(pilot, gun, st) || !muzzleOk) return;
+    const gun = WEAPONS[shot.w];
+    if (!takeRound(pilot, shot.w, st) || !muzzleOk) return;
 
     if (this.phase === 'playing' && pilot.protectedUntil > st) {
       // Firing ends your own spawn protection.
@@ -276,10 +289,10 @@ export class Match {
     const t0 = Math.min(st, Math.max(seen, st - MAX_REWIND_MS));
     // Props move on the shared clock, which the shooter sees live: test them at the claimed fire time.
     const fired = Math.min(st, Math.max(shot.ts, st - MAX_REWIND_MS));
-    const prop = this.props.bulletHit(shot.p, shot.d, wall, fired, gun.bulletSpeed);
+    const prop = this.props.bulletHit(shot.p, shot.d, wall, fired, gun.speed);
     this.bullets.push({
       shooter: id,
-      speed: gun.bulletSpeed,
+      speed: gun.speed,
       damage: gun.damage,
       p: shot.p,
       d: shot.d,
@@ -291,14 +304,23 @@ export class Match {
     this.stepBullets(st);
   }
 
-  /** 3D smoke screen (ADR-0016): cooldown checked here, then everyone else draws the cloud. */
-  onAbility(id: string, p: Vec3, now: number): void {
+  /** Specials the server referees (ADR-0033): smoke (ADR-0024) and shield. Needs that module and its cooldown. */
+  onAbility(id: string, kind: 'smoke' | 'shield', p: Vec3, now: number): void {
     const pilot = this.pilots.get(id);
-    if (!pilot || pilot.drone !== 'quad3d' || !pilot.alive || now < pilot.smokeReadyAt) return;
+    if (!pilot || !pilot.alive || pilot.loadout.special !== kind) return;
     const last = pilot.history[pilot.history.length - 1];
     if (last && Math.hypot(p[0] - last.p[0], p[1] - last.p[1], p[2] - last.p[2]) > COMBAT.maxMuzzleOffset * 2) return;
-    pilot.smokeReadyAt = now + SMOKE.cooldownMs;
-    this.emit({ t: 'ability', id, kind: 'smoke', p }, { except: id });
+    if (kind === 'smoke') {
+      if (now < pilot.smokeReadyAt) return;
+      pilot.smokeReadyAt = now + SMOKE.cooldownMs;
+    } else {
+      if (now < pilot.shieldReadyAt) return;
+      pilot.shieldReadyAt = now + SHIELD.cooldownMs;
+      pilot.shieldUntil = now + SHIELD.durationMs;
+      pilot.shieldHp = SHIELD.absorb;
+      this.broadcastState();
+    }
+    this.emit({ t: 'ability', id, kind, p }, { except: id });
   }
 
   /**
@@ -307,8 +329,8 @@ export class Match {
    * where it is) instead of being refused.
    */
   private takeMissile(pilot: Pilot, now: number): boolean {
-    if (pilot.drone !== 'freestyle') return false;
-    const pod = refillPod(pilot.missiles, pilot.missilesAt, now);
+    if (missilePods(pilot.loadout) === 0) return false;
+    const pod = refillPod(pilot.missiles, pilot.missilesAt, now, podSize(pilot.loadout));
     pilot.missiles = pod.ammo;
     pilot.missilesAt = pod.at;
     // A little grace: the client's pod mirror and ours tick on slightly different clocks.
@@ -392,7 +414,7 @@ export class Match {
       const expired = now - x.born > MISSILE_MAX_AGE * 1000 + MISSILE.staleMs;
       const stale = now - x.updatedAt > MISSILE.staleMs;
       // The pilot flying it died, or switched off the Freestyle: it blows where it is.
-      const orphaned = !shooter || !shooter.alive || shooter.drone !== 'freestyle';
+      const orphaned = !shooter || !shooter.alive || missilePods(shooter.loadout) === 0;
       if (expired || stale || orphaned) {
         this.removeMissile(x);
         this.explode(x.shooter, x.rid, x.p, now);
@@ -456,6 +478,8 @@ export class Match {
         id: p.id,
         team: p.team,
         drone: p.drone,
+        loadout: p.loadout,
+        ...(p.shieldUntil > this.now && p.shieldHp > 0 ? { shielded: true } : {}),
         score: p.score,
         hp: p.hp,
         alive: p.alive,
@@ -526,7 +550,15 @@ export class Match {
    * Damage a pilot. `shooterId` null (or the target themselves, e.g. their own prop blast) gives no
    * credit: a recent attacker keeps theirs (ADR-0023).
    */
-  private hit(shooterId: string | null, damage: number, target: Pilot, now: number): void {
+  private hit(shooterId: string | null, rawDamage: number, target: Pilot, now: number): void {
+    // A shield soaks damage first (ADR-0033).
+    let damage = rawDamage;
+    if (target.shieldUntil > now && target.shieldHp > 0) {
+      const absorbed = Math.min(target.shieldHp, damage);
+      target.shieldHp -= absorbed;
+      damage -= absorbed;
+      if (target.shieldHp <= 0) target.shieldUntil = 0;
+    }
     target.hp = Math.max(0, target.hp - damage);
     const credited = shooterId !== null && shooterId !== target.id;
     if (credited) {
@@ -586,8 +618,9 @@ export class Match {
     const o = this.spawnOffset(pilot, base);
     // Until the next state arrives, the pilot is at the spawn: later spawns must avoid it too.
     pilot.history = [{ st: now, p: [base[0] + o[0], base[1], base[2] + o[1]], v: [0, 0, 0] }];
-    if (pilot.pendingDrone) pilot.drone = pilot.pendingDrone;
-    pilot.pendingDrone = null;
+    applyPending(pilot);
+    pilot.shieldUntil = 0;
+    pilot.shieldHp = 0;
     pilot.alive = true;
     pilot.hp = droneClass(pilot.drone).maxHp;
     pilot.respawnAt = null;
@@ -595,7 +628,7 @@ export class Match {
     pilot.lastDamagedBy = null;
     pilot.damagedBy.clear();
     this.protectedAnnounced.add(pilot.id);
-    this.emit({ t: 'respawn', id: pilot.id, spawn, drone: pilot.drone, ...(o[0] || o[1] ? { o } : {}) });
+    this.emit({ t: 'respawn', id: pilot.id, spawn, loadout: pilot.loadout, ...(o[0] || o[1] ? { o } : {}) });
     this.broadcastState();
   }
 
@@ -628,8 +661,7 @@ export class Match {
     this.missiles = [];
     for (const pilot of this.pilots.values()) {
       pilot.score = 0;
-      pilot.ammo = 0;
-      pilot.ammoAt = now;
+      pilot.ammo = new Map();
       this.respawn(pilot, now);
     }
     this.broadcastState();
@@ -641,18 +673,48 @@ export class Match {
 }
 
 /**
- * Fire-rate check (ADR-0014): a token bucket per pilot. It refills at the class's rounds per second
- * (shots x pellets) and holds a small burst, so network jitter can't drop legitimate fire, but
- * nobody can shoot faster than their class allows over time.
+ * Fire-rate check (ADR-0014, ADR-0033): a token bucket per weapon type. It refills at that weapon's rounds per
+ * second (shots x pellets) times how many are mounted, and holds a small burst, so network jitter can't drop
+ * legitimate fire, but nobody can shoot faster than their loadout allows over time.
  */
-export function takeRound(pilot: { ammo: number; ammoAt: number }, gun: DroneClass, now: number): boolean {
-  const perSecond = gun.fireRate * gun.pellets;
-  const burst = Math.max(gun.pellets * 2, perSecond * 0.2);
-  pilot.ammo = Math.min(burst, pilot.ammo + ((now - pilot.ammoAt) / 1000) * perSecond);
-  pilot.ammoAt = now;
-  if (pilot.ammo < 1) return false;
-  pilot.ammo -= 1;
+export function takeRound(pilot: { loadout: Loadout; ammo: Map<WeaponId, { ammo: number; at: number }> }, id: WeaponId, now: number): boolean {
+  const gun = WEAPONS[id];
+  const n = count(pilot.loadout, id);
+  if (n === 0) return false;
+  const perSecond = gun.fireRate * gun.pellets * n;
+  const capacity = Math.max(gun.pellets * 2 * n, perSecond * 0.2, (gun.burst?.rounds ?? 0) * n + 1);
+  // A weapon's first shot finds a full bucket.
+  const b = pilot.ammo.get(id) ?? { ammo: capacity, at: now };
+  b.ammo = Math.min(capacity, b.ammo + ((now - b.at) / 1000) * perSecond);
+  b.at = now;
+  pilot.ammo.set(id, b);
+  if (b.ammo < 1) return false;
+  b.ammo -= 1;
   return true;
+}
+
+/** A loadout from a full loadout or a body (its default), validated against the catalog. */
+function asLoadout(choice: Loadout | DroneClassId): Loadout {
+  return typeof choice === 'string' ? defaultLoadout(choice) : cleanLoadout(choice);
+}
+
+function sameLoadout(a: Loadout, b: Loadout): boolean {
+  return a.body === b.body && a.special === b.special && a.weapons.join() === b.weapons.join();
+}
+
+/** Missiles a loadout's pods hold: 3 per pod (ADR-0033). */
+function podSize(l: Loadout): number {
+  return MISSILE.pod * missilePods(l);
+}
+
+/** Switch to the pending loadout, if any (keeping no more missiles than the new pods hold). */
+function applyPending(p: { loadout: Loadout; drone: DroneClassId; pendingLoadout: Loadout | null; missiles: number; ammo: Map<WeaponId, unknown> }): void {
+  if (!p.pendingLoadout) return;
+  p.loadout = p.pendingLoadout;
+  p.drone = p.loadout.body;
+  p.pendingLoadout = null;
+  p.missiles = Math.min(p.missiles, podSize(p.loadout));
+  p.ammo.clear();
 }
 
 /** Target position at server time `t`: interpolated, or briefly extrapolated past the newest entry. */
