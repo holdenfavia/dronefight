@@ -45,8 +45,9 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     bulletSpeed: 350,
     range: 300,
     gunSound: 'standard',
-    hitRadius: 0.75,
-    visualScale: 4.8,
+    // Drawn and hit at 3x (ADR-0029): ~4.5 m across, 2.25 m hit radius.
+    hitRadius: 2.25,
+    visualScale: 14.4,
   },
   quad3d: {
     id: 'quad3d',
@@ -61,8 +62,9 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     bulletSpeed: 320,
     range: 150,
     gunSound: 'shotgun',
-    hitRadius: 0.75,
-    visualScale: 4.8,
+    // Drawn and hit at 3x (ADR-0029): ~4.5 m across, 2.25 m hit radius.
+    hitRadius: 2.25,
+    visualScale: 14.4,
   },
   wing: {
     id: 'wing',
@@ -77,9 +79,9 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     bulletSpeed: 480,
     range: 300,
     gunSound: 'vulcan',
-    hitRadius: 0.9,
-    // Base wing model spans ~0.9 m; drawn ~1.8 m.
-    visualScale: 2,
+    hitRadius: 2.7,
+    // Base wing model spans ~0.9 m; drawn ~5.4 m (ADR-0029).
+    visualScale: 6,
   },
 };
 

@@ -72,7 +72,7 @@ Rules are in ADR-0009. Tunable numbers (fire rate, round speed, damage, HP, resp
 
 - Controller profiles saved before combat have no **Fire** binding. Use **Settings → Map buttons** to map one (keyboard Space always works).
 - Rounds alternate between twin guns beside the camera and converge 40 m ahead along the FPV view (uptilt included), even in chase view.
-- **Aim at the lead circle**, not the drone: it shows where your rounds will meet them (ADR-0011). Other drones are drawn ~1.5 m across with a glow and a fading trail. Your own physics stay a real 5".
+- **Aim at the lead circle**, not the drone: it shows where your rounds will meet them (ADR-0011). Other drones are drawn ~4.5 m across (hit radius 2.25 m, ADR-0029) with a glow and a fading trail. Your own physics stay a real 5".
 - Visual size, glow size and trail length/width are in `DRONE_VISUAL` in `client/src/config.ts`.
 - Tracers show instantly, but only the server decides hits. You'll see the hit marker when the server confirms, one round trip later.
 

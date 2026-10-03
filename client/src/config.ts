@@ -91,7 +91,7 @@ export const DRONE_VISUAL = {
   glowScreenSize: 0.05,
   /** Trail length in seconds, and its width in metres. */
   trailSeconds: 1.6,
-  trailWidth: 0.9,
+  trailWidth: 2.7,
 } as const;
 
 export const CAMERA_DEFAULTS = {
@@ -102,8 +102,8 @@ export const CAMERA_DEFAULTS = {
   near: 0.05,
   far: 1200,
   /** Chase-camera offset behind and above the quad (metres). Debug/spectate view. */
-  chaseDistance: 7,
-  chaseHeight: 2,
+  chaseDistance: 14,
+  chaseHeight: 4,
 } as const;
 
 /** Betaflight classic rates (RC rate, super rate, expo) per axis. */

@@ -1,6 +1,6 @@
 # ADR-0012: Multiple maps, random spawns, hitbox matches drawn size
 
-- **Status:** Accepted
+- **Status:** Accepted (sizes superseded by ADR-0029)
 - **Date:** 2026-09-29
 - **Amends:** ADR-0009 (spawns), ADR-0011 (hit radius)
 

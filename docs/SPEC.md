@@ -45,8 +45,8 @@ A browser FPV dogfighting game that **feels like real acro flying**. Two pilots 
 ## Combat (ADR-0009)
 
 - Tracer rounds from twin guns beside the camera, converging along the camera view. Rounds stop at walls.
-- Fast time-to-kill (ADR-0028): Freestyle 100 HP dies to 3 gun hits (34 each); cannon 10, shotgun pellet 14. Server decides hits (0.75 m hit radius, matching the drawn drone), with limited lag compensation (≤ 250 ms rewind).
-- Other pilots are drawn ~1.5 m across with a glow and a fading trail; a lead indicator shows where to aim (ADR-0011). Physics stay real 5".
+- Fast time-to-kill (ADR-0028): Freestyle 100 HP dies to 3 gun hits (34 each); cannon 10, shotgun pellet 14. Server decides hits (2.25 m hit radius, matching the drawn drone, ADR-0029), with limited lag compensation (≤ 250 ms rewind).
+- Other pilots are drawn ~4.5 m across (ADR-0029) with a glow and a fading trail; a lead indicator shows where to aim (ADR-0011). Physics stay real 5".
 - Crash = death. The kill goes to the other pilot if they damaged you in the last 5 s.
 - Respawn after 3 s at a random spawn away from other pilots (8 per map, ADR-0012). Free-for-all: first to 10 kills wins, then a new match starts (ADR-0026).
 - Solo mode has no combat.
