@@ -31,6 +31,10 @@ export class Account {
 
   private client: SupabaseClient | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The user we're loading, so the SIGNED_IN event and getSession() don't both load them. */
+  private loading: Promise<void> | null = null;
+  /** True while returning from Google with a sign-in code to exchange. */
+  returning = false;
 
   constructor(private readonly onChange: () => void) {
     if (this.status === 'loading') void this.start();
@@ -72,19 +76,38 @@ export class Account {
   }
 
   private async start(): Promise<void> {
+    // Coming back from Google: either a code to exchange, or an error to show.
+    const params = new URLSearchParams(location.search);
+    const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+    const oauthError = params.get('error_description') ?? hash.get('error_description') ?? params.get('error') ?? hash.get('error');
+    this.returning = params.has('code');
+    if (oauthError) {
+      console.warn('[auth] sign-in returned an error:', oauthError);
+      this.error = `Sign-in didn't go through: ${oauthError.replace(/\+/g, ' ')}`;
+      for (const k of ['error', 'error_code', 'error_description']) params.delete(k);
+      const clean = `${location.pathname}${params.toString() ? `?${params}` : ''}`;
+      history.replaceState(null, '', clean);
+    }
     try {
       void this.loadProviders();
       const client = await this.getClient();
       if (!client) return;
       client.auth.onAuthStateChange((event, session) => {
+        console.info('[auth]', event, session ? `user ${session.user.id}` : 'no session');
         this.setToken(session?.access_token ?? null);
-        if (event === 'SIGNED_OUT' || !session) this.becomeGuest();
-        else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') void this.becomeUser(session.user);
+        // Don't call Supabase from inside this callback (it holds the auth lock): defer.
+        if (event === 'SIGNED_OUT' || !session) setTimeout(() => this.becomeGuest(), 0);
+        else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') setTimeout(() => void this.becomeUser(session.user), 0);
       });
-      const { data } = await client.auth.getSession();
+      const { data, error } = await client.auth.getSession();
+      if (error) console.warn('[auth] getSession failed:', error.message);
       this.setToken(data.session?.access_token ?? null);
       if (data.session) await this.becomeUser(data.session.user);
-      else this.becomeGuest();
+      else {
+        if (this.returning && !this.error) this.error = "Sign-in didn't complete (no session after returning from Google). Try again.";
+        this.becomeGuest();
+      }
+      this.returning = false;
     } catch (e) {
       this.fail(e instanceof Error ? e.message : 'Sign-in is unavailable');
     }
@@ -124,6 +147,12 @@ export class Account {
 
   private async becomeUser(user: User): Promise<void> {
     if (this.user?.id === user.id && this.status === 'signed-in') return;
+    if (this.loading) return this.loading;
+    this.loading = this.loadUser(user).finally(() => (this.loading = null));
+    return this.loading;
+  }
+
+  private async loadUser(user: User): Promise<void> {
     const provider = (user.app_metadata.provider as string | undefined) ?? 'account';
     const meta = user.user_metadata as Record<string, unknown>;
     const label = String(meta.full_name ?? meta.name ?? meta.user_name ?? user.email ?? 'Pilot');
@@ -136,7 +165,7 @@ export class Account {
     }
     try {
       const { data, error } = await this.client!.from('profiles').select('pilot_name, looks').eq('id', user.id).maybeSingle<ProfileRow>();
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(`profile: ${error.message}`);
       const merged = mergeOnSignIn(this.profile, data);
       // Your XP so far (readable only by you; only the server writes it, ADR-0032).
       const progress = await this.client!.from('progress').select('xp').eq('id', user.id).maybeSingle<{ xp: number }>();
@@ -145,10 +174,13 @@ export class Account {
       saveLocalProfile(this.profile);
       this.status = 'signed-in';
       this.error = null;
+      console.info('[auth] signed in as', label, `(${provider})`);
       this.onChange();
       if (merged.upload) await this.upload();
     } catch (e) {
-      this.fail(e instanceof Error ? e.message : 'Could not load your profile');
+      // Signed in with Google even if the profile row failed: say so, and still show as signed in.
+      this.status = 'signed-in';
+      this.fail(`Signed in, but your profile didn't load: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

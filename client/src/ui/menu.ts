@@ -136,8 +136,10 @@ export class Menu {
       const level = a.xp !== null ? ` · Lv ${levelProgress(a.xp).level}` : '';
       return `<button class="btn ghost account-btn signed-in" data-account><span class="signed-in-mark">✓ Signed in</span>${name ? ` · ${name}` : ''}${level}</button>`;
     }
-    const label = a.status === 'loading' ? 'Checking sign-in…' : 'Sign in (optional) ▸';
-    return `<button class="btn ghost account-btn" data-account>${label}</button>`;
+    const label = a.status === 'loading' ? (a.returning ? 'Finishing sign-in…' : 'Checking sign-in…') : 'Sign in (optional) ▸';
+    // A failed sign-in says why, right on the start screen.
+    const err = a.error ? `<div class="join-status warn">${escapeHtml(a.error)}</div>` : '';
+    return `<button class="btn ghost account-btn" data-account>${label}</button>${err}`;
   }
 
   /** Your level and progress to the next (ADR-0032). */
