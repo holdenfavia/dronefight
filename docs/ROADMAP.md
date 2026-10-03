@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current focus:** Phase 3.5 — Go online (Fly.io, ADR-0021). Open play-test items remain in Phases 1, 3 and 3.6.
+**Current focus:** Phase 5 — Accounts and progression (ADR-0030): turn on XP (step 3), then loadouts and unlocks. Play-test items remain in earlier phases.
 
 Check items off as they land. Add items as they're discovered. Moving to a new phase updates **Current focus**.
 
@@ -73,7 +73,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 ## Phase 3.5 — Go online
 
 - [x] Choose hosting and record it (ADR-0021: Fly.io)
-- [ ] Deploy server + client; play from two houses
+- [x] Deploy server + client; play from two houses (https://dronefight.fly.dev, Dallas)
 - [ ] Phone-call test: callouts match what you see
 
 ## Phase 4 — Polish
@@ -99,6 +99,12 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Rejoin the same room code after a server restart
 - [x] Bigger missile blast; hovering drone watches its missile and the blast (ADR-0027)
 - [x] Add a card to Fly.io; server sleeps when idle
+- [x] Fast gun time-to-kill (ADR-0028); drones drawn and hit at 3× size (ADR-0029)
+- [ ] Additional maps
+- [x] Sound (motors, hits, UI): procedural, ADR-0010
+- [ ] Sound tuning pass after real matches
+- [ ] HUD / menus in the target style
+- [ ] Damage effects (video static)
 
 ## Phase 5: Accounts and progression (ADR-0030)
 
@@ -108,9 +114,12 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [ ] Sign in on two devices and check the profile follows
 - [x] Step 3 code: progress table (server-only writes), token check, XP from kills/assists/props/finish/win, levels, +XP pop-up and level-ups (ADR-0032)
 - [ ] Run 0002_progress.sql and set SUPABASE_SECRET_KEY on Fly (RUNBOOK); play a match signed in and check XP lands
-- [ ] Step 1 content: loadouts (body + weapon module + special + paint), first batch: rail gun, burst rifle, afterburner, shield, 3" racer
-- [ ] Additional maps
-- [x] Sound (motors, hits, UI): procedural, ADR-0010
-- [ ] Sound tuning pass after real matches
-- [ ] HUD / menus in the target style
-- [ ] Damage effects (video static)
+- [ ] Loadout system: weapons and specials split from drone classes; Loadout screen with live preview, paint and pilot name shown to others
+- [ ] First content batch: rail gun, burst rifle, afterburner, shield, 3" racer (sidegrades, everything unlocked while balancing)
+- [ ] Unlock track: levels unlock bodies, modules and paints
+- [ ] More content: flak, laser, rocket pod, flares, mines, cinewhoop, 7" long range, X8 gunship
+- [ ] Badges, challenges, friends leaderboard
+
+## Later (when the player count grows)
+
+- [ ] Binary snapshots at 20 Hz (~5× less bandwidth) and a bigger Fly machine; load-test with simulated pilots
