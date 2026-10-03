@@ -1,4 +1,6 @@
 import { DEFAULT_RATES, type AxisRates } from '../config';
+import type { Account } from '../account/account';
+import { cleanPilotName, NAME_MAX } from '../../../shared/cosmetics';
 import { CalibrationScreen } from '../input/calibrationScreen';
 import { NET } from '../../../shared/protocol';
 import type { InputManager } from '../input/inputManager';
@@ -8,7 +10,7 @@ import type { NetClient } from '../net/netClient';
 import { maxRate } from '../sim/rates';
 import { defaultSettings, saveSettings, type Settings } from '../settings';
 
-type Screen = 'main' | 'play' | 'room' | 'settings' | 'controller' | 'buttons';
+type Screen = 'main' | 'play' | 'room' | 'settings' | 'controller' | 'buttons' | 'account';
 
 export interface MenuCallbacks {
   onFly(): void;
@@ -32,6 +34,7 @@ export class Menu {
     private readonly settings: Settings,
     private readonly net: NetClient,
     private readonly callbacks: MenuCallbacks,
+    private readonly account: Account,
   ) {
     // Controller setup lives under Settings, so it returns there.
     this.calibration = new CalibrationScreen(root, input, () => this.show('settings'));
@@ -46,6 +49,7 @@ export class Menu {
     else if (screen === 'settings') this.renderSettings();
     else if (screen === 'play') this.renderPlay();
     else if (screen === 'room') this.renderRoom();
+    else if (screen === 'account') this.renderAccount();
     else if (screen === 'buttons') this.calibration.openButtons();
     else this.calibration.openHub();
   }
@@ -61,6 +65,13 @@ export class Menu {
     else if (this.screen === 'controller' || this.screen === 'buttons') this.show('settings');
     else if (this.screen !== 'main') this.show('main');
     else this.callbacks.onFly();
+  }
+
+  /** Sign-in state or profile changed (ADR-0031): refresh whatever shows it. */
+  onAccountChange(): void {
+    if (!this.visible) return;
+    if (this.screen === 'main') this.renderMain();
+    else if (this.screen === 'account' && !this.root.querySelector('[data-pilot-name]:focus')) this.renderAccount();
   }
 
   /** Network status changed: refresh whatever shows it. */
@@ -96,6 +107,7 @@ export class Menu {
             : '<button class="btn big" data-play>Play</button>'
         }
         <button class="btn ghost" data-settings>Settings</button>
+        ${this.accountButton()}
         <div class="controller-status" data-status></div>
       </div>
       <div class="keys">ESC menu · F fullscreen · R reset · C camera · M mute · keyboard: W/S throttle, A/D yaw, arrows pitch/roll, Space fire, E special</div>`;
@@ -107,7 +119,66 @@ export class Menu {
       this.renderMain();
     });
     this.root.querySelector('[data-settings]')?.addEventListener('click', () => this.show('settings'));
+    this.root.querySelector('[data-account]')?.addEventListener('click', () => this.show('account'));
     this.updateControllerStatus();
+  }
+
+  /** Start-screen entry to the account: "Sign in" for guests, your name once signed in. Hidden if sign-in isn't set up. */
+  private accountButton(): string {
+    const a = this.account;
+    if (!a.available) return '';
+    const label =
+      a.status === 'signed-in'
+        ? `✓ ${escapeHtml(a.profile.name || a.user?.label || 'Signed in')} ▸`
+        : a.status === 'loading'
+          ? 'Account…'
+          : 'Sign in (optional) ▸';
+    return `<button class="btn ghost account-btn" data-account>${label}</button>`;
+  }
+
+  /** Account: sign in with Discord or Google, your pilot name, sign out (ADR-0030, ADR-0031). */
+  private renderAccount(): void {
+    const a = this.account;
+    const signedIn = a.status === 'signed-in';
+    const via = a.user?.provider === 'google' ? 'Google' : a.user?.provider === 'discord' ? 'Discord' : 'your account';
+    this.root.innerHTML = `
+      <div class="panel account">
+        <div class="panel-head"><span class="kicker">Account</span><h2>${signedIn ? 'Signed in' : 'Sign in'}</h2></div>
+        <p class="calib-body">${
+          signedIn
+            ? `Signed in with <b>${via}</b> as <b>${escapeHtml(a.user?.label ?? '')}</b>. Your pilot name and drones follow you to any device.`
+            : 'Optional. Playing never needs an account; signing in keeps your pilot name and drones on every device, and later your progress.'
+        }</p>
+        ${
+          signedIn
+            ? ''
+            : `<div class="signin-buttons">
+          <button class="btn signin discord" data-signin="discord" ${a.status === 'loading' ? 'disabled' : ''}>Sign in with Discord</button>
+          <button class="btn signin google" data-signin="google" ${a.status === 'loading' ? 'disabled' : ''}>Sign in with Google</button>
+        </div>`
+        }
+        <label class="field">Pilot name <input type="text" maxlength="${NAME_MAX}" placeholder="your callsign" value="${escapeHtml(a.profile.name)}" data-pilot-name autocomplete="off" spellcheck="false"></label>
+        <div class="join-status warn">${a.error ? escapeHtml(a.error) : ''}</div>
+        <div class="actions">
+          ${signedIn ? '<button class="btn ghost" data-signout>Sign out</button>' : ''}
+          <button class="btn" data-done>Done</button>
+        </div>
+      </div>`;
+    this.root.querySelectorAll<HTMLButtonElement>('[data-signin]').forEach((b) =>
+      b.addEventListener('click', () => {
+        b.disabled = true;
+        b.textContent = 'Opening…';
+        void a.signIn(b.dataset.signin === 'google' ? 'google' : 'discord');
+      }),
+    );
+    this.root.querySelector('[data-signout]')?.addEventListener('click', () => void a.signOut());
+    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show('main'));
+    const name = this.root.querySelector<HTMLInputElement>('[data-pilot-name]');
+    name?.addEventListener('input', () => {
+      const clean = cleanPilotName(name.value);
+      if (clean !== name.value.trim()) name.value = clean;
+      a.update({ name: clean });
+    });
   }
 
   private nextDrone(): void {
@@ -386,3 +457,6 @@ export class Menu {
   }
 }
 
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}

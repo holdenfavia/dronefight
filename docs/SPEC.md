@@ -4,7 +4,7 @@ _Working title. Source of truth for what the game is. Change only via `/decide`.
 
 ## Vision
 
-A browser FPV dogfighting game that **feels like real acro flying**. Two pilots open a link, share a room code, and fight in a bright industrial arena using their real radios. No install, no account.
+A browser FPV dogfighting game that **feels like real acro flying**. Friends open a link, share a room code, and fight using their real radios. No install, no account needed; sign in only to keep your progress and customized drones (ADR-0030).
 
 ## Players and platform
 
@@ -71,6 +71,11 @@ Inspired by the *feel* of Flight Division, never its assets:
 - UI: bold condensed all-caps type, with occasional hand-written accent notes.
 - Performance beats fidelity: baked lighting, instancing, compressed textures.
 
+## Profile and progression (ADR-0030)
+
+- Loadouts: a drone body plus weapon and special modules, plus paint and a pilot name. The three current drones are the base set; progression unlocks new bodies and modules as sidegrades (trade-offs, never straight upgrades). Your per-match pilot color stays.
+- Optional sign-in (Discord or Google) keeps it across devices; progression (XP, levels, unlocks) is decided by the server.
+
 ## Audio (ADR-0010)
 
 - All sound synthesized in the browser (no audio files). Motor whine follows throttle; the other pilot's motors and shots are positional.
@@ -84,8 +89,8 @@ These must never be broken without a superseding decision:
 2. **Frame rate first.** Target a steady 60+ FPS on a mid-range laptop. Visual features that break this are off by default.
 3. **Input goes through calibration.** Game code never reads raw gamepad axes directly.
 4. **No copied assets or branding.** Nothing from Flight Division or any other game (logos, mascot, models, textures, name).
-5. **No install, no account** needed to play.
+5. **No install, no account needed to play.** Sign-in is optional and only saves progress (ADR-0030).
 
 ## Out of scope (for now)
 
-Public matchmaking, accounts/login, rankings, mobile, VR, more than 10 players per room, teams, angle/horizon mode.
+Public matchmaking, mandatory accounts, pay-to-win or straight-upgrade unlocks, mobile, VR, more than 10 players per room, teams, angle/horizon mode.

@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",
+    "@supabase/supabase-js": "^2.117.2",
     "three": "^0.186.1",
     "tsx": "^4.23.15",
     "ws": "^8.22.0"

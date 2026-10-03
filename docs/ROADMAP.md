@@ -99,6 +99,15 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Rejoin the same room code after a server restart
 - [x] Bigger missile blast; hovering drone watches its missile and the blast (ADR-0027)
 - [ ] Add a card to Fly.io (trial stops the server every 5 min)
+
+## Phase 5: Accounts and progression (ADR-0030)
+
+- [x] Decide: optional sign-in, progression unlocks sidegrade bodies and modules (ADR-0030); Supabase (ADR-0031)
+- [x] Sign-in code: Discord/Google via Supabase, profiles table with row-level security, guest profile moves into a new account, Account screen, pilot name
+- [ ] Create the Supabase project and Google/Discord OAuth apps; set the keys (RUNBOOK "Sign-in")
+- [ ] Sign in on two devices and check the profile follows
+- [ ] Step 3: progression table written by the room server (verify the pilot's token), XP from match results, levels
+- [ ] Step 1 content: loadouts (body + weapon module + special + paint), first batch: rail gun, burst rifle, afterburner, shield, 3" racer
 - [ ] Additional maps
 - [x] Sound (motors, hits, UI): procedural, ADR-0010
 - [ ] Sound tuning pass after real matches

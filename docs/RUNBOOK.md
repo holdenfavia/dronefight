@@ -161,6 +161,28 @@ Gamepads the browser reports as "standard" (Xbox, PlayStation, Logitech in XInpu
 
 Connect via USB and choose **Joystick (HID)** mode when prompted. Then follow steps 3 and 5 above.
 
+## Sign-in (Supabase, ADR-0031)
+
+Sign-in is optional for players and optional for the build: without the two settings below, the game runs as before and the Sign in button is hidden.
+
+**One-time setup (about 15 minutes):**
+
+1. **Supabase project:** sign up at https://supabase.com, create a project (region: *Central US* or *East US*). In **Project Settings → API** copy the **Project URL** and the **anon public** key.
+2. **Database:** open **SQL Editor**, paste `supabase/migrations/0001_profiles.sql`, Run.
+3. **URLs:** **Authentication → URL Configuration**: Site URL `https://dronefight.fly.dev`; Redirect URLs `https://dronefight.fly.dev/**` and `http://localhost:5173/**`.
+4. **Google:** in https://console.cloud.google.com create a project → **APIs & Services → OAuth consent screen** (External, app name dronefight) → **Credentials → Create OAuth client ID** (Web application). Authorized redirect URI: `https://<your-project>.supabase.co/auth/v1/callback`. Paste the Client ID and Secret into Supabase **Authentication → Providers → Google**, enable it.
+5. **Discord:** in https://discord.com/developers/applications create an application → **OAuth2**: add the same redirect `https://<your-project>.supabase.co/auth/v1/callback`; copy Client ID and Client Secret into Supabase **Authentication → Providers → Discord**, enable it.
+6. **Game settings:** put the Project URL and anon key in `fly.toml` under `[build.args]` (production) and in `client/.env.local` (local dev, gitignored):
+
+```
+VITE_SUPABASE_URL=https://<your-project>.supabase.co
+VITE_SUPABASE_ANON_KEY=<anon public key>
+```
+
+Then `npm run deploy`. The anon key is public by design; row-level security means a pilot can only read and write their own profile. **Never** put the `service_role` key in the client, `fly.toml` or git; when the server needs it (progression, step 3) it goes in with `fly secrets set`.
+
+**How it behaves:** guests keep their profile in the browser. The first sign-in on a new account copies the guest profile into it; after that the account's profile wins on every device. Profile changes save to the account about a second after you make them.
+
 ## Troubleshooting
 
 ### Remote drone looks delayed

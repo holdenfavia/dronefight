@@ -33,3 +33,5 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0027](0027-bigger-missile-blast.md) | Missile fuse 4 m, one-shot within 5 m, splash to 10 m; hovering drone watches its missile and the blast for 1.5 s | Accepted |
 | [0028](0028-fast-gun-ttk.md) | Fast gun time-to-kill: Freestyle 34/hit (3-hit kill), wing cannon 10, shotgun pellet 14 | Accepted |
 | [0029](0029-triple-size-drones.md) | Drones drawn and hit at 3× size: hit radius 2.25 m (wing 2.7 m), ~4.5 m drawn; physics stay real 5" | Accepted |
+| [0030](0030-optional-accounts-and-cosmetics.md) | Optional sign-in (Discord, Google); guests always play; progression unlocks sidegrade bodies, weapon and special modules plus cosmetics, server-decided; built in 4 steps | Accepted |
+| [0031](0031-supabase-auth.md) | Supabase for Discord/Google sign-in and profiles; RLS per pilot; guests migrate on first sign-in; progression written only by the server (step 3) | Accepted |

@@ -881,3 +881,10 @@ body {
 .join-status.warn { color: #d33; }
 .settings-controller { display: flex; gap: 10px; margin-bottom: 10px; }
 .settings-controller .btn { flex: 1; }
+
+/* Account (ADR-0031). */
+.signin-buttons { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 12px; }
+.btn.signin.discord { background: #5865f2; color: #fff; }
+.btn.signin.google { background: #fff; color: #1f1f1f; }
+.account-btn { font-size: 13px; }
+.account input[type=text] { font: inherit; padding: 6px 8px; border: 2px solid #111; border-radius: 6px; width: 100%; }

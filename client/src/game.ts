@@ -29,6 +29,7 @@ import { Drone } from './sim/drone';
 import { addGround, ArenaColliders, createPhysics } from './sim/physics';
 import { Hud, type MarkerInfo, type NetHudInfo } from './ui/hud';
 import { Menu } from './ui/menu';
+import { Account } from './account/account';
 import { getMap, type MapDef, type MapId } from '../../shared/maps';
 import { buildWorld, type World } from './world/scene';
 import { PROP_STATS, PropField } from '../../shared/props';
@@ -218,6 +219,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const missileCamRot = new THREE.Quaternion();
   const missileTargets: THREE.Vector3[] = [];
 
+  // Optional sign-in (ADR-0030, ADR-0031): the menu shows it; guests never need it.
+  let menuRef: Menu | null = null;
+  const account = new Account(() => menuRef?.onAccountChange());
+
   let paused = true;
   const menu = new Menu(menuRoot, input, settings, net, {
     onFly: () => {
@@ -238,7 +243,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
         respawn();
       }
     },
-  });
+  }, account);
+  menuRef = menu;
   net.setLoadout(settings.drone);
 
   /** The camera tilt in use: wings have their own (ADR-0013), quads use the setting. */
