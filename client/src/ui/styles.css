@@ -925,3 +925,25 @@ body {
   color: #1d5e1d;
 }
 .signed-in-mark { font-weight: 900; }
+
+/* Pause menu and drone picker. */
+.pause-menu { display: flex; flex-direction: column; gap: 8px; min-width: 300px; }
+.pause-menu .btn.leave { color: #b3261e; border-color: #b3261e; }
+.drone-cards { display: flex; flex-direction: column; gap: 8px; }
+.drone-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 2px solid #111;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.drone-card.on { outline: 3px solid var(--orange, #ff6a13); background: #fff4ec; }
+.drone-name { font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; }
+.drone-card-blurb { font-size: 13px; opacity: 0.8; }
+.drone-stats { font-size: 12px; opacity: 0.65; }

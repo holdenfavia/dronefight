@@ -11,7 +11,7 @@ import type { NetClient } from '../net/netClient';
 import { maxRate } from '../sim/rates';
 import { defaultSettings, saveSettings, type Settings } from '../settings';
 
-type Screen = 'main' | 'play' | 'room' | 'settings' | 'controller' | 'buttons' | 'account';
+type Screen = 'main' | 'pause' | 'drone' | 'play' | 'room' | 'settings' | 'controller' | 'buttons' | 'account';
 
 export interface MenuCallbacks {
   onFly(): void;
@@ -21,12 +21,16 @@ export interface MenuCallbacks {
   onMapChanged(): void;
   /** The chosen drone class changed (solo: now; in a match: next respawn). */
   onDroneChanged(): void;
+  /** Leave the current game (solo or room) and go back to the start screen. */
+  onLeaveGame(): void;
 }
 
 /** Pause menu with main, settings and controller-setup screens. */
 export class Menu {
   visible = true;
   private screen: Screen = 'main';
+  /** You started flying (solo, or Start in a room): Escape then opens the pause menu, not the start screen. */
+  private flying = false;
   private readonly calibration: CalibrationScreen;
 
   constructor(
@@ -47,6 +51,8 @@ export class Menu {
     this.visible = true;
     this.root.hidden = false;
     if (screen === 'main') this.renderMain();
+    else if (screen === 'pause') this.renderPause();
+    else if (screen === 'drone') this.renderDrone();
     else if (screen === 'settings') this.renderSettings();
     else if (screen === 'play') this.renderPlay();
     else if (screen === 'room') this.renderRoom();
@@ -60,18 +66,35 @@ export class Menu {
     this.root.hidden = true;
   }
 
-  /** Escape key: back out of sub-screens, or toggle the menu. */
+  /** In a game (flying solo, or in a room): menus go back to the pause menu instead of the start screen. */
+  private get inGame(): boolean {
+    return this.flying || this.net.inRoom;
+  }
+
+  /** The menu's top screen: pause during a game, start screen otherwise. */
+  private get home(): Screen {
+    return this.inGame ? 'pause' : 'main';
+  }
+
+  /** Escape key: open the pause menu, back out of sub-screens, or resume. */
   back(): void {
-    if (!this.visible) this.show('main');
+    if (!this.visible) this.show(this.home);
     else if (this.screen === 'controller' || this.screen === 'buttons') this.show('settings');
-    else if (this.screen !== 'main') this.show('main');
-    else this.callbacks.onFly();
+    else if (this.screen === 'pause') this.fly();
+    else if (this.screen !== this.home) this.show(this.home);
+  }
+
+  /** Start or resume flying. */
+  private fly(): void {
+    this.flying = true;
+    this.callbacks.onFly();
   }
 
   /** Sign-in state or profile changed (ADR-0031): refresh whatever shows it. */
   onAccountChange(): void {
     if (!this.visible) return;
     if (this.screen === 'main') this.renderMain();
+    else if (this.screen === 'pause') this.renderPause();
     else if (this.screen === 'account' && !this.root.querySelector('[data-pilot-name]:focus')) this.renderAccount();
   }
 
@@ -83,6 +106,7 @@ export class Menu {
     else if (this.screen === 'play') this.updateJoinStatus();
     else if (this.screen === 'room') this.renderRoom();
     else if (this.screen === 'main') this.renderMain();
+    else if (this.screen === 'pause') this.renderPause();
   }
 
   tick(): void {
@@ -91,37 +115,83 @@ export class Menu {
     if (this.screen === 'main') this.updateControllerStatus();
   }
 
-  /** Start screen: Play and Settings. In a room: Fly, your drone, the room, Settings. */
+  /** Start screen: Play, Settings and sign-in. */
   private renderMain(): void {
-    const inRoom = this.net.inRoom;
     this.root.innerHTML = `
       <div class="title-block">
         <div class="logo">DRONE<span>FIGHT</span></div>
-        <div class="scribble">${inRoom ? `room ${this.net.room}` : 'fpv dogfights with friends'}</div>
+        <div class="scribble">fpv dogfights with friends</div>
       </div>
       <div class="panel main-menu">
-        ${
-          inRoom
-            ? `<button class="btn big" data-fly>Fly</button>
-        <button class="btn ghost" data-drone>Drone: ${droneClass(this.settings.drone).name} ▸</button>
-        <button class="btn ghost" data-room>Room ${this.net.room} ▸</button>`
-            : '<button class="btn big" data-play>Play</button>'
-        }
+        <button class="btn big" data-play>Play</button>
         <button class="btn ghost" data-settings>Settings</button>
         ${this.accountButton()}
         <div class="controller-status" data-status></div>
       </div>
       <div class="keys">ESC menu · F fullscreen · R reset · C camera · M mute · keyboard: W/S throttle, A/D yaw, arrows pitch/roll, Space fire, E special</div>`;
-    this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.callbacks.onFly());
     this.root.querySelector('[data-play]')?.addEventListener('click', () => this.show('play'));
-    this.root.querySelector('[data-room]')?.addEventListener('click', () => this.show('room'));
-    this.root.querySelector('[data-drone]')?.addEventListener('click', () => {
-      this.nextDrone();
-      this.renderMain();
-    });
     this.root.querySelector('[data-settings]')?.addEventListener('click', () => this.show('settings'));
     this.root.querySelector('[data-account]')?.addEventListener('click', () => this.show('account'));
     this.updateControllerStatus();
+  }
+
+  /** Pause menu (Escape during a game): resume, change drone, the room, settings, or leave. */
+  private renderPause(): void {
+    const inRoom = this.net.inRoom;
+    const where = inRoom ? `Room ${this.net.room} · ${this.net.map ? getMap(this.net.map).name : ''}` : `Solo · ${getMap(this.settings.map).name}`;
+    this.root.innerHTML = `
+      <div class="panel pause-menu">
+        <div class="panel-head"><span class="kicker">Paused</span><h2>${escapeHtml(where)}</h2></div>
+        <button class="btn big" data-resume>Resume</button>
+        <button class="btn ghost" data-drone>Drone: ${droneClass(this.settings.drone).name} ▸</button>
+        ${inRoom ? `<button class="btn ghost" data-room>Room ${this.net.room}: invite ▸</button>` : ''}
+        <button class="btn ghost" data-settings>Settings</button>
+        <button class="btn ghost leave" data-leave>Leave game</button>
+        ${this.accountButton()}
+      </div>
+      <div class="keys">ESC resume</div>`;
+    this.root.querySelector('[data-resume]')?.addEventListener('click', () => this.fly());
+    this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
+    this.root.querySelector('[data-room]')?.addEventListener('click', () => this.show('room'));
+    this.root.querySelector('[data-settings]')?.addEventListener('click', () => this.show('settings'));
+    this.root.querySelector('[data-account]')?.addEventListener('click', () => this.show('account'));
+    this.root.querySelector('[data-leave]')?.addEventListener('click', () => {
+      this.flying = false;
+      this.joining = null;
+      this.callbacks.onLeaveGame();
+      this.show('main');
+    });
+  }
+
+  /** Drone configuration: pick a drone (weapon and special modules and paint join it later, ADR-0030). */
+  private renderDrone(): void {
+    const inMatch = this.net.inRoom && this.net.match?.phase === 'playing';
+    this.root.innerHTML = `
+      <div class="panel drone-config">
+        <div class="panel-head"><span class="kicker">Drone</span><h2>Pick your drone</h2></div>
+        <div class="drone-cards">
+          ${DRONE_ORDER.map((id) => {
+            const c = droneClass(id);
+            return `<button class="drone-card ${id === this.settings.drone ? 'on' : ''}" data-pick="${id}">
+              <span class="drone-name">${c.name}</span><span class="drone-card-blurb">${c.blurb}</span>
+              <span class="drone-stats">${c.maxHp} HP · ${c.damage * c.pellets} dmg/shot · ${c.fireRate}/s</span>
+            </button>`;
+          }).join('')}
+        </div>
+        <p class="hint">${inMatch ? 'In a match, your new drone arrives at your next respawn.' : 'Takes effect right away.'}</p>
+        <div class="actions"><button class="btn" data-done>Done</button></div>
+      </div>`;
+    this.root.querySelectorAll<HTMLButtonElement>('[data-pick]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const id = b.dataset.pick as (typeof DRONE_ORDER)[number];
+        if (id === this.settings.drone) return;
+        this.settings.drone = id;
+        saveSettings(this.settings);
+        this.callbacks.onDroneChanged();
+        this.renderDrone();
+      }),
+    );
+    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show(this.home));
   }
 
   /**
@@ -187,7 +257,7 @@ export class Menu {
       }),
     );
     this.root.querySelector('[data-signout]')?.addEventListener('click', () => void a.signOut());
-    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show('main'));
+    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show(this.home));
     const name = this.root.querySelector<HTMLInputElement>('[data-pilot-name]');
     name?.addEventListener('input', () => {
       const clean = cleanPilotName(name.value);
@@ -235,7 +305,7 @@ export class Menu {
       this.callbacks.onMapChanged();
       this.renderPlay();
     });
-    this.root.querySelector('[data-solo]')?.addEventListener('click', () => this.callbacks.onFly());
+    this.root.querySelector('[data-solo]')?.addEventListener('click', () => this.fly());
     this.root.querySelector('[data-create]')?.addEventListener('click', () => {
       this.joining = null;
       this.net.createRoom(this.settings.map);
@@ -341,17 +411,15 @@ export class Menu {
         <div class="actions">
           <button class="btn ghost" data-copy>Copy invite link</button>
           <button class="btn ghost" data-leave>Leave room</button>
-          <button class="btn big" data-fly>Start</button>
+          <button class="btn big" data-fly>${this.flying ? 'Resume' : 'Start'}</button>
         </div>
       </div>`;
-    this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.callbacks.onFly());
-    this.root.querySelector('[data-drone]')?.addEventListener('click', () => {
-      this.nextDrone();
-      this.renderRoom();
-    });
+    this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.fly());
+    this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
     this.root.querySelector('[data-leave]')?.addEventListener('click', () => {
-      net.leave();
+      this.flying = false;
       this.joining = null;
+      this.callbacks.onLeaveGame();
       this.show('play');
     });
     this.root.querySelector<HTMLButtonElement>('[data-copy]')?.addEventListener('click', (e) => {
@@ -461,7 +529,7 @@ export class Menu {
       this.commit();
       this.renderSettings();
     });
-    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show('main'));
+    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show(this.home));
     this.root.querySelector('[data-controller]')?.addEventListener('click', () => this.show('controller'));
     this.root.querySelector('[data-buttons]')?.addEventListener('click', () => this.show('buttons'));
   }

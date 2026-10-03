@@ -247,6 +247,14 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
         respawn();
       }
     },
+    onLeaveGame: () => {
+      // Back to the start screen: out of any room, on your chosen map, drone reset at a spawn.
+      paused = true;
+      if (net.inRoom) net.leave();
+      switchMap(settings.map);
+      if (drone.classId !== settings.drone) applyClass(settings.drone);
+      respawn();
+    },
   }, account);
   menuRef = menu;
   net.setLoadout(settings.drone);

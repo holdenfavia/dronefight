@@ -36,7 +36,7 @@ npm run server
 npm run dev
 ```
 
-The start screen is just **Play** and **Settings**. **Play** has your drone and map, then **Solo**, **Create room**, or two boxes for a friend's 2-digit code: typing the second digit joins straight away and shows the room (map, pilots) with **Start**. Free-for-all, up to 10 pilots (ADR-0026). **Copy invite link** shares `?room=CODE`, which joins automatically. Controller setup and Map buttons are under **Settings**.
+The start screen is just **Play** and **Settings**. **Play** has your drone and map, then **Solo**, **Create room**, or two boxes for a friend's 2-digit code: typing the second digit joins straight away and shows the room (map, pilots) with **Start**. Free-for-all, up to 10 pilots (ADR-0026). **Copy invite link** shares `?room=CODE`, which joins automatically. Controller setup and Map buttons are under **Settings**. **Escape during a game** opens the pause menu: Resume, Drone (pick your drone; in a match it arrives at your next respawn), Room (invite), Settings, Leave game.
 
 - **Same Wi-Fi:** start the client with `npm run dev -- --host`, then your friend opens `http://<your-computer's-IP>:5173`. The client connects to the server on the same host, port 8787.
 - **Different houses:** use the deployed game (see **Deploy**).
