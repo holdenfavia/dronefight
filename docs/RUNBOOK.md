@@ -206,6 +206,7 @@ First time:
 
 After that, every update is just `npm run deploy` (it builds in Fly's builder; no local Docker needed). Restart isn't needed separately: deploy replaces the machine. Active matches drop during a deploy.
 
+- **Sleep mode:** the server stops when nobody is connected and wakes on the next visit (first load after a quiet spell takes a second or two longer). `fly status` shows `stopped` when it's asleep; that's normal.
 - **Fly trial accounts stop the machine every 5 minutes** ("Trial machine stopping… add a credit card" in `fly logs`), which ends every room. Add a card at https://fly.io/trial.
 - After any server restart (deploy, crash, trial stop) clients reconnect and rejoin their room code; the first one back recreates the room on the same map, so the group ends up together again. Scores reset (rooms live in memory, ADR-0005).
 - **Always deploy with `npm run deploy`** (`--ha=false`). Plain `fly deploy` on a new app creates two machines, which splits rooms between them. Fix with `fly scale count 1`.

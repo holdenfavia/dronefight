@@ -12,10 +12,11 @@ primary_region = "dfw"
 [http_service]
   internal_port = 8080
   force_https = true
-  # Never sleep: a cold start would drop players mid-match.
-  auto_stop_machines = "off"
+  # Sleep when nobody is connected, wake on the next visit (~1 s). Open game connections keep it awake,
+  # so it never stops mid-match; rooms that sleep away are empty anyway (ADR-0021, amended).
+  auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
 
   [http_service.concurrency]
     type = "connections"

@@ -24,7 +24,7 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0018](0018-missile-one-shot.md) | Guided missile is a one-shot kill: anyone within 3 m of the blast dies (fuse is 2.5 m); 50→0 splash out to 6 m | Accepted (numbers superseded by 0027) |
 | [0019](0019-playground-map.md) | Playground map: giant park (playhouse, slides, swings, monkey bars, lattice, seesaw…) in solid colors with baked grids; exception to ADR-0007 for this map | Accepted |
 | [0020](0020-movers-and-grid-option.md) | Moving props from the shared clock (Downtown traffic, Playground roller coaster, Yard tractor): solid to fly into, not to rounds; Settings option for grid textures on every map | Accepted (amended by 0023) |
-| [0021](0021-fly-io-hosting.md) | Host on Fly.io: one container serves the client and the room server on one port; exactly one always-on machine in `dfw` (Dallas) | Accepted |
+| [0021](0021-fly-io-hosting.md) | Host on Fly.io: one container serves the client and the room server on one port; exactly one machine in `dfw` (Dallas) that sleeps when nobody is connected | Accepted |
 | [0022](0022-wing-maneuver-mode.md) | Wing maneuver mode (hold Special / switch): pitch ×2, roll ×1.3, more low-speed authority, relaxed stability so you can stall; replaces the Cobra | Accepted |
 | [0023](0023-destructible-props.md) | Destructible props: movers and per-map explosives (parked cars, barrels, propane, water tanks) blow up when shot; server-authoritative online, chain reactions, blast damage in matches, 30 s respawn | Accepted |
 | [0024](0024-smoke-trail-stealth.md) | 3D quad smoke is a 6 s stealth smoke trail: the other pilot sees only your frame (no glow, trail, lead dot or marker); 10 s cooldown | Accepted |
