@@ -17,9 +17,13 @@ export const COMBAT = {
   maxMuzzleOffset: 4,
   /** Rounds leave this far in front of the camera. */
   muzzleForward: 0.2,
-  /** Twin guns (ADR-0011): sideways offset of each gun from the camera, and how far below it (m). */
-  gunSide: 0.3,
-  gunDrop: 0.1,
+  /**
+   * Gun muzzles around the camera (ADR-0011, ADR-0033): sideways offset, and how far above (hardpoints 1-2)
+   * or below (3-4) it (m). Hardpoint 1 is upper left, 2 upper right, 3 lower left, 4 lower right.
+   */
+  gunSide: 0.5,
+  gunRise: 0.3,
+  gunDrop: 0.3,
   /** Both gun streams are angled to cross this far ahead of the camera (m). */
   convergence: 40,
 } as const;

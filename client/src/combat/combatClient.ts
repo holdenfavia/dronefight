@@ -62,8 +62,6 @@ export class CombatClient {
   private readonly right = new THREE.Vector3();
   private readonly up = new THREE.Vector3();
   private readonly converge = new THREE.Vector3();
-  /** Twin guns alternate: -1 left, +1 right (ADR-0011). */
-  private barrel = -1;
   private readonly pelletDir = new THREE.Vector3();
   /** Last shotgun blast time per remote pilot, so 8 pellets make one boom. */
   private readonly lastBlast = new Map<string, number>();
@@ -324,7 +322,7 @@ export class CombatClient {
       }
       const period = 1 / w.fireRate;
       for (let n = 0; n < MAX_SHOTS_PER_FRAME && this.hardpointCooldown[i]! <= 0; n++) {
-        this.fire(id, i, loadout.weapons.length, soundsThisFrame++ === 0);
+        this.fire(id, i, soundsThisFrame++ === 0);
         if (w.burst) {
           // A burst: rounds `spacingMs` apart, then the rest of the cycle (rounds per `rounds / fireRate` s).
           const left = (this.burstLeft[i] || w.burst.rounds) - 1;
@@ -392,16 +390,11 @@ export class CombatClient {
     return slot === undefined ? 'Pilot' : pilotName(slot);
   }
 
-  /** Launch a guided missile (ADR-0016) from the current barrel, along the line of sight. */
+  /** Launch a missile (ADR-0025) from a missile pod's corner (pods take turns), toward the crosshair. */
   private fireMissile(): void {
-    this.aim(this.origin, this.dir, this.right, this.up);
-    this.converge.copy(this.origin).addScaledVector(this.dir, COMBAT.convergence);
-    this.origin
-      .addScaledVector(this.dir, COMBAT.muzzleForward)
-      .addScaledVector(this.right, COMBAT.gunSide * this.barrel)
-      .addScaledVector(this.up, -COMBAT.gunDrop);
-    this.dir.subVectors(this.converge, this.origin).normalize();
-    this.barrel = -this.barrel;
+    const pods = this.drone.loadout.weapons.flatMap((w, i) => (w === 'missile' ? [i] : []));
+    const slot = pods[this.nextMissileId % Math.max(1, pods.length)] ?? 0;
+    this.muzzle(slot);
     const o = this.origin;
     const d = this.dir;
     const rid = this.nextMissileId++;
@@ -412,24 +405,11 @@ export class CombatClient {
   }
 
   /**
-   * One shot from the weapon on hardpoint `slot` of `slots` (ADR-0033). Hardpoints sit side by side around
-   * the camera; a lone gun alternates left/right like the old twin guns (ADR-0011). All converge ahead.
+   * One shot from the weapon on hardpoint `slot` (ADR-0033). Each hardpoint fires from its own corner of
+   * your view (1 upper left, 2 upper right, 3 lower left, 4 lower right); all converge on the crosshair.
    */
-  private fire(id: WeaponId, slot: number, slots: number, withSound: boolean): void {
-    this.aim(this.origin, this.dir, this.right, this.up);
-    this.converge.copy(this.origin).addScaledVector(this.dir, COMBAT.convergence);
-    let side: number;
-    if (slots <= 1) {
-      side = this.barrel;
-      this.barrel = -this.barrel;
-    } else {
-      side = (2 * slot) / (slots - 1) - 1;
-    }
-    this.origin
-      .addScaledVector(this.dir, COMBAT.muzzleForward)
-      .addScaledVector(this.right, COMBAT.gunSide * side)
-      .addScaledVector(this.up, -COMBAT.gunDrop);
-    this.dir.subVectors(this.converge, this.origin).normalize();
+  private fire(id: WeaponId, slot: number, withSound: boolean): void {
+    this.muzzle(slot);
 
     const gun = WEAPONS[id];
     const o = this.origin;
@@ -452,11 +432,27 @@ export class CombatClient {
         this.propAt.copy(o).addScaledVector(d, prop.dist);
         this.onPropRound?.(prop.i, gun.damage, (prop.dist / gun.speed) * 1000, this.propAt);
       }
-      this.tracers.spawn(o, d, maxDist, this.myColor, gun.speed);
+      if (id !== 'missile') this.tracers.spawn(o, d, maxDist, this.myColor, gun.speed, id);
       this.onLocalRound?.(o, d, gun.speed, gun.damage, maxDist);
       this.net.sendShot({ ts, p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)], w: id });
     }
     if (withSound && gun.sound !== 'vulcan') this.sounds.shot(gun.sound);
+  }
+
+  /**
+   * Muzzle position and direction for hardpoint `slot` into `origin` and `dir` (ADR-0033): 1 upper left,
+   * 2 upper right, 3 lower left, 4 lower right of your view, angled to meet at the crosshair.
+   */
+  private muzzle(slot: number): void {
+    this.aim(this.origin, this.dir, this.right, this.up);
+    this.converge.copy(this.origin).addScaledVector(this.dir, COMBAT.convergence);
+    const side = slot % 2 === 0 ? -1 : 1;
+    const height = slot < 2 ? COMBAT.gunRise : -COMBAT.gunDrop;
+    this.origin
+      .addScaledVector(this.dir, COMBAT.muzzleForward)
+      .addScaledVector(this.right, COMBAT.gunSide * side)
+      .addScaledVector(this.up, height);
+    this.dir.subVectors(this.converge, this.origin).normalize();
   }
 
   /** The first standing prop a round from `o` along `d` hits before `maxDist`, if any. */
@@ -555,7 +551,7 @@ export class CombatClient {
       this.shotDir.set(dx, dy, dz);
       const wall = raycastArena(this.colliders, px, py, pz, dx, dy, dz, gun.range);
       const maxDist = this.propHit(this.shotOrigin, this.shotDir, wall, gun.speed, shot.s.ts)?.dist ?? wall;
-      this.tracers.spawn(this.shotOrigin, this.shotDir, maxDist, pilotColor(team ?? 1), gun.speed);
+      this.tracers.spawn(this.shotOrigin, this.shotDir, maxDist, pilotColor(team ?? 1), gun.speed, shot.s.w);
       if (gun.sound === 'vulcan') {
         this.sounds.remoteCannon(shot.id);
       } else {
