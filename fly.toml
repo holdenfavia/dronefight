@@ -6,8 +6,8 @@ primary_region = "dfw"
   # Optional sign-in (ADR-0031). Both values are public (the anon key is meant for browsers; row-level
   # security protects the data). Empty = sign-in hidden. See RUNBOOK "Sign-in (Supabase)".
   [build.args]
-    VITE_SUPABASE_URL = ""
-    VITE_SUPABASE_ANON_KEY = ""
+    VITE_SUPABASE_URL = "https://xganabqltqpltzgidejq.supabase.co"
+    VITE_SUPABASE_ANON_KEY = "sb_publishable_DDG5ebpRxRm7sxtJCmsj0w_53Oy255N"
 
 [http_service]
   internal_port = 8080
