@@ -74,7 +74,7 @@ Inspired by the *feel* of Flight Division, never its assets:
 ## Profile and progression (ADR-0030)
 
 - Loadouts: a drone body plus weapon and special modules, plus paint and a pilot name. The three current drones are the base set; progression unlocks new bodies and modules as sidegrades (trade-offs, never straight upgrades). Your per-match pilot color stays.
-- Optional sign-in with Google keeps it across devices; progression (XP, levels, unlocks) is decided by the server.
+- Optional sign-in with Google keeps it across devices. XP and levels come only from online matches and only the server awards them (ADR-0032).
 
 ## Audio (ADR-0010)
 

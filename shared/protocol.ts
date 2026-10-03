@@ -1,4 +1,5 @@
 import { isDroneClassId, type DroneClassId } from './drones.js';
+import type { XpReason } from './progression.js';
 import { isMapId, type MapId } from './maps/index.js';
 
 // Network protocol shared by client and server (ADR-0002, ADR-0004, ADR-0005).
@@ -90,6 +91,8 @@ export interface MatchPlayer {
   alive: boolean;
   /** Spawn protection active. */
   protected: boolean;
+  /** Level, for signed-in pilots (ADR-0032). */
+  level?: number;
 }
 
 export interface MatchState {
@@ -114,6 +117,8 @@ export type ClientMessage =
   | { t: 'shot'; s: Shot }
   /** Choose a drone class; applies at the next respawn during a match (ADR-0013). */
   | { t: 'loadout'; drone: DroneClassId }
+  /** Who you are, for XP (ADR-0032): your Supabase access token. Optional; guests never send it. */
+  | { t: 'auth'; token: string }
   /** Blow up the missile you're flying, here (ADR-0025). */
   | { t: 'detonate'; rid: number; p: Vec3 }
   /** Use a class ability at a position (3D smoke, ADR-0024). */
@@ -146,6 +151,10 @@ export type ServerMessage =
   | { t: 'boom'; id: string; rid: number; p: Vec3 }
   /** Where a guided missile is now (sent ~20x/s while it flies). */
   | { t: 'missile'; id: string; rid: number; p: Vec3; v: Vec3 }
+  /** Your sign-in was accepted for XP (ADR-0032): your total so far. */
+  | { t: 'progress'; xp: number }
+  /** You earned XP (ADR-0032): how much, for what, and your new total. */
+  | { t: 'xp'; gained: number; reason: XpReason; xp: number }
   /** Prop `i` exploded at `p`, set off by `by` (ADR-0023). */
   | { t: 'prop'; i: number; p: Vec3; by: string | null };
 
@@ -195,6 +204,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isDroneState(m.s) ? { t: 'state', s: m.s } : null;
     case 'ping':
       return isNum(m.id) && isNum(m.ct) ? { t: 'ping', id: m.id, ct: m.ct } : null;
+    case 'auth':
+      return typeof m.token === 'string' && m.token.length > 0 && m.token.length <= 4096 ? { t: 'auth', token: m.token } : null;
     case 'detonate':
       return isNum(m.rid) && isVec(m.p, 3) ? { t: 'detonate', rid: m.rid, p: m.p as Vec3 } : null;
     case 'ability':

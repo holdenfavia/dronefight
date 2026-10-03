@@ -9,6 +9,10 @@ primary_region = "dfw"
     VITE_SUPABASE_URL = "https://xganabqltqpltzgidejq.supabase.co"
     VITE_SUPABASE_ANON_KEY = "sb_publishable_DDG5ebpRxRm7sxtJCmsj0w_53Oy255N"
 
+[env]
+  # XP (ADR-0032): the server writes progress with SUPABASE_SECRET_KEY, set with `fly secrets set` (never here).
+  SUPABASE_URL = "https://xganabqltqpltzgidejq.supabase.co"
+
 [http_service]
   internal_port = 8080
   force_https = true

@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DEFAULT_SERVER_PORT, PROTOCOL_VERSION } from '../../shared/constants.js';
 import { parseClientMessage, type ServerMessage } from '../../shared/protocol.js';
+import { Progression } from './progression.js';
 import { RoomManager } from './rooms.js';
 import { serveStatic } from './static.js';
 
@@ -16,8 +17,12 @@ const MAX_MESSAGE_BYTES = 2048;
 /** The built client (`npm run build`). Served from the same port as the WebSocket when present (ADR-0021). */
 const CLIENT_DIR = fileURLToPath(new URL('../../dist/client/', import.meta.url));
 
-export function startServer(port: number, staticDir: string | null = null): { wss: WebSocketServer; rooms: RoomManager } {
-  const rooms = new RoomManager(() => performance.now());
+export function startServer(
+  port: number,
+  staticDir: string | null = null,
+  progression: Progression = new Progression(),
+): { wss: WebSocketServer; rooms: RoomManager } {
+  const rooms = new RoomManager(() => performance.now(), Math.random, progression);
   const http = createServer((req, res) => {
     if (req.url === '/healthz') {
       res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
@@ -73,8 +78,14 @@ const isMain = !!process.argv[1] && import.meta.url === pathToFileURL(process.ar
 if (isMain) {
   const port = Number(process.env.PORT ?? DEFAULT_SERVER_PORT);
   const serveClient = process.env.SERVE_CLIENT === '1';
-  const { rooms } = startServer(port, serveClient ? CLIENT_DIR : null);
-  console.log(`dronefight server listening on port ${port}${serveClient ? ' (serving the client)' : ''}`);
+  // XP (ADR-0032): needs the project URL and its secret key (a Fly secret); otherwise off.
+  const progression = new Progression({ url: process.env.SUPABASE_URL, secretKey: process.env.SUPABASE_SECRET_KEY });
+  const { rooms } = startServer(port, serveClient ? CLIENT_DIR : null, progression);
+  console.log(`dronefight server listening on port ${port}${serveClient ? ' (serving the client)' : ''}; progression ${progression.enabled ? 'on' : 'off'}`);
+  // Write pending XP before the machine stops (deploys, sleeping when idle).
+  const shutdown = () => void progression.flushAll().finally(() => process.exit(0));
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
   setInterval(() => {
     const s = rooms.stats();
     if (s.players > 0) console.log(`rooms=${s.rooms} players=${s.players} droppedSnapshots=${s.droppedSnapshots}`);

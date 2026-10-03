@@ -35,3 +35,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0029](0029-triple-size-drones.md) | Drones drawn and hit at 3× size: hit radius 2.25 m (wing 2.7 m), ~4.5 m drawn; physics stay real 5" | Accepted |
 | [0030](0030-optional-accounts-and-cosmetics.md) | Optional sign-in (Google); guests always play; progression unlocks sidegrade bodies, weapon and special modules plus cosmetics, server-decided; built in 4 steps | Accepted |
 | [0031](0031-supabase-auth.md) | Supabase for Google sign-in and profiles (Discord dropped for now); RLS per pilot; guests migrate on first sign-in; progression written only by the server (step 3) | Accepted |
+| [0032](0032-xp-and-levels.md) | XP and levels awarded by the room server (kill 100, assist 40, prop 10, finish 100, win 300; level n at 250·n·(n−1)); server-only writes via secret key; signed-in pilots in online matches only | Accepted |

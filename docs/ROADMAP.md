@@ -106,7 +106,8 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Sign-in code: Google via Supabase, profiles table with row-level security, guest profile moves into a new account, Account screen, pilot name
 - [x] Create the Supabase project and Google OAuth app; set the keys (Discord dropped for now)
 - [ ] Sign in on two devices and check the profile follows
-- [ ] Step 3: progression table written by the room server (verify the pilot's token), XP from match results, levels
+- [x] Step 3 code: progress table (server-only writes), token check, XP from kills/assists/props/finish/win, levels, +XP pop-up and level-ups (ADR-0032)
+- [ ] Run 0002_progress.sql and set SUPABASE_SECRET_KEY on Fly (RUNBOOK); play a match signed in and check XP lands
 - [ ] Step 1 content: loadouts (body + weapon module + special + paint), first batch: rail gun, burst rifle, afterburner, shield, 3" racer
 - [ ] Additional maps
 - [x] Sound (motors, hits, UI): procedural, ADR-0010

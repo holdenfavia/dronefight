@@ -322,6 +322,55 @@ describe('free-for-all (ADR-0026)', () => {
   });
 });
 
+describe('XP events (ADR-0032)', () => {
+  function withProgress() {
+    const events: [string, string][] = [];
+    const log: ServerMessage[] = [];
+    const match = new Match('yard', (m) => log.push(m), Math.random, (id, e) => events.push([id, e]));
+    return { match, events, log };
+  }
+
+  it('a kill gives the killer a kill, the victim a death, and other recent attackers an assist', () => {
+    const { match, events } = withProgress();
+    for (const id of ['A', 'B', 'C']) match.addPlayer(id, 0);
+    const now = COMBAT.spawnProtectionMs + 100;
+    // B and C both wound A; B finishes A off by making A crash.
+    const m = match as unknown as { hit(by: string, dmg: number, target: unknown, now: number): void; pilots: Map<string, unknown> };
+    m.hit('C', 30, m.pilots.get('A'), now);
+    m.hit('B', 30, m.pilots.get('A'), now + 100);
+    match.onState('A', droneAt([0, 20, 0], [0, 0, 0], true), now + 200);
+    expect(events).toContainEqual(['B', 'kill']);
+    expect(events).toContainEqual(['A', 'death']);
+    expect(events).toContainEqual(['C', 'assist']);
+    expect(events.filter(([, e]) => e === 'assist').map(([id]) => id)).toEqual(['C']);
+  });
+
+  it('the match winner gets win, and everyone present gets finish', () => {
+    const { match, events } = withProgress();
+    for (const id of ['A', 'B', 'C']) match.addPlayer(id, 0);
+    const m = match as unknown as { kill(p: unknown, killer: string, cause: string, now: number): void; pilots: Map<string, { score: number }> };
+    m.pilots.get('A')!.score = COMBAT.killsToWin - 1;
+    m.kill(m.pilots.get('B'), 'A', 'shot', 5000);
+    expect(match.state().phase).toBe('ended');
+    expect(events).toContainEqual(['A', 'win']);
+    for (const id of ['A', 'B', 'C']) expect(events).toContainEqual([id, 'finish']);
+  });
+
+  it('nothing counts outside a running match (one pilot waiting)', () => {
+    const { match, events } = withProgress();
+    match.addPlayer('A', 0);
+    match.onState('A', droneAt([0, 20, 0], [0, 0, 0], true), 100);
+    expect(events).toEqual([]);
+  });
+
+  it('levels show in the match state', () => {
+    const { match } = withProgress();
+    match.addPlayer('A', 0);
+    match.setLevel('A', 4);
+    expect(match.state().players.find((p) => p.id === 'A')?.level).toBe(4);
+  });
+});
+
 describe('fast gun time-to-kill (ADR-0028)', () => {
   const hitsToKill = (shooter: keyof typeof DRONE_CLASSES, target: keyof typeof DRONE_CLASSES) =>
     Math.ceil(DRONE_CLASSES[target].maxHp / DRONE_CLASSES[shooter].damage);

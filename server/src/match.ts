@@ -14,6 +14,7 @@ import {
 } from '../../shared/protocol.js';
 import { buildColliders, raycastArena, segmentPointDistance } from '../../shared/raycast.js';
 import { blastDamage, PropField, type Blast } from '../../shared/props.js';
+import type { ProgressEvent } from './progression.js';
 
 /**
  * One room's combat (ADR-0009). The server is the referee: it decides hits, damage, deaths and score.
@@ -53,6 +54,10 @@ interface Pilot {
   respawnAt: number | null;
   lastDamagedBy: string | null;
   lastDamagedAt: number;
+  /** Everyone who damaged this pilot since their last spawn, and when (for assists, ADR-0032). */
+  damagedBy: Map<string, number>;
+  /** Level, for signed-in pilots (ADR-0032); set by the room. */
+  level: number | null;
   lastCrashed: boolean;
   /** Token bucket for fire-rate checks (ADR-0014): rounds available, and when it was last refilled. */
   ammo: number;
@@ -125,6 +130,8 @@ export class Match {
     mapId: MapId,
     private readonly emit: Emit,
     private readonly random: () => number = Math.random,
+    /** Progress events for XP (ADR-0032), only while a match is running. */
+    private readonly onProgress: (pilotId: string, event: ProgressEvent) => void = () => {},
   ) {
     this.map = getMap(mapId);
     this.colliders = buildColliders(this.map.boxes);
@@ -149,6 +156,8 @@ export class Match {
       respawnAt: null,
       lastDamagedBy: null,
       lastDamagedAt: 0,
+      damagedBy: new Map(),
+      level: null,
       lastCrashed: false,
       ammo: 0,
       ammoAt: now,
@@ -173,7 +182,7 @@ export class Match {
       this.phase = 'waiting';
       this.winner = null;
       this.bullets = [];
-    this.missiles = [];
+      this.missiles = [];
       for (const p of this.pilots.values()) {
         p.score = 0;
         if (p.pendingDrone) p.drone = p.pendingDrone;
@@ -183,6 +192,14 @@ export class Match {
         p.respawnAt = null;
       }
     }
+    this.broadcastState();
+  }
+
+  /** A signed-in pilot's level (ADR-0032), shown to everyone in the match state. */
+  setLevel(id: string, level: number | null): void {
+    const pilot = this.pilots.get(id);
+    if (!pilot || pilot.level === level) return;
+    pilot.level = level;
     this.broadcastState();
   }
 
@@ -418,6 +435,7 @@ export class Match {
   private propBlast(b: Blast, now: number): void {
     this.emit({ t: 'prop', i: b.i, p: b.p, by: b.by });
     if (this.phase !== 'playing') return;
+    if (b.by && this.pilots.has(b.by)) this.onProgress(b.by, 'prop');
     for (const target of [...this.pilots.values()]) {
       if (!target.alive || target.protectedUntil > now) continue;
       const pos = sampleHistory(target.history, now);
@@ -442,6 +460,7 @@ export class Match {
         hp: p.hp,
         alive: p.alive,
         protected: p.protectedUntil > this.now,
+        ...(p.level !== null ? { level: p.level } : {}),
       })),
     };
   }
@@ -513,6 +532,7 @@ export class Match {
     if (credited) {
       target.lastDamagedBy = shooterId;
       target.lastDamagedAt = now;
+      target.damagedBy.set(shooterId, now);
     }
     this.emit({ t: 'hit', shooter: credited ? shooterId : '', target: target.id, hp: target.hp });
     if (target.hp <= 0) {
@@ -527,15 +547,27 @@ export class Match {
     pilot.respawnAt = now + COMBAT.respawnMs;
     this.emit({ t: 'death', id: pilot.id, killer: killerId, cause });
 
+    // XP (ADR-0032): the kill, and assists for anyone else who hurt them recently.
+    if (this.phase === 'playing') {
+      this.onProgress(pilot.id, 'death');
+      if (killerId && this.pilots.has(killerId)) this.onProgress(killerId, 'kill');
+      for (const [id, at] of pilot.damagedBy) {
+        if (id !== killerId && id !== pilot.id && now - at <= COMBAT.killCreditMs && this.pilots.has(id)) this.onProgress(id, 'assist');
+      }
+    }
+
     const killer = killerId ? this.pilots.get(killerId) : undefined;
     if (killer) {
       killer.score++;
       if (killer.score >= COMBAT.killsToWin) {
+        // Match over: everyone still here finished it; the killer won it.
+        for (const p of this.pilots.values()) this.onProgress(p.id, 'finish');
+        this.onProgress(killer.id, 'win');
         this.phase = 'ended';
         this.winner = killer.id;
         this.resultsUntil = now + COMBAT.resultsMs;
         this.bullets = [];
-    this.missiles = [];
+        this.missiles = [];
         for (const p of this.pilots.values()) p.respawnAt = null;
       }
     }
@@ -561,6 +593,7 @@ export class Match {
     pilot.respawnAt = null;
     pilot.protectedUntil = now + COMBAT.spawnProtectionMs;
     pilot.lastDamagedBy = null;
+    pilot.damagedBy.clear();
     this.protectedAnnounced.add(pilot.id);
     this.emit({ t: 'respawn', id: pilot.id, spawn, drone: pilot.drone, ...(o[0] || o[1] ? { o } : {}) });
     this.broadcastState();

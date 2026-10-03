@@ -34,6 +34,8 @@ const MAX_PENDING_SHOTS = 64;
 
 /** Gameplay events from the server, drained by the game each frame. Never dropped. */
 export type CombatEvent = Extract<ServerMessage, { t: 'hit' | 'death' | 'respawn' | 'ability' | 'boom' | 'missile' | 'prop' }>;
+/** XP messages from the server (ADR-0032). */
+export type ProgressMessage = Extract<ServerMessage, { t: 'progress' | 'xp' }>;
 export type RemoteShot = Extract<ServerMessage, { t: 'shot' }>;
 
 export function defaultServerUrl(): string {
@@ -57,6 +59,10 @@ export class NetClient {
   /** Latest match state from the server (ADR-0009), or null outside a room. */
   match: MatchState | null = null;
   readonly events: CombatEvent[] = [];
+  /** XP news from the server (ADR-0032), drained by the game. */
+  readonly progress: ProgressMessage[] = [];
+  /** Your sign-in token for XP, if signed in (ADR-0032); sent on every new connection. */
+  private authToken: string | null = null;
   readonly remoteShots: RemoteShot[] = [];
 
   private socket: WebSocket | null = null;
@@ -103,6 +109,13 @@ export class NetClient {
   /** Tell the room we used an ability here (3D smoke, ADR-0016). */
   sendAbility(p: [number, number, number]): void {
     if (this.inRoom) this.send({ t: 'ability', kind: 'smoke', p });
+  }
+
+  /** Signed in (or token refreshed) or signed out (ADR-0032). The server learns it now and on every reconnect. */
+  setAuthToken(token: string | null): void {
+    const changed = token !== this.authToken;
+    this.authToken = token;
+    if (changed && token) this.send({ t: 'auth', token });
   }
 
   /** Blow up the missile we're flying, here (ADR-0025). */
@@ -229,6 +242,11 @@ export class NetClient {
           return;
         }
         this.clock.seed(msg.st, performance.now());
+        if (this.authToken) this.send({ t: 'auth', token: this.authToken });
+        break;
+      case 'progress':
+      case 'xp':
+        this.progress.push(msg);
         break;
       case 'pong':
         this.clock.onPong(msg.ct, msg.st, performance.now());

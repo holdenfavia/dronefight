@@ -88,6 +88,7 @@ type El =
   | 'lead'
   | 'special'
   | 'specialLabel'
+  | 'xp'
   | 'msl'
   | 'mslSpd'
   | 'mslThrFill'
@@ -110,6 +111,7 @@ export class Hud {
       <div class="osd-hitmark" data-hitmark></div>
       <div class="osd-lead" data-lead></div>
       <div class="osd-banner" data-banner></div>
+      <div class="osd-xp" data-xp></div>
       <div class="osd-markers" data-marker></div>
       <div class="osd-status" data-status></div>
       <div class="osd-hp" data-hp><span class="osd-label">HP</span><div class="osd-hp-bar"><div class="osd-hp-fill" data-hp-fill></div></div><span data-hp-text></span></div>
@@ -149,6 +151,7 @@ export class Hud {
       banner: q('[data-banner]'),
       lead: q('[data-lead]'),
       special: q('[data-special]'),
+      xp: q('[data-xp]'),
       specialLabel: q('[data-special-label]'),
       msl: q('[data-msl]'),
       mslSpd: q('[data-msl-spd]'),
@@ -162,6 +165,23 @@ export class Hud {
   /** You hit the other pilot: flash the hit marker. */
   flashHit(): void {
     restartAnimation(this.el.hitmark, 'show');
+  }
+
+  private xpShown = { gained: 0, labels: [] as string[], at: 0 };
+
+  /** XP earned (ADR-0032): "+100 XP · kill". Awards close together add up into one pop-up. */
+  showXp(gained: number, label: string): void {
+    const now = performance.now();
+    const x = this.xpShown;
+    if (now - x.at > 1500) {
+      x.gained = 0;
+      x.labels = [];
+    }
+    x.gained += gained;
+    if (!x.labels.includes(label)) x.labels.push(label);
+    x.at = now;
+    this.el.xp.textContent = `+${x.gained} XP · ${x.labels.join(' + ')}`;
+    restartAnimation(this.el.xp, 'show');
   }
 
   /** You took damage: pulse the screen edges. */

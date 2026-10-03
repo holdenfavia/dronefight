@@ -3,6 +3,8 @@ import { WebSocket } from 'ws';
 import { NET, type DroneState, type ServerMessage } from '../../shared/protocol.js';
 import { startServer } from './index.js';
 import { RoomManager, type Connection } from './rooms.js';
+import { Progression } from './progression.js';
+import { XP } from '../../shared/progression.js';
 
 class FakeConn implements Connection {
   bufferedAmount = 0;
@@ -68,6 +70,45 @@ describe('RoomManager', () => {
     rooms.connect(c);
     rooms.handle(c, { t: 'join', room: '43' });
     expect(c.last('error')?.code).toBe('room-not-found');
+  });
+
+  it('a signed-in pilot (valid token) earns XP for a kill and is told about it (ADR-0032)', async () => {
+    const fetch = (async (url: string | URL, init?: RequestInit) => {
+      const u = String(url);
+      const auth = ((init?.headers ?? {}) as Record<string, string>).authorization;
+      if (u.endsWith('/auth/v1/user')) return new Response(JSON.stringify(auth === 'Bearer tokA' ? { id: 'uA' } : {}), { status: auth === 'Bearer tokA' ? 200 : 401 });
+      if (u.includes('/rest/v1/progress')) return new Response(JSON.stringify([{ xp: 450 }]));
+      return new Response('1', { status: 200 });
+    }) as typeof globalThis.fetch;
+    const progression = new Progression({ url: 'https://x.supabase.co', secretKey: 'k', fetch, flushMs: 60_000, log: () => {} });
+    let time = 0;
+    const rooms = new RoomManager(() => time, Math.random, progression);
+    const a = new FakeConn();
+    const b = new FakeConn();
+    rooms.connect(a);
+    rooms.connect(b);
+    rooms.handle(a, { t: 'auth', token: 'tokA' });
+    rooms.handle(b, { t: 'auth', token: 'forged' });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(a.last('progress')?.xp).toBe(450);
+    expect(b.last('progress')).toBeUndefined();
+    rooms.handle(a, { t: 'create', map: 'yard' });
+    rooms.handle(b, { t: 'join', room: a.last('joined')!.room });
+    expect(a.last('match')?.m.players.find((p) => p.level !== undefined)?.level).toBe(1);
+    // B (a guest) crashes right after A shot them: A gets the kill.
+    time = 3000;
+    const ids = a.last('match')!.m.players.map((p) => p.id);
+    const aId = a.last('joined')!.you;
+    const bId = ids.find((id) => id !== aId)!;
+    const match = (rooms as unknown as { rooms: Map<string, { match: { hit(by: string, d: number, t: unknown, n: number): void; pilots: Map<string, unknown> } }> }).rooms.values().next().value!.match;
+    match.hit(aId, 10, match.pilots.get(bId), time);
+    rooms.handle(b, { t: 'state', s: { ...drone, crashed: true } });
+    const xp = a.last('xp');
+    expect(xp).toMatchObject({ gained: XP.kill, reason: 'kill', xp: 450 + XP.kill });
+    // 550 XP crosses level 2 (500): the level updates for everyone.
+    expect(b.last('match')?.m.players.find((p) => p.id === aId)?.level).toBe(2);
+    // The guest earns nothing.
+    expect(b.last('xp')).toBeUndefined();
   });
 
   it('rejects unknown and full rooms', () => {

@@ -23,6 +23,11 @@ export class Account {
   profile: Profile = loadLocalProfile();
   /** Providers switched on in the Supabase project; the menu shows only these. */
   providers: Provider[] = [];
+  /** Your XP (ADR-0032): read from your progress row at sign-in, then kept current by the room server. */
+  xp: number | null = null;
+  /** The current access token (for the room server), and who wants to hear when it changes. */
+  accessToken: string | null = null;
+  onToken: ((token: string | null) => void) | null = null;
 
   private client: SupabaseClient | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -72,10 +77,12 @@ export class Account {
       const client = await this.getClient();
       if (!client) return;
       client.auth.onAuthStateChange((event, session) => {
+        this.setToken(session?.access_token ?? null);
         if (event === 'SIGNED_OUT' || !session) this.becomeGuest();
         else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') void this.becomeUser(session.user);
       });
       const { data } = await client.auth.getSession();
+      this.setToken(data.session?.access_token ?? null);
       if (data.session) await this.becomeUser(data.session.user);
       else this.becomeGuest();
     } catch (e) {
@@ -96,8 +103,21 @@ export class Account {
     this.onChange();
   }
 
+  /** The server's word on your XP (ADR-0032). */
+  setXp(xp: number): void {
+    this.xp = xp;
+    this.onChange();
+  }
+
+  private setToken(token: string | null): void {
+    if (token === this.accessToken) return;
+    this.accessToken = token;
+    this.onToken?.(token);
+  }
+
   private becomeGuest(): void {
     this.user = null;
+    this.xp = null;
     this.status = 'guest';
     this.onChange();
   }
@@ -118,6 +138,9 @@ export class Account {
       const { data, error } = await this.client!.from('profiles').select('pilot_name, looks').eq('id', user.id).maybeSingle<ProfileRow>();
       if (error) throw new Error(error.message);
       const merged = mergeOnSignIn(this.profile, data);
+      // Your XP so far (readable only by you; only the server writes it, ADR-0032).
+      const progress = await this.client!.from('progress').select('xp').eq('id', user.id).maybeSingle<{ xp: number }>();
+      this.xp = Number(progress.data?.xp ?? 0);
       this.profile = merged.profile;
       saveLocalProfile(this.profile);
       this.status = 'signed-in';

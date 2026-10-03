@@ -181,6 +181,19 @@ VITE_SUPABASE_ANON_KEY=<anon public key>
 
 Then `npm run deploy`. Google: while the OAuth app is in **Testing**, only accounts listed under **Audience → Test users** can sign in; **Publish app** opens it to everyone. The anon key is public by design; row-level security means a pilot can only read and write their own profile. **Never** put the `service_role` key in the client, `fly.toml` or git; when the server needs it (progression, step 3) it goes in with `fly secrets set`.
 
+**XP and levels (ADR-0032), one-time:**
+
+1. In the Supabase SQL editor run `supabase/migrations/0002_progress.sql` (table `progress` + `award_progress`).
+2. In **Project Settings → API Keys**, create/copy a **secret key** (`sb_secret_…`; on older projects the `service_role` key). Set it on the server yourself, never in git or chat:
+
+```
+fly secrets set SUPABASE_SECRET_KEY=sb_secret_...
+```
+
+That restarts the server with progression on (`fly logs` shows `progression on`). Without it, everything works and XP is simply off. For local testing, put the same two values in your shell before `npm run server`: `SUPABASE_URL=… SUPABASE_SECRET_KEY=… npm run server`.
+
+XP only counts for signed-in pilots in an online match with 2+ pilots: kill 100, assist 40, prop 10, finishing a match 100, winning 300. Level *n* takes 250·n·(n−1) XP. The server writes awards every few seconds and on leaving; the in-game `+XP` pop-up and level show immediately.
+
 **How it behaves:** guests keep their profile in the browser. The first sign-in on a new account copies the guest profile into it; after that the account's profile wins on every device. Profile changes save to the account about a second after you make them.
 
 ## Troubleshooting

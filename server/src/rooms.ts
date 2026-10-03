@@ -8,7 +8,9 @@ import {
   type ServerMessage,
 } from '../../shared/protocol.js';
 import type { MapId } from '../../shared/maps/index.js';
+import { levelForXp } from '../../shared/progression.js';
 import { Match } from './match.js';
+import { Progression, type ProgressEvent } from './progression.js';
 
 /** The slice of a WebSocket the room logic needs. Lets tests use fakes. */
 export interface Connection {
@@ -21,6 +23,11 @@ interface Player {
   id: string;
   conn: Connection;
   room: Room | null;
+  /** Signed-in pilots (ADR-0032): Supabase user id and XP so far. */
+  userId: string | null;
+  xp: number;
+  /** Still connected (identify() is asynchronous). */
+  connected: boolean;
 }
 
 interface Room {
@@ -51,18 +58,21 @@ export class RoomManager {
   constructor(
     private readonly now: () => number,
     private readonly random: () => number = Math.random,
+    private readonly progression: Progression = new Progression(),
   ) {}
 
   connect(conn: Connection): void {
-    const player: Player = { id: `p${this.nextId++}`, conn, room: null };
+    const player: Player = { id: `p${this.nextId++}`, conn, room: null, userId: null, xp: 0, connected: true };
     this.players.set(conn, player);
   }
 
   disconnect(conn: Connection): void {
     const player = this.players.get(conn);
     if (!player) return;
+    player.connected = false;
     this.leaveRoom(player);
     this.players.delete(conn);
+    if (player.userId) void this.progression.flush(player.userId);
   }
 
   handle(conn: Connection, msg: ClientMessage): void {
@@ -123,6 +133,9 @@ export class RoomManager {
       case 'detonate':
         player.room?.match.onDetonate(player.id, msg.rid, msg.p, this.now());
         break;
+      case 'auth':
+        void this.authenticate(player, msg.token);
+        break;
       case 'ping':
         send(conn, { t: 'pong', id: msg.id, ct: msg.ct, st: this.now() });
         break;
@@ -139,6 +152,31 @@ export class RoomManager {
     return { rooms: this.rooms.size, players: this.players.size, droppedSnapshots: this.dropped };
   }
 
+  /** A pilot proved who they are (ADR-0032): from now on their kills earn XP. */
+  private async authenticate(player: Player, token: string): Promise<void> {
+    if (!this.progression.enabled) return;
+    const who = await this.progression.identify(token);
+    if (!who || !player.connected) return;
+    player.userId = who.userId;
+    player.xp = who.xp;
+    send(player.conn, { t: 'progress', xp: who.xp });
+    player.room?.match.setLevel(player.id, levelForXp(who.xp));
+  }
+
+  /** A match event worth XP for this pilot (ADR-0032): record it and tell them. */
+  private progress(room: Room, pilotId: string, event: ProgressEvent): void {
+    const player = room.players.get(pilotId);
+    if (!player?.userId) return;
+    const gained = this.progression.award(player.userId, event);
+    if (event === 'finish') void this.progression.flush(player.userId);
+    if (gained <= 0 || event === 'death') return;
+    const before = levelForXp(player.xp);
+    player.xp += gained;
+    send(player.conn, { t: 'xp', gained, reason: event, xp: player.xp });
+    const after = levelForXp(player.xp);
+    if (after !== before) room.match.setLevel(player.id, after);
+  }
+
   private createRoom(map: MapId, wanted?: string): Room {
     // The code asked for (a rejoin), else a random free one; with only 100 codes, fall back to scanning.
     let code = wanted !== undefined && !this.rooms.has(wanted) ? wanted : generateRoomCode(this.random);
@@ -147,15 +185,23 @@ export class RoomManager {
     }
     const players = new Map<string, Player>();
     // Match events are gameplay-critical (unlike snapshots), so they're always sent.
-    const match = new Match(map, (msg, opts) => {
-      const data = JSON.stringify(msg);
-      for (const p of players.values()) {
-        if (opts?.to && p.id !== opts.to) continue;
-        if (opts?.except && p.id === opts.except) continue;
-        p.conn.send(data);
-      }
-    });
-    const room: Room = { code, map, players, match };
+    let room: Room | null = null;
+    const match = new Match(
+      map,
+      (msg, opts) => {
+        const data = JSON.stringify(msg);
+        for (const p of players.values()) {
+          if (opts?.to && p.id !== opts.to) continue;
+          if (opts?.except && p.id === opts.except) continue;
+          p.conn.send(data);
+        }
+      },
+      this.random,
+      (pilotId, event) => {
+        if (room) this.progress(room, pilotId, event);
+      },
+    );
+    room = { code, map, players, match };
     this.rooms.set(code, room);
     return room;
   }
@@ -168,6 +214,7 @@ export class RoomManager {
       if (other !== player) send(other.conn, { t: 'peer-joined', id: player.id });
     }
     room.match.addPlayer(player.id, this.now());
+    if (player.userId) room.match.setLevel(player.id, levelForXp(player.xp));
   }
 
   private leaveRoom(player: Player): void {

@@ -1,6 +1,7 @@
 import { DEFAULT_RATES, type AxisRates } from '../config';
 import type { Account } from '../account/account';
 import { cleanPilotName, NAME_MAX } from '../../../shared/cosmetics';
+import { levelProgress } from '../../../shared/progression';
 import { CalibrationScreen } from '../input/calibrationScreen';
 import { NET } from '../../../shared/protocol';
 import type { InputManager } from '../input/inputManager';
@@ -129,11 +130,19 @@ export class Menu {
     if (!a.available) return '';
     const label =
       a.status === 'signed-in'
-        ? `✓ ${escapeHtml(a.profile.name || a.user?.label || 'Signed in')} ▸`
+        ? `✓ ${escapeHtml(a.profile.name || a.user?.label || 'Signed in')}${a.xp !== null ? ` · Lv ${levelProgress(a.xp).level}` : ''} ▸`
         : a.status === 'loading'
           ? 'Account…'
           : 'Sign in (optional) ▸';
     return `<button class="btn ghost account-btn" data-account>${label}</button>`;
+  }
+
+  /** Your level and progress to the next (ADR-0032). */
+  private levelBlock(xp: number): string {
+    const { level, into, span } = levelProgress(xp);
+    return `<div class="level-row"><span class="level-num">Level ${level}</span><span>${into.toLocaleString()} / ${span.toLocaleString()} XP to level ${level + 1}</span></div>
+        <div class="level-bar"><div style="width:${((into / span) * 100).toFixed(1)}%"></div></div>
+        <div class="level-hint">Earn XP in online matches: kills, assists, finishing and winning.</div>`;
   }
 
   /** Account: sign in with Discord or Google, your pilot name, sign out (ADR-0030, ADR-0031). */
@@ -157,6 +166,7 @@ export class Menu {
           ${a.providers.includes('google') ? `<button class="btn signin google" data-signin="google" ${a.status === 'loading' ? 'disabled' : ''}>${GOOGLE_G}<span>Sign in with Google</span></button>` : ''}
         </div>`
         }
+        ${signedIn && a.xp !== null ? this.levelBlock(a.xp) : ''}
         <label class="field">Pilot name <input type="text" maxlength="${NAME_MAX}" placeholder="your callsign" value="${escapeHtml(a.profile.name)}" data-pilot-name autocomplete="off" spellcheck="false"></label>
         <div class="join-status warn">${a.error ? escapeHtml(a.error) : ''}</div>
         <div class="actions">

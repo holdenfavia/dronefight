@@ -30,6 +30,10 @@ import { addGround, ArenaColliders, createPhysics } from './sim/physics';
 import { Hud, type MarkerInfo, type NetHudInfo } from './ui/hud';
 import { Menu } from './ui/menu';
 import { Account } from './account/account';
+import { levelForXp, type XpReason } from '../../shared/progression';
+
+/** What each XP award says on screen (ADR-0032). */
+const XP_LABELS: Record<XpReason, string> = { kill: 'kill', assist: 'assist', prop: 'boom', finish: 'match', win: 'win' };
 import { getMap, type MapDef, type MapId } from '../../shared/maps';
 import { buildWorld, type World } from './world/scene';
 import { PROP_STATS, PropField } from '../../shared/props';
@@ -73,7 +77,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const input = new InputManager();
   if (import.meta.env.DEV) {
     // Handy for poking at the game from the browser console while developing.
-    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get training() { return training; }, get combatEffects() { return combatEffects; }, get props() { return props; }, get combat() { return combat; } } });
+    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get training() { return training; }, get combatEffects() { return combatEffects; }, get props() { return props; }, get combat() { return combat; }, get hud() { return hud; } } });
   }
   const rig = new CameraRig(settings);
   rig.uptiltOverride = drone.classId === 'wing' ? WING.cameraUptiltDeg : null;
@@ -246,6 +250,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   }, account);
   menuRef = menu;
   net.setLoadout(settings.drone);
+  // XP (ADR-0032): the server learns who you are from your sign-in token.
+  account.onToken = (token) => net.setAuthToken(token);
+  net.setAuthToken(account.accessToken);
 
   /** The camera tilt in use: wings have their own (ADR-0013), quads use the setting. */
   function uptiltDeg(): number {
@@ -556,6 +563,19 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     for (const v of remotes.views) if (!v.crashed) smokeSources.push(v);
     combatEffects.smoke.update(smokeSources);
     combat.update(frameDt, control, !paused);
+    // XP from the server (ADR-0032): keep the account current, pop "+100 XP", celebrate level-ups.
+    for (const p of net.progress.splice(0)) {
+      if (p.t === 'xp') {
+        const before = levelForXp(account.xp ?? p.xp - p.gained);
+        hud.showXp(p.gained, XP_LABELS[p.reason]);
+        const after = levelForXp(p.xp);
+        if (after > before) {
+          combat.notify(`LEVEL ${after}!`);
+          sfx.stinger('victory');
+        }
+      }
+      account.setXp(p.xp);
+    }
     // Riding our missile: the camera is its nose, and you can see your own drone hovering (ADR-0025).
     const ridden = combat.flying;
     if (ridden) {
