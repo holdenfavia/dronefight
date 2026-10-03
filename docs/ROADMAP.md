@@ -98,7 +98,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Simpler start screen: Play (drone, map, solo / create / 2-digit join) and Settings (incl. controller)
 - [x] Rejoin the same room code after a server restart
 - [x] Bigger missile blast; hovering drone watches its missile and the blast (ADR-0027)
-- [ ] Add a card to Fly.io (trial has ended: site down, deploys refused)
+- [x] Add a card to Fly.io; server sleeps when idle
 
 ## Phase 5: Accounts and progression (ADR-0030)
 
