@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-03
 - **Implements:** ADR-0030 step 2
+- **Amended:** 2026-10-03: **Google only** for now; Discord isn't set up (the client shows only providers enabled in the project, so it can be added later with no code change)
 
 ## Context
 

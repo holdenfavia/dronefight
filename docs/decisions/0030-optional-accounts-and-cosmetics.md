@@ -11,7 +11,7 @@ The pilots want progression that adds depth and replayability, with loadouts tha
 ## Decision
 
 - **No account is ever needed to play.** Everyone starts as a guest. Hard rule 5 becomes: *no install; no account needed to play (sign-in is optional and only saves progress)*.
-- **Optional sign-in with Discord or Google** (OAuth; we never store passwords).
+- **Optional sign-in with Google** (OAuth; we never store passwords). Discord was planned and dropped for now (ADR-0031).
 - **Loadouts and unlocks**: the current three drones (Freestyle, 3D quad, wing with their weapons and specials) are the **base set** everyone has. Progression unlocks **new drone bodies**, **weapon modules** and **special modules**, plus cosmetics (paint, patterns, pilot name, later trails and badges).
 - **Unlocks are sidegrades, not upgrades**: each new body or module trades something away (damage vs fire rate, armor vs agility, range vs spread), so a new pilot on a base drone can still win a fight.
 - **The server decides progression**: XP comes from match results the room server already referees, never from what a client reports.
