@@ -153,8 +153,8 @@ export class Menu {
           signedIn
             ? ''
             : `<div class="signin-buttons">
-          <button class="btn signin discord" data-signin="discord" ${a.status === 'loading' ? 'disabled' : ''}>Sign in with Discord</button>
-          <button class="btn signin google" data-signin="google" ${a.status === 'loading' ? 'disabled' : ''}>Sign in with Google</button>
+          ${a.providers.includes('discord') ? `<button class="btn signin discord" data-signin="discord" ${a.status === 'loading' ? 'disabled' : ''}>Sign in with Discord</button>` : ''}
+          ${a.providers.includes('google') ? `<button class="btn signin google" data-signin="google" ${a.status === 'loading' ? 'disabled' : ''}>Sign in with Google</button>` : ''}
         </div>`
         }
         <label class="field">Pilot name <input type="text" maxlength="${NAME_MAX}" placeholder="your callsign" value="${escapeHtml(a.profile.name)}" data-pilot-name autocomplete="off" spellcheck="false"></label>

@@ -21,6 +21,8 @@ export class Account {
   user: { id: string; label: string; provider: string } | null = null;
   error: string | null = null;
   profile: Profile = loadLocalProfile();
+  /** Providers switched on in the Supabase project; the menu shows only these. */
+  providers: Provider[] = [];
 
   private client: SupabaseClient | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -66,6 +68,7 @@ export class Account {
 
   private async start(): Promise<void> {
     try {
+      void this.loadProviders();
       const client = await this.getClient();
       if (!client) return;
       client.auth.onAuthStateChange((event, session) => {
@@ -78,6 +81,19 @@ export class Account {
     } catch (e) {
       this.fail(e instanceof Error ? e.message : 'Sign-in is unavailable');
     }
+  }
+
+  /** Ask the project which sign-in providers are enabled (public settings, no session needed). */
+  private async loadProviders(): Promise<void> {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: ANON_KEY ?? '' } });
+      const external = ((await res.json()) as { external?: Record<string, boolean> }).external ?? {};
+      this.providers = (['discord', 'google'] as const).filter((p) => external[p]);
+    } catch {
+      // Unknown: offer both rather than none.
+      this.providers = ['discord', 'google'];
+    }
+    this.onChange();
   }
 
   private becomeGuest(): void {
