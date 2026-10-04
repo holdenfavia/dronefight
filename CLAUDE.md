@@ -1,6 +1,6 @@
 # dronefight
 
-Browser-based FPV drone dogfighting game for two friends who fly real FPV. Three.js + TypeScript client, Node WebSocket server, room codes.
+Browser-based FPV drone dogfighting game for a group of friends who fly real FPV. Three.js + TypeScript client, Node WebSocket server, room codes, free-for-all up to 10 pilots.
 
 The spec and the decision index below are loaded every session. They are the source of truth.
 
