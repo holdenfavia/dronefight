@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { droneClass, type DroneClassId } from '../../../shared/drones';
 import { defaultLoadout, type Loadout } from '../../../shared/loadout';
 import type { WeaponId } from '../../../shared/weapons';
+import type { PropellerId } from '../../../shared/propellers';
 import { PALETTE } from '../world/scene';
 
 /**
@@ -279,13 +280,41 @@ export function createClassModel(cls: DroneClassId, teamColor: string, loadout: 
     m.position.set(hardpointX(i, loadout.weapons.length, width), below, cls === 'wing' ? -0.02 : -0.03);
     model.add(m);
   });
+  dressPropellers(model, loadout.propeller);
   // The 3" racer is a smaller frame drawn at the same scale (hitbox 1.6 m vs 2.25 m, ADR-0033).
   const inner = cls === 'racer' ? 0.7 : cls === 'x8' ? 1 : 1;
   model.scale.setScalar(droneClass(cls).visualScale * inner);
   model.userData.droneClass = cls;
   model.userData.weaponMounts = mounts;
-  model.userData.loadoutKey = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}`;
+  model.userData.loadoutKey = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}:${loadout.propeller}`;
   return model;
+}
+
+/**
+ * Make the propeller discs look like the chosen props (ADR-0035): bi-blades a lighter blur, quad-blades a
+ * denser one, heavy-lift wider, and ducts get a guard ring around each prop.
+ */
+function dressPropellers(model: THREE.Group, propeller: PropellerId): void {
+  const mat = model.userData.propMaterial as THREE.MeshStandardMaterial | undefined;
+  if (!mat || propeller === 'tri') return;
+  mat.opacity = propeller === 'bi' ? 0.38 : propeller === 'quad' ? 0.78 : mat.opacity;
+  const discs: THREE.Mesh[] = [];
+  model.traverse((o) => {
+    if (o instanceof THREE.Mesh && o.material === mat) discs.push(o);
+  });
+  const duct = new THREE.MeshStandardMaterial({ color: '#2a2c30', roughness: 0.5, metalness: 0.3 });
+  for (const d of discs) {
+    if (propeller === 'heavy') d.scale.set(1.18, 1, 1.18);
+    if (propeller === 'ducted') {
+      const r = (d.geometry as THREE.CylinderGeometry).parameters.radiusTop * 1.08;
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.018, 24, 1, true), duct);
+      ring.material.side = THREE.DoubleSide;
+      ring.position.copy(d.position);
+      ring.rotation.copy(d.rotation);
+      ring.castShadow = true;
+      d.parent?.add(ring);
+    }
+  }
 }
 
 /** Recolor a drone's props (and team accents) to its team color (ADR-0009). */

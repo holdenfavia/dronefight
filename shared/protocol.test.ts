@@ -14,7 +14,7 @@ describe('parseClientMessage: shots', () => {
 
   it('loadouts are cleaned on the way in (ADR-0033)', () => {
     const msg = parseClientMessage(JSON.stringify({ t: 'loadout', loadout: { body: 'racer', weapons: ['rail', 'rail'], special: 'maneuver' } }));
-    expect(msg).toEqual({ t: 'loadout', loadout: { body: 'racer', weapons: ['rail'], special: null } });
+    expect(msg).toEqual({ t: 'loadout', loadout: { body: 'racer', weapons: ['rail'], special: null, propeller: 'tri' } });
   });
 
   it('rejects malformed or degenerate shots', () => {

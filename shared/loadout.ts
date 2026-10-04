@@ -4,26 +4,29 @@
 import { DRONE_CLASSES, isDroneClassId, type DroneClassId } from './drones.js';
 import { isSpecialId, SPECIALS, specialFits, type SpecialId } from './specials.js';
 import { isWeaponId, WEAPONS, type WeaponId } from './weapons.js';
+import { DEFAULT_PROPELLER, isPropellerId, PROPELLERS, propellerFits, type PropellerId } from './propellers.js';
 
 export interface Loadout {
   body: DroneClassId;
   /** One entry per hardpoint; null = empty. */
   weapons: (WeaponId | null)[];
   special: SpecialId | null;
+  /** Propellers (ADR-0035); the stock tri-blade unless you change it. */
+  propeller: PropellerId;
 }
 
 /** Each body's default loadout: it flies exactly as the original drone was tuned. */
 export const DEFAULT_LOADOUTS: Record<DroneClassId, Loadout> = {
-  freestyle: { body: 'freestyle', weapons: ['gun', 'missile'], special: null },
-  quad3d: { body: 'quad3d', weapons: ['shotgun', null], special: 'smoke' },
-  wing: { body: 'wing', weapons: ['cannon', null], special: 'maneuver' },
-  racer: { body: 'racer', weapons: ['gun'], special: null },
-  x8: { body: 'x8', weapons: ['gun', 'gun', 'burst', 'missile'], special: 'shield' },
+  freestyle: { body: 'freestyle', weapons: ['gun', 'missile'], special: null, propeller: 'tri' },
+  quad3d: { body: 'quad3d', weapons: ['shotgun', null], special: 'smoke', propeller: 'tri' },
+  wing: { body: 'wing', weapons: ['cannon', null], special: 'maneuver', propeller: 'tri' },
+  racer: { body: 'racer', weapons: ['gun'], special: null, propeller: 'tri' },
+  x8: { body: 'x8', weapons: ['gun', 'gun', 'burst', 'missile'], special: 'shield', propeller: 'tri' },
 };
 
 export function defaultLoadout(body: DroneClassId): Loadout {
   const d = DEFAULT_LOADOUTS[body];
-  return { body, weapons: [...d.weapons], special: d.special };
+  return { body, weapons: [...d.weapons], special: d.special, propeller: d.propeller };
 }
 
 /** Make anything (saved, or from the wire) into a valid loadout: right number of hardpoints, known modules, a special that fits. */
@@ -38,19 +41,26 @@ export function cleanLoadout(raw: unknown, fallbackBody: DroneClassId = 'freesty
     weapons.push(isWeaponId(w) ? w : null);
   }
   const special = isSpecialId(r.special) && specialFits(r.special, body) ? r.special : null;
-  return { body, weapons, special };
+  const propeller = isPropellerId(r.propeller) && propellerFits(r.propeller, body) ? r.propeller : DEFAULT_PROPELLER;
+  return { body, weapons, special, propeller };
 }
 
 export function totalKg(l: Loadout): number {
   let kg = DRONE_CLASSES[l.body].frameKg;
   for (const w of l.weapons) if (w) kg += WEAPONS[w].kg;
   if (l.special) kg += SPECIALS[l.special].kg;
+  kg += PROPELLERS[l.propeller].kg;
   return kg;
+}
+
+/** Max thrust with these propellers (kgf). */
+export function thrustKg(l: Loadout): number {
+  return DRONE_CLASSES[l.body].thrustKg * PROPELLERS[l.propeller].thrust;
 }
 
 /** Thrust-to-weight: under 1 it can't take off. */
 export function thrustToWeight(l: Loadout): number {
-  return DRONE_CLASSES[l.body].thrustKg / totalKg(l);
+  return thrustKg(l) / totalKg(l);
 }
 
 /**

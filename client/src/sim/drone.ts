@@ -5,6 +5,7 @@ import type { SpawnPoint } from '../../../shared/maps';
 import { CRASH, INPUT, QUAD, QUAD_3D, RACER, SIM, X8, type QuadParams, type Rates } from '../config';
 import { defaultLoadout, loadFactor, type Loadout } from '../../../shared/loadout';
 import { AFTERBURNER } from '../../../shared/specials';
+import { PROPELLERS } from '../../../shared/propellers';
 import type { ControlState } from '../input/inputManager';
 import { createFlightOutput, stepFlight, throttleSafeToArm, type FlightState } from './flightModel';
 import type { Physics } from './physics';
@@ -54,13 +55,43 @@ export function lookAngvel(rot: Quaternion, from: Vector3, target: Vector3, upti
 const QUAD_PARAMS: Record<Exclude<DroneClassId, 'wing'>, QuadParams> = { freestyle: QUAD, quad3d: QUAD_3D, racer: RACER, x8: X8 };
 
 /**
+ * A quad build's flight parameters (ADR-0033, ADR-0035): its body's tuning, loaded by its weight, then
+ * changed by its propellers (lift, response, spool, drag, prop wash).
+ */
+export function flightParams(loadout: Loadout): QuadParams {
+  const base = loadedParams(QUAD_PARAMS[loadout.body === 'wing' ? 'freestyle' : loadout.body], loadFactor(loadout));
+  const p = PROPELLERS[loadout.propeller];
+  return {
+    ...base,
+    thrustToWeight: base.thrustToWeight * p.thrust,
+    rateTau: base.rateTau * p.response,
+    motorTau: base.motorTau * p.spool,
+    dragQuadratic: { x: base.dragQuadratic.x * p.drag, y: base.dragQuadratic.y * p.drag, z: base.dragQuadratic.z * p.drag },
+    dragLinear: base.dragLinear * p.drag,
+    propWash: { ...base.propWash, maxDegPerSec: base.propWash.maxDegPerSec * p.wash },
+  };
+}
+
+/**
+ * Rough top speed, 0..100, for the stat sheet (ADR-0035): flat-out speed goes with the square root of thrust
+ * over drag. Scaled so a stock Freestyle reads 70.
+ */
+export function speedScore(loadout: Loadout): number {
+  if (loadout.body === 'wing') return Math.round(Math.min(100, 85 * Math.sqrt(PROPELLERS[loadout.propeller].thrust / loadFactor(loadout))));
+  const p = flightParams(loadout);
+  const v = Math.sqrt((p.thrustToWeight * p.massKg) / p.dragQuadratic.z);
+  const ref = Math.sqrt((QUAD.thrustToWeight * QUAD.massKg) / QUAD.dragQuadratic.z);
+  return Math.round(Math.max(0, Math.min(100, (70 * v) / ref)));
+}
+
+/**
  * How snappy a build feels, 0..100, for the Loadout stat sheet (ADR-0033): the body's rate response, slowed
  * by load exactly as in flight (loadedParams). A 3" racer at its default build is 100.
  */
 export function agilityScore(loadout: Loadout): number {
   const k = loadFactor(loadout);
-  if (loadout.body === 'wing') return Math.round(Math.min(100, 62 / Math.sqrt(k)));
-  const tau = loadedParams(QUAD_PARAMS[loadout.body], k).rateTau;
+  if (loadout.body === 'wing') return Math.round(Math.min(100, 62 / Math.sqrt(k) / PROPELLERS[loadout.propeller].response));
+  const tau = flightParams(loadout).rateTau;
   return Math.round(Math.max(0, Math.min(100, (100 * RACER.rateTau) / tau)));
 }
 
@@ -152,7 +183,7 @@ export class Drone {
     this.droneClass = id;
     const k = loadFactor(loadout);
     if (id !== 'wing') {
-      this.params = loadedParams(QUAD_PARAMS[id], k);
+      this.params = flightParams(loadout);
       this.boosted = { ...this.params, thrustToWeight: this.params.thrustToWeight * (1 + AFTERBURNER.thrustBoost) };
     }
     const { rapier, world } = this.physics;
@@ -273,7 +304,7 @@ export class Drone {
       : Math.min(1, this.afterburnerFuel + dt / AFTERBURNER.refillSeconds);
     const out =
       this.droneClass === 'wing'
-        ? stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive, burning ? 1 + AFTERBURNER.thrustBoost : 1)
+        ? stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive, PROPELLERS[this.loadoutNow.propeller].thrust * (burning ? 1 + AFTERBURNER.thrustBoost : 1))
         : stepFlight(control, this.state, rates, this.armed, dt, this.out, burning ? this.boosted : this.params);
     this.state.motorOutput = out.motorOutput;
     this.state.time += dt;
@@ -313,7 +344,8 @@ export class Drone {
       return;
     }
     // Forces and gravity change velocity by well under 1 m/s per step; a big jump means we hit something.
-    if (this.velBefore.distanceTo(this.state.linvel) > CRASH.impactDeltaV) {
+    // Ducted props bounce you off walls that would otherwise crash you (ADR-0035).
+    if (this.velBefore.distanceTo(this.state.linvel) > CRASH.impactDeltaV * PROPELLERS[this.loadoutNow.propeller].crashTolerance) {
       this.crashed = true;
       this.armed = false;
       this.crashTime = 0;

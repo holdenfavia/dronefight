@@ -751,7 +751,7 @@ describe('loadouts on the server (ADR-0033)', () => {
 
   it('a custom loadout uses its weapons: a rail gun does 75', () => {
     const t = setup();
-    t.match.onLoadout('A', { body: 'freestyle', weapons: ['rail', 'gun'], special: null }, t.getNow());
+    t.match.onLoadout('A', { body: 'freestyle', weapons: ['rail', 'gun'], special: null, propeller: 'tri' }, t.getNow());
     t.match.onState('A', droneAt(t.posA, [0, 0, 0], true), t.getNow());
     t.advance(COMBAT.respawnMs + 100);
     t.match.onState('A', droneAt(t.posA), t.getNow());
@@ -765,14 +765,14 @@ describe('loadouts on the server (ADR-0033)', () => {
 
   it('bad loadouts are cleaned: extra weapons dropped, specials that do not fit removed', () => {
     const match = new Match('yard', () => {});
-    match.addPlayer('A', 0, { body: 'racer', weapons: ['rail', 'rail'], special: 'maneuver' });
-    expect(match.state().players[0]?.loadout).toEqual({ body: 'racer', weapons: ['rail'], special: null });
+    match.addPlayer('A', 0, { body: 'racer', weapons: ['rail', 'rail'], special: 'maneuver', propeller: 'tri' });
+    expect(match.state().players[0]?.loadout).toEqual({ body: 'racer', weapons: ['rail'], special: null, propeller: 'tri' });
   });
 
   it('missile pods: a loadout without one cannot launch; two pods hold six', () => {
     const log: ServerMessage[] = [];
     const match = new Match('yard', (m) => log.push(m));
-    match.addPlayer('A', 0, { body: 'x8', weapons: ['missile', 'missile', null, null], special: null });
+    match.addPlayer('A', 0, { body: 'x8', weapons: ['missile', 'missile', null, null], special: null, propeller: 'tri' });
     match.addPlayer('B', 0, 'racer');
     for (const [id, p] of [['A', [0, 30, 0]], ['B', [50, 30, 0]]] as const) match.onState(id, droneAt([...p] as Vec3), 10);
     let launched = 0;
@@ -789,7 +789,7 @@ describe('loadouts on the server (ADR-0033)', () => {
 
   it('shield: soaks the next 40 damage for 3 s, then cools down', () => {
     const t = setup();
-    t.match.onLoadout('B', { body: 'freestyle', weapons: ['gun', null], special: 'shield' }, t.getNow());
+    t.match.onLoadout('B', { body: 'freestyle', weapons: ['gun', null], special: 'shield', propeller: 'tri' }, t.getNow());
     t.match.onState('B', droneAt(t.posB(), [0, 0, 0], true), t.getNow());
     t.advance(COMBAT.respawnMs + 100);
     t.setB([-100, 30, -20]);
@@ -824,7 +824,7 @@ describe('sampleHistory', () => {
 describe('grenade launcher (ADR-0034)', () => {
   function withLauncher() {
     const t = setup();
-    t.match.onLoadout('A', { body: 'freestyle', weapons: ['grenade', 'gun'], special: null }, t.getNow());
+    t.match.onLoadout('A', { body: 'freestyle', weapons: ['grenade', 'gun'], special: null, propeller: 'tri' }, t.getNow());
     t.match.onState('A', droneAt(t.posA, [0, 0, 0], true), t.getNow());
     t.advance(COMBAT.respawnMs + 100);
     t.match.onState('A', droneAt(t.posA), t.getNow());

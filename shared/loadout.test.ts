@@ -29,8 +29,8 @@ describe('loadouts (ADR-0033)', () => {
   });
 
   it('cleans bad input: hardpoint count, unknown modules, specials that do not fit', () => {
-    expect(cleanLoadout({ body: 'racer', weapons: ['rail', 'rail', 'rail'], special: 'shield' })).toEqual({ body: 'racer', weapons: ['rail'], special: 'shield' });
-    expect(cleanLoadout({ body: 'freestyle', weapons: ['laser'], special: 'maneuver' })).toEqual({ body: 'freestyle', weapons: [null, null], special: null });
+    expect(cleanLoadout({ body: 'racer', weapons: ['rail', 'rail', 'rail'], special: 'shield' })).toEqual({ body: 'racer', weapons: ['rail'], special: 'shield', propeller: 'tri' });
+    expect(cleanLoadout({ body: 'freestyle', weapons: ['laser'], special: 'maneuver' })).toEqual({ body: 'freestyle', weapons: [null, null], special: null, propeller: 'tri' });
     expect(cleanLoadout({ body: 'wing', weapons: ['cannon'], special: 'maneuver' }).special).toBe('maneuver');
     expect(cleanLoadout('garbage', 'x8')).toEqual(defaultLoadout('x8'));
   });
@@ -39,5 +39,24 @@ describe('loadouts (ADR-0033)', () => {
     const l = DEFAULT_LOADOUTS.x8;
     expect(guns(l)).toEqual(['gun', 'gun', 'burst']);
     expect(missilePods(l)).toBe(1);
+  });
+});
+
+describe('propellers (ADR-0035)', () => {
+  it('heavy-lift props lift more; bi-blades less; ducts only fit quads', () => {
+    const base = DEFAULT_LOADOUTS.freestyle;
+    const heavy = cleanLoadout({ ...base, propeller: 'heavy' });
+    const bi = cleanLoadout({ ...base, propeller: 'bi' });
+    expect(thrustToWeight(heavy)).toBeGreaterThan(thrustToWeight(base) * 1.25);
+    expect(thrustToWeight(bi)).toBeLessThan(thrustToWeight(base));
+    expect(cleanLoadout({ ...DEFAULT_LOADOUTS.wing, propeller: 'ducted' }).propeller).toBe('tri');
+    expect(cleanLoadout({ ...base, propeller: 'ducted' }).propeller).toBe('ducted');
+    expect(cleanLoadout({ ...base, propeller: 'jet' }).propeller).toBe('tri');
+  });
+
+  it('heavy-lift props get a four-rail X8 off the ground', () => {
+    const rails = cleanLoadout({ body: 'x8', weapons: ['rail', 'rail', 'rail', 'rail'], special: null });
+    expect(thrustToWeight(rails)).toBeLessThan(1);
+    expect(thrustToWeight({ ...rails, propeller: 'heavy' })).toBeGreaterThan(1.1);
   });
 });

@@ -1,10 +1,11 @@
 import { droneClass, DRONE_ORDER, type DroneClassId } from '../../../shared/drones';
-import { cleanLoadout, gunDps, handling, launchers, missilePods, thrustToWeight, totalKg, type Loadout } from '../../../shared/loadout';
+import { cleanLoadout, gunDps, handling, launchers, missilePods, thrustKg, thrustToWeight, totalKg, type Loadout } from '../../../shared/loadout';
 import { SPECIAL_ORDER, SPECIALS, specialFits, type SpecialId } from '../../../shared/specials';
 import { WEAPON_ORDER, WEAPONS, type WeaponId } from '../../../shared/weapons';
 import { saveSettings, type Settings } from '../settings';
-import { agilityScore } from '../sim/drone';
-import { BODY_ICONS, EMPTY_ICON, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
+import { agilityScore, speedScore } from '../sim/drone';
+import { PROPELLER_ORDER, PROPELLERS, propellerFits } from '../../../shared/propellers';
+import { BODY_ICONS, EMPTY_ICON, PROPELLER_ICONS, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
 
 /**
  * Loadout screen (ADR-0033), laid out like a shooter's gunsmith: your drone up top (the 3D preview draws there),
@@ -12,7 +13,7 @@ import { BODY_ICONS, EMPTY_ICON, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
  * Hover an option to see what it would change (green better, red worse); click to equip.
  */
 
-type Slot = 'body' | 'special' | `w${number}`;
+type Slot = 'body' | 'special' | 'propeller' | `w${number}`;
 
 interface Stat {
   label: string;
@@ -124,6 +125,7 @@ export class LoadoutScreen {
       { label: 'Health', now: droneClass(a.body).maxHp / MAX.hp, next: droneClass(b.body).maxHp / MAX.hp, text: `${droneClass(b.body).maxHp} HP`, higherBetter: true },
       { label: 'Lift', now: tw(a) / MAX.tw, next: tw(b) / MAX.tw, text: `T/W ${tw(b).toFixed(1)}${hv !== null ? ` · hovers ${Math.round(hv * 100)}%` : tw(b) <= 1 ? ' · grounded' : ''}`, higherBetter: true },
       { label: 'Agility', now: agilityScore(a) / 100, next: agilityScore(b) / 100, text: `${agilityScore(b)}`, higherBetter: true },
+      { label: 'Top speed', now: speedScore(a) / 100, next: speedScore(b) / 100, text: `${speedScore(b)}`, higherBetter: true },
       { label: 'Firepower', now: gunDps(a) / MAX.dps, next: gunDps(b) / MAX.dps, text: `${Math.round(gunDps(b))} dmg/s${heavy(b)}`, higherBetter: true },
       { label: 'Target size', now: droneClass(a.body).hitRadius / MAX.size, next: droneClass(b.body).hitRadius / MAX.size, text: `${droneClass(b.body).hitRadius} m`, higherBetter: false },
     ];
@@ -149,7 +151,7 @@ export class LoadoutScreen {
   private numbers(): string {
     const l = this.hover ?? this.loadout;
     const body = droneClass(l.body);
-    return `<div class="gs-numbers"><div><b>${totalKg(l).toFixed(2)} kg</b><span>total weight</span></div><div><b>${body.thrustKg.toFixed(1)} kgf</b><span>max thrust</span></div><div><b>${body.hardpoints}</b><span>hardpoints</span></div></div>`;
+    return `<div class="gs-numbers"><div><b>${totalKg(l).toFixed(2)} kg</b><span>total weight</span></div><div><b>${thrustKg(l).toFixed(1)} kgf</b><span>max thrust</span></div><div><b>${body.hardpoints}</b><span>hardpoints</span></div></div>`;
   }
 
   // --- Parts list
@@ -161,6 +163,7 @@ export class LoadoutScreen {
     return [
       item('body', 'Body', BODY_ICONS[lo.body], droneClass(lo.body).name),
       ...lo.weapons.map((w, i) => item(`w${i}`, `Hardpoint ${i + 1} · ${['upper left', 'upper right', 'lower left', 'lower right'][i]}`, w ? WEAPON_ICONS[w] : EMPTY_ICON, w ? WEAPONS[w].name : 'Empty')),
+      item('propeller', 'Propellers', PROPELLER_ICONS[lo.propeller], PROPELLERS[lo.propeller].name),
       item('special', 'Special', lo.special ? SPECIAL_ICONS[lo.special] : EMPTY_ICON, lo.special ? SPECIALS[lo.special].name : missilePods(lo) ? 'None (switches guns/missiles)' : 'None'),
     ];
   }
@@ -168,6 +171,7 @@ export class LoadoutScreen {
   private slotTitle(): string {
     if (this.slot === 'body') return 'Choose a body';
     if (this.slot === 'special') return 'Choose a special';
+    if (this.slot === 'propeller') return 'Choose propellers';
     return `Hardpoint ${Number(this.slot.slice(1)) + 1}`;
   }
 
@@ -186,6 +190,20 @@ export class LoadoutScreen {
           line: `${b.maxHp} HP · ${b.hardpoints} hardpoint${b.hardpoints > 1 ? 's' : ''} · ${b.thrustKg.toFixed(1)} kgf`,
           kg: b.frameKg,
           equipped: id === lo.body,
+        };
+      });
+    }
+    if (this.slot === 'propeller') {
+      return PROPELLER_ORDER.filter((id) => propellerFits(id, lo.body)).map((id) => {
+        const p = PROPELLERS[id];
+        const pct = (x: number) => `${x >= 1 ? '+' : '−'}${Math.round(Math.abs(x - 1) * 100)}%`;
+        return {
+          loadout: { ...lo, propeller: id },
+          icon: PROPELLER_ICONS[id],
+          name: p.name,
+          line: id === 'tri' ? `${p.real} · ${p.blurb}` : `${p.real} · lift ${pct(p.thrust)} · ${p.blurb}`,
+          kg: p.kg,
+          equipped: lo.propeller === id,
         };
       });
     }

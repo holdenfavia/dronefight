@@ -83,7 +83,7 @@ export class RemoteDrones {
       const player = net.match?.players.find((p) => p.id === peer.id);
       const cls = player?.drone ?? 'freestyle';
       const loadout = player?.loadout ?? defaultLoadout(cls);
-      const key = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}`;
+      const key = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}:${loadout.propeller}`;
       let model = this.models.get(peer.id);
       // Their body or build changed (ADR-0013, ADR-0033): swap the model.
       if (model && model.userData.loadoutKey !== key) {

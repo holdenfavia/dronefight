@@ -4,6 +4,7 @@
 import type { DroneClassId } from '../../../shared/drones';
 import type { SpecialId } from '../../../shared/specials';
 import type { WeaponId } from '../../../shared/weapons';
+import type { PropellerId } from '../../../shared/propellers';
 
 const svg = (body: string) =>
   `<svg viewBox="0 0 64 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -62,3 +63,22 @@ export const SPECIAL_ICONS: Record<SpecialId, string> = {
 
 /** An empty slot. */
 export const EMPTY_ICON = svg('<rect x="14" y="8" width="36" height="24" rx="3" stroke-dasharray="4 3" opacity="0.6"/><path d="M28 20 h8 M32 16 v8" opacity="0.6"/>');
+
+/** A propeller seen from above with `blades` blades; `guard` draws a duct ring. */
+const prop = (blades: number, length: number, width: number, guard = false) =>
+  svg(
+    Array.from({ length: blades }, (_, i) => {
+      const a = (i / blades) * 360;
+      return `<ellipse cx="32" cy="${20 - length / 2}" rx="${width}" ry="${length / 2}" transform="rotate(${a} 32 20)" fill="currentColor" fill-opacity="0.35"/>`;
+    }).join('') +
+      '<circle cx="32" cy="20" r="3" fill="currentColor"/>' +
+      (guard ? '<circle cx="32" cy="20" r="18" stroke-width="3"/>' : ''),
+  );
+
+export const PROPELLER_ICONS: Record<PropellerId, string> = {
+  tri: prop(3, 16, 3.4),
+  bi: prop(2, 18, 3),
+  quad: prop(4, 13, 3.4),
+  heavy: prop(3, 18, 4.6),
+  ducted: prop(3, 14, 3.4, true),
+};

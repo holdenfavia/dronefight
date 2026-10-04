@@ -48,7 +48,7 @@ export class LoadoutPreview {
     this.active = !!loadout;
     if (!loadout) return;
     if (anchor) this.stage.position.set(anchor.x * this.halfWidth, anchor.y * this.halfHeight - 0.6, -DIST);
-    const key = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}`;
+    const key = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}:${loadout.propeller}`;
     if (key !== this.key) {
       if (this.model) this.stage.remove(this.model);
       this.model = createClassModel(loadout.body, color, loadout);

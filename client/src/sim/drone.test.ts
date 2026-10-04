@@ -2,7 +2,7 @@ import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { cleanLoadout, DEFAULT_LOADOUTS, loadFactor, thrustToWeight } from '../../../shared/loadout';
 import { DEFAULT_RATES, QUAD, SIM, X8 } from '../config';
-import { loadedParams, lookAngvel } from './drone';
+import { agilityScore, flightParams, loadedParams, lookAngvel } from './drone';
 import { createFlightOutput, stepFlight } from './flightModel';
 
 /** Integrate a rotation under lookAngvel and return the angle (deg) between the camera and the target. */
@@ -83,5 +83,26 @@ describe('loadout weight in flight (ADR-0033)', () => {
   it('heavier quads respond more slowly', () => {
     const heavy = cleanLoadout({ body: 'freestyle', weapons: ['rail', 'rail'], special: null });
     expect(loadedParams(QUAD, loadFactor(heavy)).rateTau).toBeGreaterThan(QUAD.rateTau * 1.5);
+  });
+});
+
+describe('propellers in flight (ADR-0035)', () => {
+  const base = DEFAULT_LOADOUTS.freestyle;
+  it('the stock tri-blade flies exactly as tuned', () => {
+    expect(flightParams(base)).toEqual({ ...QUAD, rateTau: QUAD.rateTau });
+  });
+
+  it('bi-blades respond faster; heavy-lift props respond slower but climb harder', () => {
+    const bi = flightParams({ ...base, propeller: 'bi' });
+    const heavy = flightParams({ ...base, propeller: 'heavy' });
+    expect(bi.rateTau).toBeLessThan(QUAD.rateTau);
+    expect(heavy.rateTau).toBeGreaterThan(QUAD.rateTau);
+    expect(climb(heavy, 0.5)).toBeGreaterThan(climb(QUAD, 0.5));
+    expect(climb(bi, 0.5)).toBeLessThan(climb(QUAD, 0.5));
+  });
+
+  it('agility follows the props', () => {
+    expect(agilityScore({ ...base, propeller: 'bi' })).toBeGreaterThan(agilityScore(base));
+    expect(agilityScore({ ...base, propeller: 'heavy' })).toBeLessThan(agilityScore(base));
   });
 });

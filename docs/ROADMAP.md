@@ -119,6 +119,9 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [ ] Play-test builds and balance weights, damage and thrust
 - [x] Loadout screen: live 3D preview with hardpoint badges; detailed weapon models
 - [x] Grenade launcher: bouncing physics grenades, Fire again to detonate, 12 m blast (ADR-0034)
+- [x] Gunsmith-style Loadout screen (stats, parts, option bar, hover compare)
+- [x] Propellers: tri, bi-blade, quad-blade, heavy-lift, ducted (ADR-0035)
+- [ ] Play-test propellers and builds; tune
 - [ ] Paint and pilot name shown to others
 - [ ] Unlock track: levels unlock bodies, modules and paints
 - [ ] More content: flak, laser, rocket pod, flares, mines, cinewhoop, 7" long range, X8 gunship
