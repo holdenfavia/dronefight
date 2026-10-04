@@ -281,9 +281,8 @@ export function createClassModel(cls: DroneClassId, teamColor: string, loadout: 
     model.add(m);
   });
   dressPropellers(model, loadout.propeller);
-  // The 3" racer is a smaller frame drawn at the same scale (hitbox 1.6 m vs 2.25 m, ADR-0033).
-  const inner = cls === 'racer' ? 0.7 : cls === 'x8' ? 1 : 1;
-  model.scale.setScalar(droneClass(cls).visualScale * inner);
+  // Each body has its own draw scale, so a racer and an X8 look nothing alike in size (ADR-0036).
+  model.scale.setScalar(droneClass(cls).visualScale);
   model.userData.droneClass = cls;
   model.userData.weaponMounts = mounts;
   model.userData.loadoutKey = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}:${loadout.propeller}`;

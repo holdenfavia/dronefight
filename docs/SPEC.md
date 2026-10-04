@@ -21,7 +21,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Friends ope
 
 ## Drones and loadouts (ADR-0013, ADR-0033)
 
-- **Bodies:** Freestyle 5" (default), 3D quad (reversible thrust; throttle center = zero), FPV wing (can't hover; spawns airborne), 3" racer (1 hardpoint, light, 70 HP), X8 heavy lifter (4 hardpoints, 180 HP). Each has frame weight, thrust, hardpoints, HP and size.
+- **Bodies:** Freestyle 5" (default), 3D quad (reversible thrust; throttle center = zero), FPV wing (can't hover; spawns airborne), 3" racer (1 hardpoint, light, 70 HP, tiny: 1 m hit radius), X8 heavy lifter (4 hardpoints, 180 HP, huge: 5.4 m hit radius). Each has frame weight, thrust, hardpoints, HP and size (ADR-0036).
 - **Loadout:** a weapon per hardpoint plus one special, all with weight. Total weight against thrust sets how it flies; overloaded drones are sluggish, and at T/W ≤ 1 they can't take off. Nothing is blocked. Each body's default build flies exactly as originally tuned.
 - **Weapons:** gun (3-hit kill, ADR-0028), choked shotgun, rotary cannon (50/s), missile pod (you fly the missile; one-shot within 5 m, ADR-0025/0027), rail gun (75, near-instant, very heavy), burst rifle (3-round bursts), grenade launcher (bouncing grenades you set off with Fire again; 12 m blast, ADR-0034). Fire shoots all guns; missile pods are a second group (Special switches when the special slot is empty, else Switch weapon / Q).
 - **Propellers (ADR-0035):** race tri-blade (stock), bi-blade (agile, less lift), quad-blade (more lift, floaty), heavy-lift (+35% lift, sluggish), ducted (bounce off walls; quads only).

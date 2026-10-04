@@ -26,7 +26,7 @@ interface Stat {
 }
 
 /** Bar scales: the most any build reaches, roughly. */
-const MAX = { hp: 180, tw: 8, dps: 1200, size: 3.2 } as const;
+const MAX = { hp: 180, tw: 8, dps: 1200, size: 5.4 } as const;
 
 export class LoadoutScreen {
   private slot: Slot = 'body';

@@ -52,8 +52,10 @@ export class LoadoutPreview {
     if (key !== this.key) {
       if (this.model) this.stage.remove(this.model);
       this.model = createClassModel(loadout.body, color, loadout);
-      // Sized to fit the turntable whatever the body (a racer and an X8 show at a similar size).
-      this.model.scale.multiplyScalar(1.45 / droneClass(loadout.body).hitRadius);
+      // Sized against the 5" so bodies keep their relative size (ADR-0036), compressed (square root) so a
+      // racer is still visible and an X8 still fits the turntable.
+      const ref = droneClass('freestyle').hitRadius;
+      this.model.scale.multiplyScalar(1.45 / ref / Math.sqrt(droneClass(loadout.body).hitRadius / ref));
       this.model.position.y = 0.1;
       this.addBadges(this.model);
       this.stage.add(this.model);

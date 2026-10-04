@@ -70,28 +70,30 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
   racer: {
     id: 'racer',
     name: '3" racer',
-    blurb: 'Tiny, light and twitchy. One hardpoint, 70 HP, small hitbox',
+    blurb: 'Tiny, light and twitchy. One hardpoint, 70 HP, tiny target',
     flight: 'quad',
     maxHp: 70,
     frameKg: 0.35,
     // Default loadout (gun, 0.47 kg) at thrust-to-weight 8.
     thrustKg: 3.76,
     hardpoints: 1,
-    hitRadius: 1.6,
-    visualScale: 14.4,
+    // Much smaller than the 5" (ADR-0036): ~2.5 m drawn, 1 m hit radius. Hard to hit, hard to see.
+    hitRadius: 1,
+    visualScale: 6.5,
   },
   x8: {
     id: 'x8',
     name: 'X8 heavy lifter',
-    blurb: 'Eight motors, four hardpoints, 180 HP. Big and slow',
+    blurb: 'Eight motors, four hardpoints, 180 HP. Huge, slow, easy to hit',
     flight: 'quad',
     maxHp: 180,
     frameKg: 2.0,
     // Default loadout (2 guns + burst rifle + missile pod + shield, 3.19 kg) at thrust-to-weight 4.
     thrustKg: 12.76,
     hardpoints: 4,
-    hitRadius: 3.2,
-    visualScale: 14.4,
+    // Much bigger than the 5" (ADR-0036): ~13 m drawn, 5.4 m hit radius. The price of four hardpoints.
+    hitRadius: 5.4,
+    visualScale: 21.6,
   },
 };
 
