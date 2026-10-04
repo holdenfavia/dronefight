@@ -4,17 +4,18 @@ A browser FPV drone dogfighting game, built by pilots who fly real FPV.
 
 Open a link, share a room code with friends, plug in your radio, and fight in acro mode in a bright industrial arena. No install, no account.
 
-> **Status:** Phase 3 (combat). Solo flying, 1v1 rooms and dogfighting (tracers, health, first to 5) work on a local server. Deploying so friends can play from different houses comes next. See the [roadmap](docs/ROADMAP.md).
+> **Status:** Playable online at https://dronefight.fly.dev. Free-for-all rooms of up to 10 pilots, five drone bodies with loadouts (weapons, specials, propellers, wing jets), four maps, optional Google sign-in. Now: play-testing, balancing and accounts/progression (Phase 5). See the [roadmap](docs/ROADMAP.md).
 
 _"dronefight" is a working title._
 
-## Features (planned)
+## Features
 
 - **Real acro flight:** Betaflight-style rates (RC rate, super rate, expo), adjustable camera uptilt and FOV
 - **Your own radio:** DJI FPV Remote Controller 2, EdgeTX/OpenTX radios, or any USB gamepad, with a mapping and calibration screen
 - **Free-for-all online:** create a room, share the 2-digit code, up to 10 pilots
 - **Low-latency netcode:** the other pilot is shown in near real time (target 100–200 ms, never above 250 ms)
-- **Dogfighting:** tracers, health, respawns, first to N wins
+- **Dogfighting:** server-decided hits, first to 10 kills, destructible props, a flyable missile
+- **Loadouts:** bodies with real weight and thrust, a weapon per hardpoint, specials, propellers and jets
 
 ## Tech stack
 

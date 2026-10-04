@@ -1,6 +1,6 @@
 # ADR-0007: Art direction
 
-- **Status:** Accepted
+- **Status:** Accepted (Playground exception: ADR-0019; menu style amended by ADR-0039)
 - **Date:** 2026-09-29
 
 ## Context

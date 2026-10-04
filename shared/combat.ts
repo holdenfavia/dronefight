@@ -1,5 +1,5 @@
 // Combat rules shared by client and server (ADR-0009, ADR-0011, ADR-0012, ADR-0026). Rules live in the ADRs.
-// Per-class numbers (health, damage, fire rate, round speed, hit radius) are in shared/drones.ts (ADR-0013).
+// Per-weapon numbers are in shared/weapons.ts, per-body health and hit radius in shared/drones.ts (ADR-0033, ADR-0036).
 
 export const COMBAT = {
   /** Max round travel (m). */

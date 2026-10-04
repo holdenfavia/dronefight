@@ -1,6 +1,6 @@
 # ADR-0030: Optional sign-in; progression unlocks bodies and modules
 
-- **Status:** Accepted
+- **Status:** Accepted, amended: Discord dropped (ADR-0031); five bodies, everything unlocked while balancing (ADR-0033)
 - **Date:** 2026-10-03
 - **Changes:** SPEC Hard rule 5 and "Out of scope: accounts/login, rankings"
 

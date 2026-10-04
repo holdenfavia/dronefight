@@ -1,6 +1,6 @@
 # ADR-0013: Drone classes: Freestyle, 3D quad, FPV wing
 
-- **Status:** Accepted, amended by ADR-0014 (wing and 3D weapons, Cobra)
+- **Status:** Accepted for the bodies; per-class weapons, damage, fire rate and round speed superseded by ADR-0033 (weapons are modules)
 - **Date:** 2026-09-29
 - **Amends:** ADR-0009 / ADR-0011 / ADR-0012 (combat numbers become per class)
 

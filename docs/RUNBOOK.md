@@ -68,11 +68,11 @@ Every physics and feel constant lives in `client/src/config.ts` (thrust-to-weigh
 Rooms are **free-for-all** for up to 10 pilots (ADR-0026): everyone is an enemy, first to 10 kills wins, each pilot has their own color (named by color in toasts and the scoreboard). You can join a running match. More pilots than spawns? You spawn a few metres beside a taken one.
 
 
-Rules are in ADR-0009. Tunable numbers (fire rate, round speed, damage, HP, respawn and protection times, hit radius, kills to win) are in `shared/combat.ts`, used by both client and server. Restart the server after changing them.
+Rules are in ADR-0009. Match rules (respawn and protection times, kills to win, muzzle positions) are in `shared/combat.ts`; per-weapon numbers (damage, fire rate, round speed) in `shared/weapons.ts`; per-body HP and hit radius in `shared/drones.ts`. Client and server both use them. Restart the server after changing them.
 
 - Controller profiles saved before combat have no **Fire** binding. Use **Settings → Map buttons** to map one (keyboard Space always works).
-- Rounds alternate between twin guns beside the camera and converge 40 m ahead along the FPV view (uptilt included), even in chase view.
-- **Aim at the lead circle**, not the drone: it shows where your rounds will meet them (ADR-0011). Other drones are drawn ~4.5 m across (hit radius 2.25 m, ADR-0029) with a glow and a fading trail. Your own physics stay a real 5".
+- Each hardpoint fires from its own screen corner (1 upper-left, 2 upper-right, 3 lower-left, 4 lower-right) and converges 40 m ahead along the FPV view (uptilt included), even in chase view (ADR-0033).
+- **Aim at the lead circle**, not the drone: it shows where your rounds will meet them (ADR-0011). Other drones are drawn at their body's size (5" ~4.5 m, racer ~2.5 m, X8 ~13 m; ADR-0036) with a glow and a fading trail. Physics stay real size.
 - Visual size, glow size and trail length/width are in `DRONE_VISUAL` in `client/src/config.ts`.
 - Tracers show instantly, but only the server decides hits. You'll see the hit marker when the server confirms, one round trip later.
 

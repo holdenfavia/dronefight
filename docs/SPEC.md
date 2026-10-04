@@ -1,98 +1,94 @@
 # dronefight — Spec
 
-_Working title. Source of truth for what the game is. Change only via `/decide`._
+_Working title. Source of truth for what the game is **now**. Change only via `/decide`; details live in the ADRs._
 
 ## Vision
 
-A browser FPV dogfighting game that **feels like real acro flying**. Friends open a link, share a room code, and fight using their real radios. No install, no account needed; sign in only to keep your progress and customized drones (ADR-0030).
+A browser FPV dogfighting game that **feels like real acro flying**. Friends open a link, share a room code, and fight using their real radios. No install, no account needed; signing in only keeps your profile and progress (ADR-0030).
 
 ## Players and platform
 
-- Built for a group of friends: free-for-all rooms of up to 10 pilots (ADR-0026). Two-digit room codes, no public matchmaking (ADR-0005).
-- Desktop browsers. Chrome/Edge are the primary targets (best Gamepad API support). Safari/Firefox are best-effort.
-- Mobile/touch is out of scope.
+- A group of friends: free-for-all rooms of up to 10 pilots, two-digit room codes, no public matchmaking (ADR-0005, ADR-0026).
+- Desktop browsers. Chrome/Edge are the primary targets (best Gamepad API support); Safari/Firefox best-effort. Mobile/touch is out of scope.
 
 ## Flight
 
-- Acro (rate) mode: sticks command rotation rates, no self-levelling. Exception: the X8 always flies in horizon mode (self-levels near center stick, flips at full stick, ADR-0037).
-- Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable.
-- Custom flight model computes thrust, drag, prop wash and rate commands. Rapier applies all forces, with real gravity (9.81 m/s²), and handles motion and collisions. Tuned by feel (ADR-0008).
-- Adjustable FPV camera tilt (uptilt) and FOV.
+- Acro (rate) mode: sticks command rotation rates, no self-levelling. **Exception:** the X8 always flies in horizon mode (ADR-0037).
+- Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable. Adjustable FPV uptilt and FOV.
+- A custom flight model computes thrust, drag, prop wash and rate commands; Rapier applies the forces with real gravity and handles motion and collisions (ADR-0008). Physics bodies are real size; only drawing and hit spheres are enlarged (ADR-0029, ADR-0036).
+- Crash = an impact over a speed-change threshold. Ducted props raise it (ADR-0035).
 
-## Drones and loadouts (ADR-0013, ADR-0033)
+## Drones and loadouts (ADR-0033)
 
-- **Bodies:** Freestyle 5" (default), 3D quad (reversible thrust; throttle center = zero), FPV wing (can't hover; spawns airborne), 3" racer (1 hardpoint, light, 70 HP, tiny: 1 m hit radius), X8 heavy lifter (4 hardpoints, 180 HP, huge: 5.4 m hit radius). Each has frame weight, thrust, hardpoints, HP and size (ADR-0036).
-- **Loadout:** a weapon per hardpoint plus one special, all with weight. Total weight against thrust sets how it flies; overloaded drones are sluggish, and at T/W ≤ 1 they can't take off. Nothing is blocked. Each body's default build flies exactly as originally tuned.
-- **Weapons:** gun (3-hit kill, ADR-0028), choked shotgun, rotary cannon (50/s), missile pod (you fly the missile; one-shot within 5 m, ADR-0025/0027), rail gun (75, near-instant, very heavy), burst rifle (3-round bursts), grenade launcher (bouncing grenades you set off with Fire again; 12 m blast, ADR-0034). Fire shoots all guns; missile pods are a second group (Special switches when the special slot is empty, else Switch weapon / Q).
-- **Propellers (ADR-0035):** race tri-blade (stock), bi-blade (agile, less lift), quad-blade (more lift, floaty), heavy-lift (+35% lift, sluggish), ducted (bounce off walls; quads only). The wing can mount jets instead (ADR-0038): micro turbine, pulse jet, ramjet, each with its own sound.
-- **Specials:** maneuver mode (wing only, ADR-0022), smoke trail (ADR-0024), afterburner (hold: +60% thrust, limited fuel), shield (tap: absorbs 40 damage for 3 s).
-- Built in the Loadout screen (Play or pause menu); in a match a new build arrives at your next respawn. Everything is unlocked for now (levels gate it later, ADR-0032).
+A loadout = **body** + one **weapon per hardpoint** + one **special** + **propulsion**. Everything has weight; total weight against thrust sets how it flies. Overloading is allowed and physical (T/W ≤ 1 can't take off). Each body's default build flies exactly as originally tuned. Everything is unlocked for now.
+
+| Body | HP | Hardpoints | Size (hit radius) | Notes |
+|---|---|---|---|---|
+| Freestyle 5" (default) | 100 | 2 | 2.25 m | all-rounder |
+| 3D quad | 90 | 2 | 2.25 m | reversible thrust; throttle center = zero |
+| FPV wing | 130 | 2 | 2.7 m | fixed-wing, can't hover, launches airborne; weight raises stall speed |
+| 3" racer | 70 | 1 | 1 m | tiny and twitchy (ADR-0036) |
+| X8 heavy lifter | 180 | 4 | 5.4 m | huge, horizon mode (ADR-0036, ADR-0037) |
+
+- **Weapons** (numbers in `shared/weapons.ts`): gun (34/hit, 3-hit kill on a 5", ADR-0028), choked shotgun (8 pellets), rotary cannon (50/s), rail gun (75, near-instant, very heavy), burst rifle (3-round bursts), missile pod (you fly the missile; one-shot within 5 m, ADR-0025/0027), grenade launcher (bouncing grenades, Fire again detonates, 12 m blast, ADR-0034).
+- **Fire groups:** Fire shoots all guns together. Missile pods and grenade launchers are a second group; Switch weapon (Q / mapped button) changes group, and so does Special when the special slot is empty.
+- **Specials:** maneuver mode (wing only, ADR-0022), smoke trail (stealth, ADR-0024), afterburner (hold, limited fuel), shield (absorbs 40 for 3 s) (ADR-0033).
+- **Propulsion:** propellers for every body (tri stock, bi, quad, heavy-lift, ducted for quads, ADR-0035); jets for the wing only (micro turbine, pulse jet, ramjet, ADR-0038).
+- Built on the Loadout screen (Play or pause menu). In a match a new build applies at your next respawn.
 
 ## Controls
 
-- Real radios via the browser Gamepad API. Primary test device: **DJI FPV Remote Controller 2** over USB-C.
-- A stick mapping and calibration screen assigns axes, inverts, endpoints and deadband (ADR-0006).
-- Fallbacks: Xbox/PlayStation gamepad, keyboard (for testing only).
-- Settings persist per browser. F toggles fullscreen.
-- Near the map edge, an orange grid fades in on the invisible boundary wall so you see it before hitting it.
+- Real radios through the browser Gamepad API, always behind mapping and calibration (ADR-0006). Primary test device: **DJI FPV Remote Controller 2** over USB-C. Fallbacks: Xbox/PlayStation/Logitech gamepads (guessed layouts) and keyboard (testing only).
+- Inputs: sticks, arm, Fire, Special, Switch weapon. Settings persist per browser. F fullscreen, M mute, Esc pause menu.
+- Near the map edge an orange grid fades in on the invisible boundary wall.
 
-## Multiplayer
+## Multiplayer and hosting
 
-- Node.js WebSocket server; clients join by short room code (ADR-0005).
-- Hosted on Fly.io: one always-on machine serves the game page and the room server from one URL (ADR-0021).
-- Netcode: **latest state wins**. Remote drones render from a small fixed interpolation buffer (~100 ms). Stale snapshots are dropped, never replayed (ADR-0004).
-- Server decides hits.
-- On-screen network readout: ping and remote-player delay.
+- Node WebSocket server with rooms by code; one Fly.io machine (Dallas) serves the page and the rooms from one URL and **sleeps when nobody is connected** (ADR-0021).
+- Netcode: **latest state wins**. Remote drones render from a fixed ~100 ms interpolation buffer; stale snapshots are dropped, never replayed (ADR-0004). On-screen ping and remote delay.
+- **The server decides** hits, damage, kills, prop destruction, grenades and missile validity, with ≤ 250 ms lag compensation. Clients decide only their own flight.
 
-## Combat (ADR-0009)
+## Combat (ADR-0009 as amended)
 
-- Tracer rounds from twin guns beside the camera, converging along the camera view. Rounds stop at walls.
-- Fast time-to-kill (ADR-0028): Freestyle 100 HP dies to 3 gun hits (34 each); cannon 10, shotgun pellet 14. Server decides hits (2.25 m hit radius, matching the drawn drone, ADR-0029), with limited lag compensation (≤ 250 ms rewind).
-- Other pilots are drawn ~4.5 m across (ADR-0029) with a glow and a fading trail; a lead indicator shows where to aim (ADR-0011). Physics stay real 5".
-- Crash = death. The kill goes to the other pilot if they damaged you in the last 5 s.
-- Respawn after 3 s at a random spawn away from other pilots (8 per map, ADR-0012). Free-for-all: first to 10 kills wins, then a new match starts (ADR-0026).
-- Solo mode has no combat.
+- Each hardpoint fires from its own screen corner (1 upper-left, 2 upper-right, 3 lower-left, 4 lower-right), converging ~40 m ahead along the FPV view. Each weapon has its own projectile look (ADR-0033). Rounds stop at walls.
+- Other pilots are drawn at their body's enlarged size with a glow, a fading trail and a lead indicator (ADR-0011, ADR-0036); smoke hides all but the frame (ADR-0024).
+- Crash = death; the kill goes to whoever damaged you in the last 5 s. Respawn after 3 s at one of 8 spawns away from other pilots (ADR-0012).
+- Free-for-all, first to 10 kills, then a new match (ADR-0026). Solo has no combat except Training bots (ADR-0017).
 
 ## Maps (ADR-0012)
 
-- **Downtown** (default): city blocks, towers, streets, parking garage, skybridge, construction crane.
-- **Yard**: the original industrial arena.
-- **Playground** (ADR-0019): a giant playground park in solid colors with grid lines, plus a roller coaster.
-- Moving props (ADR-0020): Downtown traffic you can chase, the Playground coaster, a Yard tractor. Solid to fly into. Settings can switch every map to grid textures.
-- Destructible props (ADR-0023): moving props, parked cars, barrels, propane and water tanks explode when shot (chain reactions; blasts hurt pilots in matches); back after 30 s. Server-decided online.
-- **Training** (ADR-0017): solo practice with bots (white stationary, blue fixed paths, yellow random, red evasive), hits/kills/accuracy.
-- The room creator picks the map. Distant mountains, clouds and sun glow on every map.
+- **Downtown** (default), **Yard** (industrial), **Playground** (giant solid-color park, ADR-0019), **Training** (solo, with bots, ADR-0017). The room creator picks.
+- Moving props from a shared clock: Downtown traffic, Playground coaster, Yard tractor (ADR-0020). Destructible props explode when shot, chain, hurt pilots in matches, and return after 30 s (ADR-0023).
+- Settings can switch every map to grid textures. Distant mountains, clouds and sun glow everywhere.
 
 ## Art direction (ADR-0007)
 
-Inspired by the *feel* of Flight Division, never its assets:
-- Bright sunny blue skies, soft clean lighting.
-- Orange / black / white palette. Orange steel scaffolding, concrete, platforms, ramps, gaps to thread.
-- Pilot colors: one per pilot, orange and lime `#b6f000` first (ADR-0009, ADR-0026).
-- Stylized-realistic and clean, not gritty.
-- UI: bold condensed all-caps type, with occasional hand-written accent notes.
+- Inspired by the *feel* of Flight Division, never its assets. Bright sunny skies, soft clean light; orange / black / white; stylized-realistic, clean.
+- Pilot colors: one per pilot, orange and lime first (ADR-0026).
+- UI: bold condensed all-caps type on dark translucent panels with orange accents, on every menu (ADR-0039).
 - Performance beats fidelity: baked lighting, instancing, compressed textures.
-
-## Profile and progression (ADR-0030)
-
-- Loadouts: a drone body plus weapon and special modules, plus paint and a pilot name. The three current drones are the base set; progression unlocks new bodies and modules as sidegrades (trade-offs, never straight upgrades). Your per-match pilot color stays.
-- Optional sign-in with Google keeps it across devices. XP and levels come only from online matches and only the server awards them (ADR-0032).
 
 ## Audio (ADR-0010)
 
-- All sound synthesized in the browser (no audio files). Motor whine follows throttle; the other pilot's motors and shots are positional.
-- Master volume plus separate **My drone** and **Other pilots** volumes in Settings (other pilots' motors and gunfire are positional); M mutes.
+- All sound synthesized in the browser, no audio files. Engines follow throttle (props, and a distinct voice per jet, ADR-0038); other pilots' engines and gunfire are positional.
+- Master, **My drone** and **Other pilots** volumes; M mutes.
+
+## Accounts and progression (ADR-0030, ADR-0031, ADR-0032)
+
+- Optional Google sign-in (Supabase). Guests always play; a guest profile moves into the account on first sign-in. The account saves pilot name and paint per body; **builds are saved per browser only** for now.
+- XP and levels come only from online matches and only the server awards them. **Built, switched off** until the server's secret key is set.
+- Later: levels unlock sidegrade bodies, modules and paints (never straight upgrades); paint and pilot name shown to others.
 
 ## Hard rules
 
 These must never be broken without a superseding decision:
 
 1. **No growing delay.** Remote players are never shown more than **250 ms** behind real time (at normal ping). No code path may queue and replay a backlog of snapshots.
-2. **Frame rate first.** Target a steady 60+ FPS on a mid-range laptop. Visual features that break this are off by default.
+2. **Frame rate first.** A steady 60+ FPS on a mid-range laptop. Visual features that break this are off by default.
 3. **Input goes through calibration.** Game code never reads raw gamepad axes directly.
-4. **No copied assets or branding.** Nothing from Flight Division or any other game (logos, mascot, models, textures, name).
-5. **No install, no account needed to play.** Sign-in is optional and only saves progress (ADR-0030).
+4. **No copied assets or branding.** Nothing from Flight Division or any other game.
+5. **No install, no account needed to play.** Sign-in is optional and only saves progress.
 
 ## Out of scope (for now)
 
-Public matchmaking, mandatory accounts, pay-to-win or straight-upgrade unlocks, mobile, VR, more than 10 players per room, teams, angle mode or pilot-selectable flight modes.
+Public matchmaking, mandatory accounts, pay-to-win or straight-upgrade unlocks, mobile, VR, more than 10 pilots per room, teams, angle mode, pilot-selectable flight modes.

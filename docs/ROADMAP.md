@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current focus:** Phase 5 — Accounts and progression (ADR-0030): turn on XP (step 3), then loadouts and unlocks. Play-test items remain in earlier phases.
+**Current focus:** Phase 5.5 — Consolidation (proposed below, waiting on the owner's answers), then Phase 5: turn on XP, play-test and balance loadouts, then unlocks. Play-test items remain in earlier phases.
 
 Check items off as they land. Add items as they're discovered. Moving to a new phase updates **Current focus**.
 
@@ -122,10 +122,27 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Gunsmith-style Loadout screen (stats, parts, option bar, hover compare)
 - [x] Propellers: tri, bi-blade, quad-blade, heavy-lift, ducted (ADR-0035)
 - [ ] Play-test propellers and builds; tune
+- [x] Grouped, color-coded Loadout parts; dark style on every menu (ADR-0039)
+- [x] Per-body sizes: tiny racer, huge X8 (ADR-0036); X8 horizon mode (ADR-0037)
+- [x] Wing jets: micro turbine, pulse jet, ramjet, each with its own sound (ADR-0038)
+- [ ] Listen to the jet sounds and fly each jet; tune
+- [ ] Builds saved to the account (today: per browser only)
 - [ ] Paint and pilot name shown to others
 - [ ] Unlock track: levels unlock bodies, modules and paints
 - [ ] More content: flak, laser, rocket pod, flares, mines, cinewhoop, 7" long range, X8 gunship
 - [ ] Badges, challenges, friends leaderboard
+
+## Phase 5.5 — Consolidation (proposed 2026-10-04)
+
+Make the codebase easier to build on before the next content batch. No gameplay changes.
+
+- [ ] One body definition: move flight tuning (`QUAD`/`RACER`/`X8` in `config.ts`, `WING` in `wingModel.ts`) next to each body, and derive mass/thrust from `frameKg`/`thrustKg` instead of the tuned-default `loadFactor` bridge
+- [ ] Behavior lives on the data: replace scattered `=== 'wing'` / `=== 'grenade'` checks with fields (`flight`, `fireGroup`, `soundProfile`, `modelKind`) and small registries
+- [ ] Split `game.ts` (frame loop) and `combatClient.ts` (one module per weapon kind and per special); split `match.ts` (missiles, grenades, props, scoring)
+- [ ] One `loadoutKey()` helper; rename `MatchPlayer.drone` to use `loadout.body`; merge `shared/abilities.ts` into `shared/specials.ts`
+- [ ] Split `styles.css` by screen; delete overridden light-theme rules
+- [ ] GitHub Actions: typecheck, tests and build on every push; deploy only from green main
+- [ ] Balance numbers in one table (generated from `shared/`) so tuning doesn't mean reading code
 
 ## Later (when the player count grows)
 
