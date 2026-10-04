@@ -1,6 +1,6 @@
 # ADR-0029: Drones drawn and hit at three times the size
 
-- **Status:** Accepted (per-body sizes: ADR-0036; ADR-0040 tried collision at drawn size and was reverted by ADR-0041)
+- **Status:** Hit sizes accepted (per-body: ADR-0036); drawn sizes superseded by ADR-0043 (real size)
 - **Date:** 2026-10-01
 - **Supersedes:** ADR-0012's 0.75 m hitbox and ADR-0011's ~1.5 m drawn size (the principle "hit size matches drawn size; physics stay a real 5"" stands)
 

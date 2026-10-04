@@ -23,6 +23,9 @@ export interface MarkerInfo {
   distance: number;
   /** The pilot's color. */
   color: string;
+  /** Name tag (ADR-0043), shown while on screen: name (and level), and health 0..1 when known. */
+  name: string;
+  hp: number | null;
 }
 
 export interface CombatHudInfo {
@@ -302,15 +305,27 @@ export class Hud {
     this.el.net.classList.toggle('warn', warn);
   }
 
-  private readonly markerEls: { root: HTMLElement; label: HTMLElement }[] = [];
+  private readonly markerEls: { root: HTMLElement; label: HTMLElement; name: HTMLElement; hp: HTMLElement; hpFill: HTMLElement }[] = [];
 
+  /**
+   * Pilot markers: an edge arrow with the distance when they're off screen (ADR-0026), and a War Thunder-style
+   * name tag above them when they're on screen (ADR-0043): name, distance and a health bar in their color.
+   */
   private updateMarkers(markers: readonly MarkerInfo[]): void {
     while (this.markerEls.length < markers.length) {
       const root = document.createElement('div');
       root.className = 'osd-marker';
-      root.innerHTML = '<span class="osd-marker-diamond"></span><span class="osd-marker-label"></span>';
+      root.innerHTML =
+        '<span class="osd-tag-name"></span><span class="osd-marker-diamond"></span><span class="osd-marker-label"></span><span class="osd-tag-hp"><span></span></span>';
       this.el.marker.appendChild(root);
-      this.markerEls.push({ root, label: root.querySelector('.osd-marker-label') as HTMLElement });
+      const hp = root.querySelector('.osd-tag-hp') as HTMLElement;
+      this.markerEls.push({
+        root,
+        label: root.querySelector('.osd-marker-label') as HTMLElement,
+        name: root.querySelector('.osd-tag-name') as HTMLElement,
+        hp,
+        hpFill: hp.firstElementChild as HTMLElement,
+      });
     }
     this.markerEls.forEach((el, i) => {
       const marker = markers[i];
@@ -319,7 +334,11 @@ export class Hud {
       el.root.style.transform = `translate(${marker.x.toFixed(1)}px, ${marker.y.toFixed(1)}px)`;
       el.root.style.setProperty('--pilot', marker.color);
       el.root.classList.toggle('edge', !marker.onScreen);
+      el.root.classList.toggle('named', marker.onScreen);
       this.set(el.label, `${Math.round(marker.distance)} m`);
+      this.set(el.name, marker.name);
+      el.hp.hidden = !marker.onScreen || marker.hp === null;
+      if (marker.hp !== null) el.hpFill.style.transform = `scaleX(${Math.max(0, Math.min(1, marker.hp)).toFixed(3)})`;
     });
   }
 

@@ -1,7 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type { Loadout } from '../../../shared/loadout';
 import { createClassModel, setDronePropColor } from './droneModel';
-import { droneClass } from '../../../shared/drones';
 
 /**
  * Live 3D preview for the Loadout screen (ADR-0033): your build spinning on a glowing turntable on the right
@@ -10,6 +9,11 @@ import { droneClass } from '../../../shared/drones';
  */
 /** How far in front of the preview camera the stage stands (m). */
 const DIST = 15;
+
+/** How big builds appear on the turntable: a 5" (0.31 m model) shows this wide (scene units). */
+const PREVIEW = { freestyleWidth: 2.9, freestyleModelWidth: 0.312 } as const;
+const PREVIEW_BOX = new THREE.Box3();
+const PREVIEW_SIZE = new THREE.Vector3();
 
 export class LoadoutPreview {
   private readonly scene = new THREE.Scene();
@@ -52,10 +56,11 @@ export class LoadoutPreview {
     if (key !== this.key) {
       if (this.model) this.stage.remove(this.model);
       this.model = createClassModel(loadout.body, color, loadout);
-      // Sized against the 5" so bodies keep their relative size (ADR-0036), compressed (square root) so a
-      // racer is still visible and an X8 still fits the turntable.
-      const ref = droneClass('freestyle').hitRadius;
-      this.model.scale.multiplyScalar(1.45 / ref / Math.sqrt(droneClass(loadout.body).hitRadius / ref));
+      // Sized by drawn width against a 5" (ADR-0043), square-root compressed so a racer is still visible and
+      // an X8 still fits the turntable.
+      const width = PREVIEW_BOX.setFromObject(this.model).getSize(PREVIEW_SIZE).x;
+      const shown = PREVIEW.freestyleWidth * Math.sqrt(width / PREVIEW.freestyleModelWidth);
+      this.model.scale.multiplyScalar(shown / width);
       this.model.position.y = 0.1;
       this.addBadges(this.model);
       this.stage.add(this.model);

@@ -1,6 +1,6 @@
 # ADR-0036: Bodies differ in size: tiny racer, huge X8
 
-- **Status:** Accepted
+- **Status:** Hit sizes accepted; drawn sizes superseded by ADR-0043 (real size)
 - **Date:** 2026-10-04
 - **Amends:** ADR-0029 (per-body sizes), ADR-0033 (racer and X8 hit radius)
 

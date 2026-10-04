@@ -23,7 +23,7 @@ import { RemoteDrones } from './render/remoteDrones';
 import { Tracers } from './render/tracers';
 import { LoadoutPreview } from './render/loadoutPreview';
 import { Trails } from './render/trails';
-import { COMBAT, pilotColor } from '../../shared/combat';
+import { COMBAT, pilotColor, pilotName } from '../../shared/combat';
 import { droneClass } from '../../shared/drones';
 import { BoundaryGrid } from './world/boundaryGrid';
 import { WING } from './sim/wingModel';
@@ -450,18 +450,36 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     return lead;
   }
 
-  // Edge arrows for every pilot you can't see (ADR-0026): smoking pilots have none (ADR-0024).
+  // Every other pilot gets a marker (ADR-0026, ADR-0043): a name tag while on screen, an edge arrow when not.
+  // Smoking pilots get neither (ADR-0024); crashed ones and dead ones have no tag. Training bots get tags too.
   const markerPool: MarkerInfo[] = [];
   const markers: MarkerInfo[] = [];
+  function nextMarker(): MarkerInfo {
+    return markerPool[markers.length] ?? (markerPool[markers.length] = { x: 0, y: 0, onScreen: true, distance: 0, color: '', name: '', hp: null });
+  }
   function pilotMarkers(): readonly MarkerInfo[] {
     markers.length = 0;
     for (const v of remotes.views) {
-      if (v.concealed) continue;
-      const m = markerPool[markers.length] ?? (markerPool[markers.length] = { x: 0, y: 0, onScreen: true, distance: 0, color: '' });
+      if (v.concealed || v.crashed) continue;
+      const player = net.match?.players.find((p) => p.id === v.id);
+      if (player && !player.alive) continue;
+      const m = nextMarker();
       markerFor(v.position, m);
-      if (m.onScreen) continue;
       m.color = pilotColor(v.team ?? 1);
+      m.name = player?.level ? `${pilotName(v.team)} · ${player.level}` : pilotName(v.team);
+      m.hp = player ? player.hp / droneClass(player.drone).maxHp : null;
       markers.push(m);
+    }
+    if (training.active) {
+      for (const t of training.targets()) {
+        const m = nextMarker();
+        markerFor(t, m);
+        if (!m.onScreen) continue;
+        m.color = '#f4f2ee';
+        m.name = 'Bot';
+        m.hp = null;
+        markers.push(m);
+      }
     }
     return markers;
   }

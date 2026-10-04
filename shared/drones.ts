@@ -19,9 +19,9 @@ export interface DroneClass {
   thrustKg: number;
   /** Weapon hardpoints, and whether it has a special slot. */
   hardpoints: number;
-  /** Hit sphere radius (m): matches the drawn size (ADR-0012, ADR-0029). */
+  /** Hit sphere radius (m): deliberately bigger than the drawn drone (ADR-0029, ADR-0036, ADR-0043). */
   hitRadius: number;
-  /** Model scale when drawn (the base models are real size). */
+  /** Model scale when drawn: 1 = the real-size model (ADR-0043). */
   visualScale: number;
 }
 
@@ -36,9 +36,9 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     // Default loadout (gun + missile pod, 1.02 kg) at the tuned thrust-to-weight of 8.
     thrustKg: 8.16,
     hardpoints: 2,
-    // Drawn and hit at 3x (ADR-0029): ~4.5 m across, 2.25 m hit radius.
+    // Drawn at real size (~0.31 m, ADR-0043), hit at 2.25 m radius (ADR-0029): bigger than the drone, on purpose.
     hitRadius: 2.25,
-    visualScale: 14.4,
+    visualScale: 1,
   },
   quad3d: {
     id: 'quad3d',
@@ -51,7 +51,7 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     thrustKg: 7.35,
     hardpoints: 2,
     hitRadius: 2.25,
-    visualScale: 14.4,
+    visualScale: 1,
   },
   wing: {
     id: 'wing',
@@ -64,8 +64,8 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     thrustKg: 2.2,
     hardpoints: 2,
     hitRadius: 2.7,
-    // Base wing model spans ~0.9 m; drawn ~5.4 m (ADR-0029).
-    visualScale: 6,
+    // The wing model spans ~0.9 m, drawn at real size (ADR-0043).
+    visualScale: 1,
   },
   racer: {
     id: 'racer',
@@ -77,9 +77,9 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     // Default loadout (gun, 0.47 kg) at thrust-to-weight 8.
     thrustKg: 3.76,
     hardpoints: 1,
-    // Much smaller than the 5" (ADR-0036): ~2.5 m drawn, 1 m hit radius. Hard to hit, hard to see.
+    // A 3": the 5" model at 0.65x, ~0.2 m (ADR-0043); 1 m hit radius (ADR-0036). Hard to hit, hard to see.
     hitRadius: 1,
-    visualScale: 6.5,
+    visualScale: 0.65,
   },
   x8: {
     id: 'x8',
@@ -91,9 +91,9 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     // Default loadout (2 guns + burst rifle + missile pod + shield, 3.19 kg) at thrust-to-weight 4.
     thrustKg: 12.76,
     hardpoints: 4,
-    // Much bigger than the 5" (ADR-0036): ~13 m drawn, 5.4 m hit radius. The price of four hardpoints.
+    // ~0.5 m across at real size (ADR-0043); 5.4 m hit radius (ADR-0036): the price of four hardpoints.
     hitRadius: 5.4,
-    visualScale: 21.6,
+    visualScale: 1,
   },
 };
 

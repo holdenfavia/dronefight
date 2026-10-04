@@ -113,6 +113,57 @@ body {
   font-size: 13px;
 }
 
+/* Name tags (ADR-0043), War Thunder style: a small bracket on the pilot, their name above it, distance and a
+   health bar below, all in their color so you can pick them out at range. Edge arrows hide the tag parts. */
+.osd-tag-name,
+.osd-tag-hp {
+  display: none;
+}
+.osd-marker.named {
+  width: 120px;
+  margin: -34px 0 0 -60px;
+  gap: 1px;
+}
+.osd-marker.named .osd-tag-name {
+  display: block;
+  order: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pilot, #fff);
+  text-shadow: 0 0 3px #000, 0 0 1px #000;
+  white-space: nowrap;
+}
+.osd-marker.named .osd-marker-diamond {
+  order: 1;
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+  border-color: var(--pilot, #fff);
+  opacity: 0.85;
+}
+.osd-marker.named .osd-marker-label {
+  order: 2;
+  font-size: 11px;
+  opacity: 0.9;
+  text-shadow: 0 0 3px #000;
+}
+.osd-marker.named .osd-tag-hp:not([hidden]) {
+  display: block;
+  order: 3;
+  width: 36px;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 2px #000;
+}
+.osd-tag-hp span {
+  display: block;
+  height: 100%;
+  background: var(--pilot, #fff);
+  transform-origin: left;
+}
+
 .osd-score {
   position: absolute;
   top: 12px;

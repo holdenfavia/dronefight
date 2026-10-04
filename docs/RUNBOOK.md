@@ -72,7 +72,7 @@ Rules are in ADR-0009. Match rules (respawn and protection times, kills to win, 
 
 - Controller profiles saved before combat have no **Fire** binding. Use **Settings → Map buttons** to map one (keyboard Space always works).
 - Each hardpoint fires from its own screen corner (1 upper-left, 2 upper-right, 3 lower-left, 4 lower-right) and converges 40 m ahead along the FPV view (uptilt included), even in chase view (ADR-0033).
-- **Aim at the lead circle**, not the drone: it shows where your rounds will meet them (ADR-0011). Other drones are drawn at their body's size (5" ~4.5 m, racer ~2.5 m, X8 ~13 m; ADR-0036) with a glow and a fading trail. Physics stay real size.
+- **Aim at the lead circle**, not the drone: it shows where your rounds will meet them (ADR-0011). Drones are drawn at real size (ADR-0043) but hit spheres are big (5" 2.25 m radius): aim at the name tag and lead circle. Tags are built in `pilotMarkers()` (`game.ts`) and drawn by `Hud.updateMarkers`.
 - Visual size, glow size and trail length/width are in `DRONE_VISUAL` in `client/src/config.ts`.
 - Tracers show instantly, but only the server decides hits. You'll see the hit marker when the server confirms, one round trip later.
 
@@ -96,7 +96,7 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 - **Grenade launcher (ADR-0034):** a Fire press lobs a grenade; the next Fire press sets off every grenade you have out (or they go off after 8 s). They bounce and roll (`GRENADE` in `shared/grenade.ts`); the blast reaches 12 m and hurts you too.
 - **Wing jets (ADR-0038):** in the wing's Propulsion slot: micro turbine (slow spool, never idles), pulse jet (can't throttle below ~45%, shakes), ramjet (30% booster until 22 m/s, full by 45 m/s). Behavior in `jet` in `shared/propellers.ts`, applied in `stepWing`; models in `mountJet` (`droneModel.ts`); sounds in `client/src/audio/jetVoice.ts` (`engineVoice` picks prop or jet, for you and other pilots).
 - **X8 horizon mode (ADR-0037):** the X8 self-levels near center stick and is acro past 75% stick. Tuning in `X8.horizon` (`client/src/config.ts`), logic in `horizonBlend` (`flightModel.ts`).
-- **Body sizes (ADR-0036):** `visualScale` and `hitRadius` per body in `shared/drones.ts`; hit radius = half the drawn width along the arms. Physics colliders stay real size (`halfExtents` in `config.ts`) so gaps stay flyable (ADR-0041; drawn-size colliders were tried in ADR-0040 and reverted).
+- **Body sizes (ADR-0036, ADR-0043):** `visualScale` (1 = real-size model) and `hitRadius` per body in `shared/drones.ts`; hit spheres are deliberately bigger than the drones. Physics colliders stay real size (`halfExtents` in `config.ts`) so gaps stay flyable (ADR-0041; drawn-size colliders were tried in ADR-0040 and reverted).
 - **Drag (ADR-0042):** quad drag comes from projected areas (`QUAD_AREAS`) and drag coefficients (`AIR`) in `config.ts`. To change how a quad carries speed or falls, change its areas.
 - **Loadout preview:** the Loadout screen shows your build spinning on a turntable on the right, with numbered badges on each hardpoint (`client/src/render/loadoutPreview.ts`).
 
