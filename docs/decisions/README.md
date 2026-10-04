@@ -45,3 +45,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0039](0039-dark-menu-style.md) | Dark translucent panels with orange accents on every menu; Loadout parts grouped and color-coded (Frame, Weapons 2×2, Propulsion, Special) | Accepted |
 | [0040](0040-one-set-of-numbers.md) | One set of numbers: physics uses the listed weight and thrust; drag retuned (flat fall ~25 m/s); collision box = drawn model size; FOV default 105° | Superseded by 0041 (FOV 105° kept) |
 | [0041](0041-revert-drawn-size-physics.md) | Back to real-size flight physics and colliders (gaps flyable again); keep the 105° default FOV | Accepted |
+| [0042](0042-drag-from-shape.md) | Quad air resistance calculated from each body's real-size projected areas (½ρCdA); flight only, no size/weight/thrust change | Accepted |

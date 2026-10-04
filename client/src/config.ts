@@ -43,6 +43,42 @@ export interface QuadParams {
   };
 }
 
+/**
+ * Air resistance from shape (ADR-0042): drag = 1/2 * air density * Cd * projected area * v^2, per body axis.
+ * Areas are measured off each body's real-size model (client/src/render/droneModel.ts): frame, stack,
+ * battery, camera, motors, and prop blades (an idling prop is mostly air, so only its blades count).
+ */
+export const AIR = {
+  /** Sea-level air density (kg/m^3). */
+  density: 1.225,
+  /** Drag coefficient of a flat plate face-on (the top of a quad falling flat). */
+  cdFlat: 1.17,
+  /** Drag coefficient of a blunt, boxy body side-on (front and side views). */
+  cdBluff: 1.05,
+} as const;
+
+/** Quadratic drag coefficient (N per (m/s)^2) for a projected area (m^2) and drag coefficient. */
+function airDrag(areaM2: number, cd: number): number {
+  return 0.5 * AIR.density * cd * areaM2;
+}
+
+/** Projected areas (m^2) of each quad from above (y), the front (z) and the side (x). */
+export const QUAD_AREAS = {
+  /** 5" freestyle: crossed arms 0.011, stack and battery 0.0018 more, motors 0.002, 12 blades 0.0085. */
+  freestyle: { top: 0.0233, front: 0.0068, side: 0.0085 },
+  /** Same frame, plus a second battery underneath (shows from the front and side). */
+  quad3d: { top: 0.0233, front: 0.0079, side: 0.0108 },
+  /** The racer: the same layout at 3" size (2/3 the span, so 0.44x the area). */
+  racer: { top: 0.0104, front: 0.003, side: 0.0038 },
+  /** X8: long arms 0.025, plate 0.009 more, motors 0.005, blades of 4 coaxial pairs 0.021. */
+  x8: { top: 0.06, front: 0.02, side: 0.023 },
+} as const;
+
+/** Drag coefficients for a body's areas. */
+function shapeDrag(a: { top: number; front: number; side: number }): QuadParams['dragQuadratic'] {
+  return { x: airDrag(a.side, AIR.cdBluff), y: airDrag(a.top, AIR.cdFlat), z: airDrag(a.front, AIR.cdBluff) };
+}
+
 /** A 5" freestyle quad, roughly. */
 export const QUAD: QuadParams = {
   massKg: 0.65,
@@ -61,12 +97,9 @@ export const QUAD: QuadParams = {
   motorTau: 0.02,
   /** How fast the quad's rotation tracks the rate setpoint (seconds). Stands in for a tuned PID loop. */
   rateTau: 0.01,
-  /**
-   * Quadratic drag coefficients per body axis (N per (m/s)^2).
-   * The flat top/bottom face (y) catches much more air than the edges.
-   */
-  dragQuadratic: { x: 0.012, y: 0.022, z: 0.011 },
-  /** Linear drag (N per m/s). Small: too much makes slow flight feel floaty. */
+  /** Quadratic drag per body axis (N per (m/s)^2), from the model's shape (ADR-0042). */
+  dragQuadratic: shapeDrag(QUAD_AREAS.freestyle),
+  /** Linear drag (N per m/s): rotor drag, spinning props resisting sideways airflow. Small. */
   dragLinear: 0.008,
   /** Prop wash: random torque shake when descending through your own disturbed air. */
   propWash: {
@@ -86,8 +119,7 @@ export const QUAD_3D: QuadParams = {
   thrustToWeight: 7,
   // Reversing a motor takes longer than spooling one way.
   motorTau: 0.035,
-  // Symmetric frame: top and bottom faces are similar.
-  dragQuadratic: { x: 0.012, y: 0.02, z: 0.012 },
+  dragQuadratic: shapeDrag(QUAD_AREAS.quad3d),
   idleThrust: 0,
   threeD: { reverseEfficiency: 0.7, centerDeadband: 0.04 },
 };
@@ -103,7 +135,7 @@ export const RACER: QuadParams = {
   thrustToWeight: 8,
   motorTau: 0.015,
   rateTau: 0.007,
-  dragQuadratic: { x: 0.007, y: 0.013, z: 0.007 },
+  dragQuadratic: shapeDrag(QUAD_AREAS.racer),
   dragLinear: 0.005,
 };
 
@@ -115,7 +147,7 @@ export const X8: QuadParams = {
   thrustToWeight: 4,
   motorTau: 0.04,
   rateTau: 0.03,
-  dragQuadratic: { x: 0.026, y: 0.05, z: 0.026 },
+  dragQuadratic: shapeDrag(QUAD_AREAS.x8),
   dragLinear: 0.018,
   // Always flies in horizon mode (ADR-0037): a stable gun platform, not a dodger.
   horizon: { maxAngleDeg: 55, levelGain: 7, transition: 0.75, maxLevelDegPerSec: 300 },
