@@ -66,6 +66,10 @@ export function guns(l: Loadout): WeaponId[] {
   return l.weapons.filter((w): w is WeaponId => !!w && WEAPONS[w].kind === 'gun');
 }
 
+export function launchers(l: Loadout): number {
+  return l.weapons.filter((w) => w === 'grenade').length;
+}
+
 export function missilePods(l: Loadout): number {
   return l.weapons.filter((w) => w === 'missile').length;
 }

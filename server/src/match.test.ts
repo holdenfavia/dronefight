@@ -820,3 +820,61 @@ describe('sampleHistory', () => {
     expect(sampleHistory(h, 10_000)?.[0]).toBeCloseTo(2.5);
   });
 });
+
+describe('grenade launcher (ADR-0034)', () => {
+  function withLauncher() {
+    const t = setup();
+    t.match.onLoadout('A', { body: 'freestyle', weapons: ['grenade', 'gun'], special: null }, t.getNow());
+    t.match.onState('A', droneAt(t.posA, [0, 0, 0], true), t.getNow());
+    t.advance(COMBAT.respawnMs + 100);
+    t.match.onState('A', droneAt(t.posA), t.getNow());
+    t.advance(afterProtection);
+    return t;
+  }
+  const lob = (t: ReturnType<typeof setup>, rid: number, d: Vec3) => t.match.onShot('A', { ts: t.getNow(), p: t.posA, d, w: 'grenade', rid }, t.getNow());
+
+  it('flies under gravity, the server reports where it is, and Fire again sets it off there', () => {
+    const t = withLauncher();
+    lob(t, 1, [0, 0, -1]);
+    t.advance(300);
+    const updates = t.log.filter((m) => m.t === 'grenade' && m.rid === 1);
+    expect(updates.length).toBeGreaterThanOrEqual(3);
+    const last = updates.at(-1);
+    expect(last && last.t === 'grenade' ? last.p[1] : 99).toBeLessThan(t.posA[1]);
+    t.match.onDetonateGrenade('A', 1, t.getNow());
+    expect(t.log.some((m) => m.t === 'boom' && m.rid === 1 && m.kind === 'grenade')).toBe(true);
+  });
+
+  it('a big splash: hurts a pilot 8 m away, nothing at 15 m', () => {
+    const t = withLauncher();
+    // Lob straight up so it hangs near A, then set it off with B nearby.
+    t.setB([t.posA[0] + 8, t.posA[1], t.posA[2]]);
+    lob(t, 2, [0, 1, 0]);
+    t.advance(100);
+    t.match.onDetonateGrenade('A', 2, t.getNow());
+    expect(t.hp('B')).toBeLessThan(FS.maxHp);
+    const t2 = withLauncher();
+    t2.setB([t2.posA[0] + 15, t2.posA[1], t2.posA[2]]);
+    lob(t2, 3, [0, 1, 0]);
+    t2.advance(100);
+    t2.match.onDetonateGrenade('A', 3, t2.getNow());
+    expect(t2.hp('B')).toBe(FS.maxHp);
+  });
+
+  it('one out per launcher; the fuse sets off a forgotten one', () => {
+    const t = withLauncher();
+    lob(t, 4, [0, 1, 0]);
+    t.advance(1100);
+    lob(t, 5, [0, 1, 0]);
+    expect(t.log.filter((m) => m.t === 'shot' && m.s.w === 'grenade').map((m) => (m.t === 'shot' ? m.s.rid : 0))).toEqual([4]);
+    t.advance(9000);
+    expect(t.log.some((m) => m.t === 'boom' && m.rid === 4)).toBe(true);
+  });
+
+  it('only a pilot carrying a launcher can lob', () => {
+    const t = setup();
+    t.advance(afterProtection);
+    lob(t, 9, [0, 0, -1]);
+    expect(t.log.some((m) => m.t === 'shot' && m.s.w === 'grenade')).toBe(false);
+  });
+});

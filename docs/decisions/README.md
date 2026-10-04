@@ -37,3 +37,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0031](0031-supabase-auth.md) | Supabase for Google sign-in and profiles (Discord dropped for now); RLS per pilot; guests migrate on first sign-in; progression written only by the server (step 3) | Accepted |
 | [0032](0032-xp-and-levels.md) | XP and levels awarded by the room server (kill 100, assist 40, prop 10, finish 100, win 300; level n at 250·n·(n−1)); server-only writes via secret key; signed-in pilots in online matches only | Accepted |
 | [0033](0033-loadouts-weight-and-hardpoints.md) | Loadouts: bodies (thrust, weight, hardpoints) + weapons and specials with weight; overloading is allowed and physical; racer and X8, rail gun, burst rifle, afterburner, shield | Accepted |
+| [0034](0034-grenade-launcher.md) | Grenade launcher: server-simulated bouncing grenades; Fire again detonates (8 s fuse); 95 dmg to 3 m, 0 at 12 m, hurts the shooter too | Accepted |

@@ -131,7 +131,8 @@ export class RoomManager {
         player.room?.match.onAbility(player.id, msg.kind, msg.p, this.now());
         break;
       case 'detonate':
-        player.room?.match.onDetonate(player.id, msg.rid, msg.p, this.now());
+        if (msg.w === 'grenade') player.room?.match.onDetonateGrenade(player.id, msg.rid, this.now());
+        else player.room?.match.onDetonate(player.id, msg.rid, msg.p, this.now());
         break;
       case 'auth':
         void this.authenticate(player, msg.token);

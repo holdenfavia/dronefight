@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { DEFAULT_MAP, getMap, type MapDef, type SpawnPoint } from '../../../shared/maps';
 import { COMBAT, pilotColor, pilotName } from '../../../shared/combat';
 import { droneClass } from '../../../shared/drones';
-import { guns, missilePods, type Loadout } from '../../../shared/loadout';
+import { guns, launchers, missilePods, type Loadout } from '../../../shared/loadout';
 import { SHIELD } from '../../../shared/specials';
 import { WEAPONS, type GunSound, type WeaponId } from '../../../shared/weapons';
 import type { MatchPlayer } from '../../../shared/protocol';
@@ -14,7 +14,7 @@ import type { Drone } from '../sim/drone';
 import type { CombatHudInfo, Hud } from '../ui/hud';
 import { SMOKE } from '../../../shared/abilities';
 import { MISSILE, quatRotate, refillPod, type MissileInput, type MissileState } from '../../../shared/missile';
-import type { Missiles, SmokeTrails } from './effects';
+import type { Grenades, Missiles, SmokeTrails } from './effects';
 import type { PropField } from '../../../shared/props';
 import type { V3 } from '../../../shared/maps/movers';
 
@@ -40,6 +40,8 @@ export interface CombatSounds {
   remoteCannon(pilotId: string): void;
   /** Rocket launch and smoke deploy (ADR-0016); positional when `from` is given. */
   rocketLaunch(from?: { x: number; y: number; z: number }): void;
+  /** Grenade launcher (ADR-0034): the launch thoonk, positional for others. */
+  grenadeLaunch(from?: { x: number; y: number; z: number }): void;
   smoke(from?: { x: number; y: number; z: number }): void;
   /** Weapon switch click. */
   weaponSwitch(): void;
@@ -84,6 +86,9 @@ export class CombatClient {
   private burstLeft: number[] = [];
   /** Shield (ADR-0033): when it's ready again (performance.now() ms). */
   private shieldReadyAt = 0;
+  /** Grenade launcher (ADR-0034): no new lob before this (performance.now() ms). */
+  private grenadeCooldownUntil = 0;
+  private nextGrenadeId = 1;
   private missilePod: number = MISSILE.pod;
   private missilePodAt = performance.now();
   private nextMissileId = 1;
@@ -119,7 +124,7 @@ export class CombatClient {
     /** Server respawned us: at this spawn (moved beside it if taken, ADR-0026), flying this loadout (ADR-0012, ADR-0033). */
     private readonly onRespawn: (spawn: SpawnPoint, loadout: Loadout) => void,
     private readonly sounds: CombatSounds,
-    private readonly effects: { smoke: SmokeTrails; missiles: Missiles },
+    private readonly effects: { smoke: SmokeTrails; missiles: Missiles; grenades: Grenades },
   ) {}
 
   /** Round speed for the lead indicator: your first gun's; null with missiles selected (you fly them) or no guns. */
@@ -199,6 +204,8 @@ export class CombatClient {
       const pod = refillPod(this.missilePod, this.missilePodAt, now, this.podSize).ammo;
       return { label: 'MISSILE', value: `${Math.floor(pod)}/${this.podSize}` };
     }
+    // Grenades out: Fire again sets them off (ADR-0034).
+    if (launchers(l) > 0 && this.effects.grenades.out(this.myId) > 0) return { label: 'GRENADE', value: 'FIRE: DETONATE' };
     const wait = (until: number) => (until - now > 0 ? `${Math.ceil((until - now) / 1000)}s` : 'READY');
     if (l.special === 'smoke') return { label: 'SMOKE', value: wait(this.smokeReadyAt) };
     if (l.special === 'shield') {
@@ -307,6 +314,20 @@ export class CombatClient {
         this.fireCooldown = 0.3;
       }
     }
+    // Grenade launcher (ADR-0034): a Fire press sets off the grenades you have out; with none out, it lobs one.
+    if (firing && firePressed && !this.missilesSelected && launchers(loadout) > 0) {
+      const out = this.effects.grenades.ours(this.myId);
+      if (out.length > 0) {
+        for (const g of out) {
+          this.effects.grenades.detonateLocal(this.myId, g.rid);
+          this.net.sendDetonate(g.rid, g.p, 'grenade');
+        }
+        this.grenadeCooldownUntil = now + 250;
+      } else if (now >= this.grenadeCooldownUntil) {
+        this.lobGrenade();
+        this.grenadeCooldownUntil = now + 1000 / WEAPONS.grenade.fireRate;
+      }
+    }
     // Guns (ADR-0033): every gun on a hardpoint fires at its own rate while Fire is held.
     const gunsFiring = firing && !this.missilesSelected;
     let soundsThisFrame = 0;
@@ -390,6 +411,20 @@ export class CombatClient {
     return slot === undefined ? 'Pilot' : pilotName(slot);
   }
 
+  /** Lob a grenade (ADR-0034) from each launcher's corner (they take turns), carrying the drone's velocity. */
+  private lobGrenade(): void {
+    const slots = this.drone.loadout.weapons.flatMap((w, i) => (w === 'grenade' ? [i] : []));
+    const slot = slots[this.nextGrenadeId % Math.max(1, slots.length)] ?? 0;
+    this.muzzle(slot);
+    const o = this.origin;
+    const d = this.dir;
+    const rid = this.nextGrenadeId++;
+    this.effects.grenades.launchLocal(this.myId, rid, o, d, this.drone.state.linvel);
+    this.sounds.grenadeLaunch();
+    const r = (x: number) => Math.round(x * 1000) / 1000;
+    this.net.sendShot({ ts: Math.round(this.net.serverNow()), p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)], w: 'grenade', rid });
+  }
+
   /** Launch a missile (ADR-0025) from a missile pod's corner (pods take turns), toward the crosshair. */
   private fireMissile(): void {
     const pods = this.drone.loadout.weapons.flatMap((w, i) => (w === 'missile' ? [i] : []));
@@ -432,7 +467,7 @@ export class CombatClient {
         this.propAt.copy(o).addScaledVector(d, prop.dist);
         this.onPropRound?.(prop.i, gun.damage, (prop.dist / gun.speed) * 1000, this.propAt);
       }
-      if (id !== 'missile') this.tracers.spawn(o, d, maxDist, this.myColor, gun.speed, id);
+      if (id !== 'missile' && id !== 'grenade') this.tracers.spawn(o, d, maxDist, this.myColor, gun.speed, id);
       this.onLocalRound?.(o, d, gun.speed, gun.damage, maxDist);
       this.net.sendShot({ ts, p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)], w: id });
     }
@@ -508,7 +543,14 @@ export class CombatClient {
           this.effects.smoke.start(ev.id);
           this.sounds.smoke(this.shotOrigin.set(ev.p[0], ev.p[1], ev.p[2]));
           break;
+        case 'grenade':
+          if (ev.id !== you) this.effects.grenades.track(ev.id, ev.rid, ev.p);
+          break;
         case 'boom':
+          if (ev.kind === 'grenade') {
+            this.effects.grenades.detonate(ev.id === you ? this.myId : ev.id, ev.rid, ev.p);
+            break;
+          }
           // Server-decided detonation: draw it here, for everyone's missiles including ours.
           this.effects.missiles.detonate(ev.id === you ? this.myId : ev.id, ev.rid, ev.p);
           break;
@@ -538,6 +580,11 @@ export class CombatClient {
     for (const shot of this.net.remoteShots.splice(0)) {
       const [px, py, pz] = shot.s.p;
       const [dx, dy, dz] = shot.s.d;
+      if (shot.s.w === 'grenade') {
+        this.effects.grenades.launchRemote(shot.id, shot.s.rid ?? 0, this.shotOrigin.set(px, py, pz));
+        this.sounds.grenadeLaunch(this.shotOrigin);
+        continue;
+      }
       if (shot.s.w === 'missile') {
         this.effects.missiles.launchRemote(shot.id, shot.s.rid ?? 0, this.shotOrigin.set(px, py, pz), this.shotDir.set(dx, dy, dz));
         this.sounds.rocketLaunch(this.shotOrigin);

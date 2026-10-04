@@ -79,7 +79,12 @@ export class Menu {
     this.root.hidden = true;
   }
 
-  /** In a game (flying solo, or in a room): menus go back to the pause menu instead of the start screen. */
+  /** The build to show in the 3D preview while the Loadout screen is open, else null (ADR-0033). */
+  get previewLoadout(): Loadout | null {
+    return this.visible && this.screen === 'drone' ? this.settings.loadouts[this.settings.drone] : null;
+  }
+
+    /** In a game (flying solo, or in a room): menus go back to the pause menu instead of the start screen. */
   private get inGame(): boolean {
     return this.flying || this.net.inRoom;
   }

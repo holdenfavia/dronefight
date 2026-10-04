@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { SMOKE } from '../../../shared/abilities';
+import { GRENADE, launchGrenade, stepGrenade, type GrenadeState } from '../../../shared/grenade';
 import { launchMissile, MISSILE, missileImpact, stepMissile, type MissileInput, type MissileState, type Vec3 } from '../../../shared/missile';
 import type { BoxCollider } from '../../../shared/raycast';
 import type { Particles } from '../render/particles';
@@ -78,7 +79,7 @@ export class Missiles {
   onLocalEnd: ((rid: number, at: Vec3) => void) | null = null;
   private readonly missiles: FlyingMissile[] = [];
   private readonly pool: THREE.Mesh[] = [];
-  private readonly flashes: { sprite: THREE.Sprite; born: number }[] = [];
+  private readonly flashes: { sprite: THREE.Sprite; born: number; size: number }[] = [];
   private readonly geo = new THREE.CylinderGeometry(0.14, 0.14, 1.1, 8).rotateX(Math.PI / 2);
   private readonly mat = new THREE.MeshBasicMaterial({ color: '#fff3d6', toneMapped: false });
   private readonly flashMat: THREE.SpriteMaterial;
@@ -208,7 +209,7 @@ export class Missiles {
         this.flashes.splice(i, 1);
         continue;
       }
-      f.sprite.scale.setScalar(4 + age * 10);
+      f.sprite.scale.setScalar((4 + age * 10) * f.size);
       f.sprite.material.opacity = 1 - age;
     }
   }
@@ -242,8 +243,8 @@ export class Missiles {
   }
 
   /** Draw an explosion without the explosion callback (e.g. a practice bot blowing up). */
-  effect(at: THREE.Vector3): void {
-    this.drawExplosion(at);
+  effect(at: THREE.Vector3, size = 1): void {
+    this.drawExplosion(at, size);
   }
 
   private explode(at: THREE.Vector3): void {
@@ -251,18 +252,18 @@ export class Missiles {
     this.onExplode(at);
   }
 
-  private drawExplosion(at: THREE.Vector3): void {
+  private drawExplosion(at: THREE.Vector3, size = 1): void {
     const sprite = new THREE.Sprite(this.flashMat.clone());
     sprite.position.copy(at);
     this.scene.add(sprite);
-    this.flashes.push({ sprite, born: performance.now() });
+    this.flashes.push({ sprite, born: performance.now(), size });
     for (let i = 0; i < 14; i++) {
       const a = Math.random() * Math.PI * 2;
       const e = (Math.random() - 0.3) * Math.PI;
-      const s = 2 + Math.random() * 4;
+      const s = (2 + Math.random() * 4) * size;
       this.particles.emit(at.x, at.y, at.z, {
-        startSize: 0.8,
-        endSize: 3 + Math.random() * 2.5,
+        startSize: 0.8 * size,
+        endSize: (3 + Math.random() * 2.5) * size,
         lifeMs: 1400 + Math.random() * 900,
         color: i < 4 ? '#6b6258' : '#9a958e',
         alpha: 0.85,
@@ -275,3 +276,136 @@ export class Missiles {
 }
 
 const FORWARD = new THREE.Vector3(0, 0, -1);
+
+/**
+ * Grenades (ADR-0034): ours predicted with the shared physics from launch (bounces, rolling), theirs drawn
+ * from the server's ~20/s positions. The server decides where each one really goes off (`boom`).
+ */
+interface LiveGrenade {
+  owner: string;
+  rid: number;
+  /** Ours: predicted locally. */
+  local: GrenadeState | null;
+  /** Theirs: where the server last put it, and when. */
+  remote: { p: THREE.Vector3; prev: THREE.Vector3; at: number } | null;
+  born: number;
+  mesh: THREE.Group;
+  lastPuff: number;
+}
+
+export class Grenades {
+  private readonly live: LiveGrenade[] = [];
+  /** Ours that already went off locally, so the server's boom doesn't draw a second blast. */
+  private readonly recent: string[] = [];
+  private readonly shell = new THREE.MeshStandardMaterial({ color: '#3c4a2c', roughness: 0.55, metalness: 0.3 });
+  private readonly band = new THREE.MeshStandardMaterial({ color: '#ff6a13', roughness: 0.4 });
+  private readonly light = new THREE.MeshBasicMaterial({ color: '#ff3020', toneMapped: false });
+  private readonly pos = new THREE.Vector3();
+  /** A bounce worth a clink (ours, predicted). */
+  onBounce: ((at: THREE.Vector3) => void) | null = null;
+
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly particles: Particles,
+    private readonly colliders: () => readonly BoxCollider[],
+    /** Draws the blast; `big` sized for a grenade. */
+    private readonly onExplode: (at: THREE.Vector3) => void,
+  ) {}
+
+  /** How many of `owner`'s grenades are out. */
+  out(owner: string): number {
+    return this.live.filter((g) => g.owner === owner).length;
+  }
+
+  /** Our launch: predict it from the same start the server uses. */
+  launchLocal(owner: string, rid: number, origin: THREE.Vector3, dir: THREE.Vector3, carrier: THREE.Vector3): void {
+    this.add(owner, rid, launchGrenade([origin.x, origin.y, origin.z], [dir.x, dir.y, dir.z], [carrier.x, carrier.y, carrier.z]), null);
+  }
+
+  /** Someone else's launch: shown from the server's updates. */
+  launchRemote(owner: string, rid: number, origin: THREE.Vector3): void {
+    this.add(owner, rid, null, { p: origin.clone(), prev: origin.clone(), at: performance.now() });
+  }
+
+  track(owner: string, rid: number, p: readonly [number, number, number]): void {
+    const g = this.live.find((x) => x.owner === owner && x.rid === rid);
+    if (!g?.remote) return;
+    g.remote.prev.copy(g.mesh.position);
+    g.remote.p.set(p[0], p[1], p[2]);
+    g.remote.at = performance.now();
+  }
+
+  /** Our grenades, to set off (Fire pressed again). Returns where each predicted one is. */
+  ours(owner: string): { rid: number; p: [number, number, number] }[] {
+    return this.live.filter((g) => g.owner === owner && g.local).map((g) => ({ rid: g.rid, p: [g.local!.p[0], g.local!.p[1], g.local!.p[2]] }));
+  }
+
+  /** Blow one of ours up right now (the server's boom follows, and isn't drawn twice). */
+  detonateLocal(owner: string, rid: number): void {
+    const i = this.live.findIndex((g) => g.owner === owner && g.rid === rid);
+    if (i < 0) return;
+    this.recent.push(`${owner}:${rid}`);
+    if (this.recent.length > 16) this.recent.shift();
+    this.pos.copy(this.live[i]!.mesh.position);
+    this.remove(i);
+    this.onExplode(this.pos);
+  }
+
+  /** The server says this grenade went off here. */
+  detonate(owner: string, rid: number, at: readonly [number, number, number]): void {
+    const i = this.live.findIndex((g) => g.owner === owner && g.rid === rid);
+    if (i >= 0) this.remove(i);
+    else if (this.recent.includes(`${owner}:${rid}`)) return;
+    this.onExplode(this.pos.set(at[0], at[1], at[2]));
+  }
+
+  update(dt: number): void {
+    const now = performance.now();
+    for (let i = this.live.length - 1; i >= 0; i--) {
+      const g = this.live[i]!;
+      const m = g.mesh;
+      if (g.local) {
+        const { bounces } = stepGrenade(g.local, this.colliders(), dt);
+        m.position.set(g.local.p[0], g.local.p[1], g.local.p[2]);
+        if (bounces > 0) this.onBounce?.(m.position);
+        // Tumble while it flies.
+        if (!g.local.resting) m.rotation.x += dt * 9;
+      } else if (g.remote) {
+        // Ease from where it was drawn toward the latest server position over one update interval.
+        const k = Math.min(1, (now - g.remote.at) / 50);
+        m.position.lerpVectors(g.remote.prev, g.remote.p, k);
+        if (now - g.remote.at > 1500) {
+          this.remove(i);
+          continue;
+        }
+      }
+      // The light blinks faster as the fuse runs down.
+      const left = Math.max(0.05, 1 - (now - g.born) / (GRENADE.fuseSeconds * 1000));
+      const lamp = m.children[2];
+      if (lamp) lamp.visible = Math.sin((now / 1000) * (6 / left)) > 0;
+      if (now - g.lastPuff > 45 && !(g.local?.resting ?? false)) {
+        g.lastPuff = now;
+        this.particles.emit(m.position.x, m.position.y, m.position.z, { startSize: 0.25, endSize: 1.2, lifeMs: 700, color: '#bdbab3', alpha: 0.55, vy: 0.4 });
+      }
+    }
+  }
+
+  private add(owner: string, rid: number, local: GrenadeState | null, remote: LiveGrenade['remote']): void {
+    const mesh = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 10).scale(1, 1, 1.35), this.shell);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 6, 16), this.band);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), this.light);
+    lamp.position.z = -0.66;
+    mesh.add(body, ring, lamp);
+    mesh.traverse((o) => (o.castShadow = true));
+    const p = local ? local.p : [remote!.p.x, remote!.p.y, remote!.p.z];
+    mesh.position.set(p[0]!, p[1]!, p[2]!);
+    this.scene.add(mesh);
+    this.live.push({ owner, rid, local, remote, born: performance.now(), mesh, lastPuff: 0 });
+  }
+
+  private remove(i: number): void {
+    this.scene.remove(this.live[i]!.mesh);
+    this.live.splice(i, 1);
+  }
+}

@@ -6,7 +6,8 @@ import { CannonVoice } from './audio/cannonVoice';
 import { RemoteAudio } from './audio/remoteAudio';
 import { Sfx } from './audio/sfx';
 import { CombatClient } from './combat/combatClient';
-import { Missiles, SmokeTrails } from './combat/effects';
+import { Grenades, Missiles, SmokeTrails } from './combat/effects';
+import { grenadeDamage } from '../../shared/grenade';
 import { buildColliders } from '../../shared/raycast';
 import { Particles } from './render/particles';
 import { TrainingGround } from './training/trainingGround';
@@ -19,6 +20,7 @@ import { CameraRig } from './render/cameraRig';
 import { createClassModel, setDronePropColor } from './render/droneModel';
 import { RemoteDrones } from './render/remoteDrones';
 import { Tracers } from './render/tracers';
+import { LoadoutPreview } from './render/loadoutPreview';
 import { Trails } from './render/trails';
 import { COMBAT, pilotColor } from '../../shared/combat';
 import { droneClass } from '../../shared/drones';
@@ -87,6 +89,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const remotes = new RemoteDrones(world.scene);
   const net = new NetClient(defaultServerUrl(), () => menu.onNetChange());
   const tracers = new Tracers(world.scene);
+  const loadoutPreview = new LoadoutPreview();
   const particles = new Particles(world.scene);
   // Map geometry for predicting our missile's impacts (rebuilt when the map changes).
   let mapColliders = buildColliders(currentMap.boxes);
@@ -99,7 +102,15 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       // Solo: our missile damages props here; online the server does (ADR-0023).
       if (!net.inRoom) props.splash([at.x, at.y, at.z], propClock(), 'me', splashDamage);
     }),
+    // Grenades (ADR-0034): a bigger blast and a heavier boom than a missile.
+    grenades: new Grenades(world.scene, particles, () => mapColliders, (at: THREE.Vector3) => {
+      combatEffects.missiles.effect(at, 2.2);
+      sfx.grenadeBlast(at);
+      training.splash(at);
+      if (!net.inRoom) props.splash([at.x, at.y, at.z], propClock(), 'me', grenadeDamage);
+    }),
   };
+  combatEffects.grenades.onBounce = (at) => sfx.grenadeBounce(at);
   // Solo practice bots on the Training map (ADR-0017).
   const training = new TrainingGround(world.scene, {
     onHit: () => {
@@ -166,6 +177,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       countdown: (n) => sfx.countdown(n),
       stinger: (kind) => sfx.stinger(kind),
       rocketLaunch: (from) => sfx.rocketLaunch(from),
+      grenadeLaunch: (from) => sfx.grenadeLaunch(from),
       smoke: (from) => sfx.smoke(from),
       weaponSwitch: () => sfx.weaponSwitch(),
     },
@@ -321,6 +333,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     const h = container.clientHeight;
     renderer.setSize(w, h);
     rig.resize(w, h);
+    loadoutPreview.resize(w, h);
   }
   window.addEventListener('resize', resize);
   resize();
@@ -599,6 +612,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     }
     droneModel.visible = settings.camera.view === 'chase' || !!ridden;
     tracers.update();
+    combatEffects.grenades.update(paused ? 0 : frameDt);
     particles.update(rig.camera, frameDt);
     training.setActive(!net.inRoom && currentMap.id === 'training');
     training.update(paused ? 0 : frameDt, rig.camera);
@@ -644,5 +658,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     });
 
     renderer.render(world.scene, rig.camera);
+    // The Loadout screen's 3D preview, drawn over the paused view (ADR-0033).
+    loadoutPreview.update(menu.previewLoadout, combat.myColor, frameDt);
+    loadoutPreview.render(renderer);
   });
 }

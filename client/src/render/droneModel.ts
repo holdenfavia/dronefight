@@ -171,50 +171,84 @@ function hardpointX(slot: number, slots: number, width: number): number {
   return slots <= 1 ? 0 : (slot / (slots - 1) - 0.5) * width;
 }
 
-/** A small model of a weapon module, hung under the frame (ADR-0033). Forward is -Z. */
+/** A small model of a weapon module, hung under the frame (ADR-0033, ADR-0034). Real scale; forward is -Z. */
 function weaponModel(id: WeaponId): THREE.Group {
   const g = new THREE.Group();
-  const dark = new THREE.MeshStandardMaterial({ color: '#2a2c30', roughness: 0.45, metalness: 0.6 });
-  const steel = new THREE.MeshStandardMaterial({ color: '#9aa0a6', roughness: 0.3, metalness: 0.8 });
-  const barrel = (len: number, radius: number, x = 0, y = 0) => {
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, len, 8).rotateX(Math.PI / 2), steel);
-    m.position.set(x, y, -len / 2);
-    g.add(m);
+  const dark = new THREE.MeshStandardMaterial({ color: '#24262a', roughness: 0.45, metalness: 0.6 });
+  const steel = new THREE.MeshStandardMaterial({ color: '#a7adb3', roughness: 0.25, metalness: 0.85 });
+  const orange = new THREE.MeshStandardMaterial({ color: PALETTE.orange, roughness: 0.5 });
+  const glowMat = (color: string) => new THREE.MeshBasicMaterial({ color, toneMapped: false });
+  const box = (w: number, h: number, d: number, x: number, y: number, z: number, m: THREE.Material) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+    mesh.position.set(x, y, z);
+    g.add(mesh);
+    return mesh;
+  };
+  const tube = (len: number, r: number, x: number, y: number, z0: number, m: THREE.Material = steel, segments = 10) => {
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, segments).rotateX(Math.PI / 2), m);
+    mesh.position.set(x, y, z0 - len / 2);
+    g.add(mesh);
+    return mesh;
+  };
+  const ring = (r: number, tubeR: number, x: number, y: number, z: number, m: THREE.Material) => {
+    const mesh = new THREE.Mesh(new THREE.TorusGeometry(r, tubeR, 6, 16), m);
+    mesh.position.set(x, y, z);
+    g.add(mesh);
   };
   switch (id) {
     case 'gun':
-      barrel(0.06, 0.004);
+      box(0.014, 0.014, 0.03, 0, 0, 0, dark);
+      tube(0.06, 0.004, 0, 0, -0.015);
+      ring(0.006, 0.0018, 0, 0, -0.074, dark);
       break;
     case 'burst':
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.014, 0.05), dark), {}));
-      barrel(0.07, 0.004, 0, 0.002);
+      box(0.016, 0.016, 0.045, 0, 0, 0, dark);
+      box(0.008, 0.02, 0.012, 0, -0.016, 0.004, orange);
+      tube(0.055, 0.0045, 0, 0.002, -0.022);
       break;
     case 'shotgun':
-      barrel(0.06, 0.006, -0.006);
-      barrel(0.06, 0.006, 0.006);
+      box(0.026, 0.014, 0.028, 0, 0, 0.005, dark);
+      tube(0.065, 0.0055, -0.006, 0, -0.009);
+      tube(0.065, 0.0055, 0.006, 0, -0.009);
+      box(0.02, 0.008, 0.018, 0, -0.011, -0.03, orange);
       break;
-    case 'cannon':
-      for (let k = 0; k < 3; k++) barrel(0.08, 0.003, Math.cos((k / 3) * Math.PI * 2) * 0.006, Math.sin((k / 3) * Math.PI * 2) * 0.006);
+    case 'cannon': {
+      const housing = tube(0.03, 0.012, 0, 0, 0.012, dark, 12);
+      housing.position.z = 0;
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        tube(0.075, 0.0025, Math.cos(a) * 0.0075, Math.sin(a) * 0.0075, -0.012);
+      }
+      ring(0.0105, 0.002, 0, 0, -0.08, dark);
       break;
+    }
     case 'rail': {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, 0.16), dark);
-      body.position.z = -0.04;
-      const glow = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.004, 0.14), new THREE.MeshBasicMaterial({ color: '#7fe0ff', toneMapped: false }));
-      glow.position.set(0, 0.011, -0.04);
-      g.add(body, glow);
+      for (const x of [-0.009, 0.009]) box(0.006, 0.016, 0.16, x, 0, -0.04, dark);
+      for (let k = 0; k < 4; k++) ring(0.013, 0.0022, 0, 0, -0.005 - k * 0.035, glowMat('#7fe0ff'));
+      box(0.004, 0.004, 0.15, 0, 0, -0.04, glowMat('#c8f7ff'));
       break;
     }
     case 'missile': {
-      const pod = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.022, 0.07), dark);
-      g.add(pod);
-      for (const x of [-0.008, 0.008]) {
-        const tip = new THREE.Mesh(new THREE.ConeGeometry(0.005, 0.012, 8).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#d7263d' }));
-        tip.position.set(x, 0, -0.041);
+      box(0.032, 0.024, 0.07, 0, 0, 0, dark);
+      for (const x of [-0.0105, 0, 0.0105]) {
+        tube(0.012, 0.0045, x, 0.004, -0.035, steel, 8);
+        const tip = new THREE.Mesh(new THREE.ConeGeometry(0.0045, 0.012, 8).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#d7263d' }));
+        tip.position.set(x, 0.004, -0.053);
         g.add(tip);
       }
       break;
     }
+    case 'grenade': {
+      tube(0.075, 0.011, 0, 0, 0.02, dark, 14);
+      ring(0.011, 0.0025, 0, 0, -0.055, orange);
+      const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.018, 14), dark);
+      drum.position.set(0, -0.016, 0.005);
+      g.add(drum);
+      box(0.004, 0.004, 0.004, 0, 0.012, -0.02, glowMat('#ff3020'));
+      break;
+    }
   }
+  g.traverse((o) => (o.castShadow = true));
   return g;
 }
 
@@ -236,9 +270,12 @@ export function createClassModel(cls: DroneClassId, teamColor: string, loadout: 
   // Weapons: under the frame (on a wing, under the wing either side of the pod).
   const width = cls === 'wing' ? 0.5 : cls === 'x8' ? 0.16 : 0.08;
   const below = cls === 'wing' ? -0.02 : cls === 'x8' ? -0.025 : -0.012;
+  const mounts: THREE.Object3D[] = [];
   loadout.weapons.forEach((w, i) => {
     if (!w) return;
     const m = weaponModel(w);
+    m.userData.slot = i;
+    mounts.push(m);
     m.position.set(hardpointX(i, loadout.weapons.length, width), below, cls === 'wing' ? -0.02 : -0.03);
     model.add(m);
   });
@@ -246,6 +283,7 @@ export function createClassModel(cls: DroneClassId, teamColor: string, loadout: 
   const inner = cls === 'racer' ? 0.7 : cls === 'x8' ? 1 : 1;
   model.scale.setScalar(droneClass(cls).visualScale * inner);
   model.userData.droneClass = cls;
+  model.userData.weaponMounts = mounts;
   model.userData.loadoutKey = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}`;
   return model;
 }

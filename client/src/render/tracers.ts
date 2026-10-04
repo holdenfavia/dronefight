@@ -29,7 +29,10 @@ interface ProjectileStyle {
   beam?: { fadeMs: number };
 }
 
-export const PROJECTILE_STYLES: Record<Exclude<WeaponId, 'missile'>, ProjectileStyle> = {
+/** Weapons that fire rounds (missiles and grenades are their own objects). */
+export type RoundWeapon = Exclude<WeaponId, 'missile' | 'grenade'>;
+
+export const PROJECTILE_STYLES: Record<RoundWeapon, ProjectileStyle> = {
   // Classic white-hot tracer.
   gun: { streak: 4, core: 0.07, glow: 0.22, color: '#fff3c4' },
   // Short, chunky yellow bolts in threes.
@@ -91,7 +94,7 @@ export class Tracers {
   }
 
   /** A round from `weapon`, fired by a pilot of `pilotColor`. */
-  spawn(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number, pilotColor: string, speed: number, weapon: Exclude<WeaponId, 'missile'> = 'gun', ageMs = 0): void {
+  spawn(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number, pilotColor: string, speed: number, weapon: RoundWeapon = 'gun', ageMs = 0): void {
     const i = this.next;
     this.next = (this.next + 1) % CAPACITY;
     const t = this.pool[i];

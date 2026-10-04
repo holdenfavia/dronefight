@@ -3,7 +3,7 @@ import { SMOKE } from '../../shared/abilities.js';
 import { MISSILE, MISSILE_MAX_AGE, missileImpact, refillPod, splashDamage } from '../../shared/missile.js';
 import { COMBAT } from '../../shared/combat.js';
 import { DEFAULT_DRONE, droneClass, type DroneClassId } from '../../shared/drones.js';
-import { cleanLoadout, count, defaultLoadout, missilePods, type Loadout } from '../../shared/loadout.js';
+import { cleanLoadout, count, defaultLoadout, launchers, missilePods, type Loadout } from '../../shared/loadout.js';
 import { SHIELD } from '../../shared/specials.js';
 import { WEAPONS, type WeaponId } from '../../shared/weapons.js';
 import {
@@ -17,6 +17,7 @@ import {
 } from '../../shared/protocol.js';
 import { buildColliders, raycastArena, segmentPointDistance } from '../../shared/raycast.js';
 import { blastDamage, PropField, type Blast } from '../../shared/props.js';
+import { grenadeDamage, launchGrenade, stepGrenade, type GrenadeState } from '../../shared/grenade.js';
 import type { ProgressEvent } from './progression.js';
 
 /**
@@ -127,6 +128,9 @@ export class Match {
   private readonly pilots = new Map<string, Pilot>();
   private bullets: Bullet[] = [];
   private missiles: Missile[] = [];
+  /** Grenades in the air or on the ground (ADR-0034), simulated here, and when they were last stepped. */
+  private grenades: { shooter: string; rid: number; g: GrenadeState; lastSent: number }[] = [];
+  private grenadeClock = 0;
   private now = 0;
   private protectedAnnounced = new Set<string>();
   private readonly map: MapDef;
@@ -190,11 +194,13 @@ export class Match {
     this.pilots.delete(id);
     this.bullets = this.bullets.filter((b) => b.shooter !== id);
     this.missiles = this.missiles.filter((m) => m.shooter !== id);
+    this.grenades = this.grenades.filter((g) => g.shooter !== id);
     if (this.pilots.size < MIN_PILOTS) {
       this.phase = 'waiting';
       this.winner = null;
       this.bullets = [];
       this.missiles = [];
+      this.grenades = [];
       for (const p of this.pilots.values()) {
         p.score = 0;
         applyPending(p);
@@ -258,6 +264,16 @@ export class Match {
 
     // Only weapons actually mounted can fire (ADR-0033).
     if (count(pilot.loadout, shot.w) === 0) return;
+    if (shot.w === 'grenade') {
+      // Launched in every phase (props can be blown up any time); one out per launcher you carry.
+      if (!pilot.alive || !muzzleOk || !takeRound(pilot, 'grenade', st)) return;
+      if (this.grenades.filter((g) => g.shooter === id).length >= launchers(pilot.loadout)) return;
+      this.emit({ t: 'shot', id, s: shot }, { except: id });
+      const carrier = last?.v ?? [0, 0, 0];
+      if (this.grenades.length === 0) this.grenadeClock = st;
+      this.grenades.push({ shooter: id, rid: shot.rid ?? 0, g: launchGrenade(shot.p, shot.d, [carrier[0], carrier[1], carrier[2]]), lastSent: 0 });
+      return;
+    }
     if (shot.w === 'missile') {
       // Missiles fly in every phase (they only do damage in a running match), and are relayed to others
       // only once accepted, so nobody sees a ghost launch (ADR-0016).
@@ -391,6 +407,52 @@ export class Match {
   }
 
   /** The shooter blew up their missile (or their client saw it hit something). Trust the point if it's plausible. */
+  /** Set off a grenade where the server has it (the shooter pressed Fire again, ADR-0034). */
+  onDetonateGrenade(id: string, rid: number, now: number): void {
+    this.stepGrenades(now);
+    const x = this.grenades.find((g) => g.shooter === id && g.rid === rid);
+    if (!x) return;
+    this.grenades.splice(this.grenades.indexOf(x), 1);
+    this.explodeGrenade(x.shooter, x.rid, x.g.p, now);
+  }
+
+  /** Advance grenades to `now`: they bounce and roll; the fuse sets off any left too long. Positions go out ~20/s. */
+  private stepGrenades(now: number): void {
+    if (this.grenades.length === 0) {
+      this.grenadeClock = now;
+      return;
+    }
+    const dt = Math.min(0.25, Math.max(0, (now - this.grenadeClock) / 1000));
+    this.grenadeClock = now;
+    for (const x of [...this.grenades]) {
+      if (stepGrenade(x.g, this.colliders, dt).expired) {
+        this.grenades.splice(this.grenades.indexOf(x), 1);
+        this.explodeGrenade(x.shooter, x.rid, x.g.p, now);
+      }
+    }
+    for (const x of this.grenades) {
+      if (now - x.lastSent < MISSILE_SEND_MS) continue;
+      x.lastSent = now;
+      const r = (n: number) => Math.round(n * 100) / 100;
+      this.emit({ t: 'grenade', id: x.shooter, rid: x.rid, p: x.g.p.map(r) as Vec3 });
+    }
+  }
+
+  /** A grenade goes off: a big blast that hurts everyone nearby (the shooter too) and props (ADR-0034). */
+  private explodeGrenade(shooter: string, rid: number, at: Vec3, now: number): void {
+    const p: Vec3 = [at[0], at[1], at[2]];
+    this.emit({ t: 'boom', id: shooter, rid, p, kind: 'grenade' });
+    this.props.splash(p, now, shooter, grenadeDamage);
+    if (this.phase !== 'playing') return;
+    for (const target of [...this.pilots.values()]) {
+      if (!target.alive || target.protectedUntil > now) continue;
+      const pos = sampleHistory(target.history, now);
+      if (!pos) continue;
+      const damage = grenadeDamage(Math.hypot(pos[0] - p[0], pos[1] - p[1], pos[2] - p[2]));
+      if (damage > 0) this.hit(shooter, damage, target, now);
+    }
+  }
+
   onDetonate(id: string, rid: number, p: Vec3, now: number): void {
     const x = this.missiles.find((m) => m.shooter === id && m.rid === rid);
     if (!x) return;
@@ -443,6 +505,7 @@ export class Match {
     }
     this.stepBullets(now);
     this.stepMissiles(now);
+    this.stepGrenades(now);
     this.stepProps(now);
   }
 
@@ -600,6 +663,7 @@ export class Match {
         this.resultsUntil = now + COMBAT.resultsMs;
         this.bullets = [];
         this.missiles = [];
+        this.grenades = [];
         for (const p of this.pilots.values()) p.respawnAt = null;
       }
     }
@@ -659,6 +723,7 @@ export class Match {
     this.winner = null;
     this.bullets = [];
     this.missiles = [];
+    this.grenades = [];
     for (const pilot of this.pilots.values()) {
       pilot.score = 0;
       pilot.ammo = new Map();

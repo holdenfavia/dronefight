@@ -71,6 +71,32 @@ export class Sfx {
     this.noise(out, t + 0.07, 0.025, { type: 'bandpass', freq: 1800 }, 0.6, 0.02);
   }
 
+  /** Grenade launcher (ADR-0034): a hollow tube "thoonk": low pop, a resonant tube note, a puff of air. */
+  grenadeLaunch(from?: Position): void {
+    const out = this.output(from, from ? 1 : 0.75);
+    const t = this.engine.now;
+    this.tone(out, t, 'sine', 210, 55, 0.22, 0.9);
+    this.tone(out, t, 'triangle', 420, 300, 0.12, 0.25);
+    this.noise(out, t, 0.18, { type: 'bandpass', freq: 500, to: 220 }, 0.5, 0.16);
+  }
+
+  /** A grenade bouncing (ADR-0034): a short metallic clink. */
+  grenadeBounce(at: Position): void {
+    const out = this.output(at, 0.6);
+    const t = this.engine.now;
+    this.tone(out, t, 'triangle', 1900, 1700, 0.05, 0.25);
+    this.tone(out, t, 'sine', 3100, 2900, 0.035, 0.12);
+  }
+
+  /** A grenade blast (ADR-0034): the explosion plus a heavier, longer low end. */
+  grenadeBlast(at: Position): void {
+    this.explosion(at);
+    const out = this.output(at, 1.4);
+    const t = this.engine.now;
+    this.tone(out, t, 'sine', 55, 22, 1.2, 1.0);
+    this.noise(out, t + 0.05, 1.8, { type: 'lowpass', freq: 600, to: 60 }, 0.8, 1.6);
+  }
+
   /** Rail gun (ADR-0033): a charged zap, a supersonic crack, and a ringing tail. */
   rail(from?: Position): void {
     const out = this.output(from, from ? 1.1 : 0.7);

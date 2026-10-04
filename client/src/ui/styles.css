@@ -980,3 +980,6 @@ body {
 .tw.pig .tw-bar div, .tw.grounded .tw-bar div { background: #d33; }
 .tw.pig .tw-label, .tw.grounded .tw-label { color: #c62020; }
 .tw.grounded { background: #fff0f0; }
+
+/* Loadout: panel on the left, the 3D preview turns on the right (ADR-0033). */
+#menu:has(.panel.loadout) { align-items: flex-start; padding-left: 4vw; background: linear-gradient(90deg, rgba(20, 21, 22, 0.75) 0%, rgba(20, 21, 22, 0.35) 50%, rgba(20, 21, 22, 0.05) 100%); }

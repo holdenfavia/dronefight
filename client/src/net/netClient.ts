@@ -33,7 +33,7 @@ const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
 const MAX_PENDING_SHOTS = 64;
 
 /** Gameplay events from the server, drained by the game each frame. Never dropped. */
-export type CombatEvent = Extract<ServerMessage, { t: 'hit' | 'death' | 'respawn' | 'ability' | 'boom' | 'missile' | 'prop' }>;
+export type CombatEvent = Extract<ServerMessage, { t: 'hit' | 'death' | 'respawn' | 'ability' | 'boom' | 'missile' | 'prop' | 'grenade' }>;
 /** XP messages from the server (ADR-0032). */
 export type ProgressMessage = Extract<ServerMessage, { t: 'progress' | 'xp' }>;
 export type RemoteShot = Extract<ServerMessage, { t: 'shot' }>;
@@ -119,8 +119,8 @@ export class NetClient {
   }
 
   /** Blow up the missile we're flying, here (ADR-0025). */
-  sendDetonate(rid: number, p: [number, number, number]): void {
-    if (this.inRoom) this.send({ t: 'detonate', rid, p });
+  sendDetonate(rid: number, p: [number, number, number], w?: 'grenade'): void {
+    if (this.inRoom) this.send(w ? { t: 'detonate', rid, p, w } : { t: 'detonate', rid, p });
   }
 
   /** Send one round to the server, which decides whether it hits (ADR-0009). */
@@ -288,6 +288,7 @@ export class NetClient {
       case 'boom':
       case 'missile':
       case 'prop':
+      case 'grenade':
         this.events.push(msg);
         break;
       case 'shot':

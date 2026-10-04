@@ -1,7 +1,7 @@
 // Weapon modules (ADR-0033): each goes on a hardpoint, has a weight, and its own ballistics. Shared so the
 // server judges every round with the stats of the weapon that fired it.
 
-export type WeaponId = 'gun' | 'shotgun' | 'cannon' | 'missile' | 'rail' | 'burst';
+export type WeaponId = 'gun' | 'shotgun' | 'cannon' | 'missile' | 'rail' | 'burst' | 'grenade';
 
 /** How a weapon sounds (ADR-0010, ADR-0014). */
 export type GunSound = 'standard' | 'vulcan' | 'shotgun' | 'rail';
@@ -12,8 +12,8 @@ export interface Weapon {
   blurb: string;
   /** Weight on the hardpoint (kg). */
   kg: number;
-  /** Guns fire rounds; the missile pod launches the flown missile (ADR-0025). */
-  kind: 'gun' | 'missile';
+  /** Guns fire rounds; the missile pod launches the flown missile (ADR-0025); the launcher lobs grenades (ADR-0034). */
+  kind: 'gun' | 'missile' | 'grenade';
   /** Damage per round or pellet. */
   damage: number;
   /** Shots per second, sustained (a burst rifle's 3-round bursts average out to this). */
@@ -117,9 +117,24 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
     sound: 'standard',
     burst: { rounds: 3, spacingMs: 65 },
   },
+  grenade: {
+    id: 'grenade',
+    name: 'Grenade launcher',
+    blurb: 'Lob a bouncing grenade; press Fire again to set it off. Huge blast',
+    kg: 0.8,
+    kind: 'grenade',
+    // The blast is in shared/grenade.ts; this is the launch cadence.
+    damage: 0,
+    fireRate: 1,
+    pellets: 1,
+    spreadDeg: 0,
+    speed: 42,
+    range: 0,
+    sound: 'standard',
+  },
 };
 
-export const WEAPON_ORDER: readonly WeaponId[] = ['gun', 'burst', 'shotgun', 'cannon', 'rail', 'missile'];
+export const WEAPON_ORDER: readonly WeaponId[] = ['gun', 'burst', 'shotgun', 'cannon', 'rail', 'grenade', 'missile'];
 
 export function isWeaponId(x: unknown): x is WeaponId {
   return typeof x === 'string' && x in WEAPONS;

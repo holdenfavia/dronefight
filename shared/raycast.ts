@@ -94,6 +94,84 @@ export function raycastArena(
   return best;
 }
 
+/** Where a ray first hits the arena, and the surface's outward normal there (world space). */
+export interface RayHit {
+  dist: number;
+  nx: number;
+  ny: number;
+  nz: number;
+}
+
+/**
+ * Like raycastArena, but also reports the surface normal, for things that bounce (grenades, ADR-0034).
+ * Returns null if nothing is hit before `maxDist`.
+ */
+export function raycastArenaHit(
+  colliders: readonly BoxCollider[],
+  ox: number,
+  oy: number,
+  oz: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  maxDist: number,
+): RayHit | null {
+  let best: RayHit | null = null;
+  if (dy < 0 && oy >= 0 && -oy / dy < maxDist) best = { dist: -oy / dy, nx: 0, ny: 1, nz: 0 };
+  for (const b of colliders) {
+    const limit = best ? best.dist : maxDist;
+    const px = b.cx - ox;
+    const py = b.cy - oy;
+    const pz = b.cz - oz;
+    const along = px * dx + py * dy + pz * dz;
+    if (along < -b.radius || along - b.radius > limit) continue;
+    const perp2 = px * px + py * py + pz * pz - along * along;
+    if (perp2 > b.radius * b.radius) continue;
+    const m = b.m;
+    const lo = [-(m[0]! * px + m[3]! * py + m[6]! * pz), -(m[1]! * px + m[4]! * py + m[7]! * pz), -(m[2]! * px + m[5]! * py + m[8]! * pz)];
+    const ld = [m[0]! * dx + m[3]! * dy + m[6]! * dz, m[1]! * dx + m[4]! * dy + m[7]! * dz, m[2]! * dx + m[5]! * dy + m[8]! * dz];
+    const h = [b.hx, b.hy, b.hz];
+    // Slab test that remembers which face it entered through.
+    let tmin = -Infinity;
+    let tmax = Infinity;
+    let axis = -1;
+    let sign = 0;
+    let missed = false;
+    for (let k = 0; k < 3; k++) {
+      const o = lo[k]!;
+      const d = ld[k]!;
+      const hk = h[k]!;
+      if (Math.abs(d) < 1e-9) {
+        if (o < -hk || o > hk) missed = true;
+        continue;
+      }
+      const t1 = (-hk - o) / d;
+      const t2 = (hk - o) / d;
+      const near = Math.min(t1, t2);
+      if (near > tmin) {
+        tmin = near;
+        axis = k;
+        // Entering through the face whose outward normal opposes the ray.
+        sign = d > 0 ? -1 : 1;
+      }
+      tmax = Math.min(tmax, Math.max(t1, t2));
+    }
+    if (missed || tmin > tmax || tmax < 0 || axis < 0) continue;
+    const t = Math.max(0, tmin);
+    if (t >= limit) continue;
+    // Local face normal to world: world = R * local, R row-major.
+    const ln = [0, 0, 0];
+    ln[axis] = sign;
+    best = {
+      dist: t,
+      nx: m[0]! * ln[0]! + m[1]! * ln[1]! + m[2]! * ln[2]!,
+      ny: m[3]! * ln[0]! + m[4]! * ln[1]! + m[5]! * ln[2]!,
+      nz: m[6]! * ln[0]! + m[7]! * ln[1]! + m[8]! * ln[2]!,
+    };
+  }
+  return best;
+}
+
 /** Ray vs axis-aligned box centered at the origin. Entry distance (0 if starting inside), or null. */
 function slab(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, hx: number, hy: number, hz: number): number | null {
   let tmin = -Infinity;

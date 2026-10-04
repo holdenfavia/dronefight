@@ -117,7 +117,9 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Loadout system (ADR-0033): bodies with thrust/weight/hardpoints, weapons and specials as weighted modules, physics from weight, Loadout screen, server-validated
 - [x] First content batch: rail gun, burst rifle, afterburner, shield, 3" racer, X8 heavy lifter (everything unlocked while balancing)
 - [ ] Play-test builds and balance weights, damage and thrust
-- [ ] Loadout screen: live 3D preview, paint and pilot name shown to others
+- [x] Loadout screen: live 3D preview with hardpoint badges; detailed weapon models
+- [x] Grenade launcher: bouncing physics grenades, Fire again to detonate, 12 m blast (ADR-0034)
+- [ ] Paint and pilot name shown to others
 - [ ] Unlock track: levels unlock bodies, modules and paints
 - [ ] More content: flak, laser, rocket pod, flares, mines, cinewhoop, 7" long range, X8 gunship
 - [ ] Badges, challenges, friends leaderboard

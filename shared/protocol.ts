@@ -75,7 +75,7 @@ export interface Shot {
   p: Vec3;
   /** Normalized direction. */
   d: Vec3;
-  /** Which hardpoint weapon fired (ADR-0033). `missile` launches a flown missile with the shooter's id `rid`. */
+  /** Which hardpoint weapon fired (ADR-0033). `missile` and `grenade` launch one, with the shooter's id `rid`. */
   w: WeaponId;
   rid?: number;
 }
@@ -126,7 +126,7 @@ export type ClientMessage =
   /** Who you are, for XP (ADR-0032): your Supabase access token. Optional; guests never send it. */
   | { t: 'auth'; token: string }
   /** Blow up the missile you're flying, here (ADR-0025). */
-  | { t: 'detonate'; rid: number; p: Vec3 }
+  | { t: 'detonate'; rid: number; p: Vec3; w?: 'grenade' }
   /** Use a class ability at a position (3D smoke, ADR-0024). */
   | { t: 'ability'; kind: 'smoke' | 'shield'; p: Vec3 }
   | { t: 'ping'; id: number; ct: number };
@@ -154,7 +154,9 @@ export type ServerMessage =
   /** Someone used an ability (ADR-0016). */
   | { t: 'ability'; id: string; kind: 'smoke' | 'shield'; p: Vec3 }
   /** A missile exploded here (server-decided, ADR-0016). `id` is the shooter, `rid` their missile id. */
-  | { t: 'boom'; id: string; rid: number; p: Vec3 }
+  | { t: 'boom'; id: string; rid: number; p: Vec3; kind?: 'grenade' }
+  /** Where a grenade is now (ADR-0034), ~20/s while it's out. */
+  | { t: 'grenade'; id: string; rid: number; p: Vec3 }
   /** Where a guided missile is now (sent ~20x/s while it flies). */
   | { t: 'missile'; id: string; rid: number; p: Vec3; v: Vec3 }
   /** Your sign-in was accepted for XP (ADR-0032): your total so far. */
@@ -213,7 +215,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case 'auth':
       return typeof m.token === 'string' && m.token.length > 0 && m.token.length <= 4096 ? { t: 'auth', token: m.token } : null;
     case 'detonate':
-      return isNum(m.rid) && isVec(m.p, 3) ? { t: 'detonate', rid: m.rid, p: m.p as Vec3 } : null;
+      if (!isNum(m.rid) || !isVec(m.p, 3)) return null;
+      return m.w === 'grenade' ? { t: 'detonate', rid: m.rid, p: m.p as Vec3, w: 'grenade' } : { t: 'detonate', rid: m.rid, p: m.p as Vec3 };
     case 'ability':
       return (m.kind === 'smoke' || m.kind === 'shield') && isVec(m.p, 3) ? { t: 'ability', kind: m.kind, p: m.p as Vec3 } : null;
     case 'loadout':
@@ -226,7 +229,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (len < 0.5 || len > 1.5) return null;
       if (!isWeaponId(s.w)) return null;
       const shot: Shot = { ts: s.ts, p: s.p as Vec3, d: [d[0] / len, d[1] / len, d[2] / len], w: s.w };
-      if (s.w === 'missile') {
+      if (s.w === 'missile' || s.w === 'grenade') {
         if (!isNum(s.rid)) return null;
         shot.rid = s.rid;
       }
