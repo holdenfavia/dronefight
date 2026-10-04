@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { droneClass, type DroneClassId } from '../../../shared/drones';
 import { defaultLoadout, type Loadout } from '../../../shared/loadout';
 import type { WeaponId } from '../../../shared/weapons';
-import type { PropellerId } from '../../../shared/propellers';
+import { PROPELLERS, type PropellerId } from '../../../shared/propellers';
 import { PALETTE } from '../world/scene';
 
 /**
@@ -109,10 +109,12 @@ export function createWingModel(teamColor: string = PALETTE.orange): THREE.Group
   const motor = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.03, 12), carbon);
   motor.rotation.x = Math.PI / 2;
   motor.position.set(0, 0.02, 0.11);
+  motor.name = 'pusher';
   group.add(motor);
   const prop = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.004, 24), propMat);
   prop.rotation.x = Math.PI / 2;
   prop.position.set(0, 0.02, 0.13);
+  prop.name = 'pusher';
   group.add(prop);
 
   group.traverse((o) => {
@@ -294,6 +296,11 @@ export function createClassModel(cls: DroneClassId, teamColor: string, loadout: 
  * denser one, heavy-lift wider, and ducts get a guard ring around each prop.
  */
 function dressPropellers(model: THREE.Group, propeller: PropellerId): void {
+  const jet = PROPELLERS[propeller].jet;
+  if (jet) {
+    mountJet(model, jet.kind);
+    return;
+  }
   const mat = model.userData.propMaterial as THREE.MeshStandardMaterial | undefined;
   if (!mat || propeller === 'tri') return;
   mat.opacity = propeller === 'bi' ? 0.38 : propeller === 'quad' ? 0.78 : mat.opacity;
@@ -314,6 +321,67 @@ function dressPropellers(model: THREE.Group, propeller: PropellerId): void {
       d.parent?.add(ring);
     }
   }
+}
+
+/**
+ * A jet on top of the wing's pod in place of the pusher prop (ADR-0038). Real scale; forward is -Z.
+ * Micro turbine: a fat nacelle. Pulse jet: a long thin pipe with a valve head, up on a pylon. Ramjet: a tube
+ * with a shock-cone spike in its inlet. Each has a glowing nozzle.
+ */
+function mountJet(model: THREE.Group, kind: 'turbine' | 'pulsejet' | 'ramjet'): void {
+  model.traverse((o) => {
+    if (o.name === 'pusher') o.visible = false;
+  });
+  const metal = new THREE.MeshStandardMaterial({ color: '#9a9ea4', roughness: 0.3, metalness: 0.85 });
+  const dark = new THREE.MeshStandardMaterial({ color: '#1a1b1d', roughness: 0.6 });
+  const glow = new THREE.MeshBasicMaterial({ color: kind === 'pulsejet' ? '#ff7a2a' : '#ffb347', toneMapped: false });
+  const jet = new THREE.Group();
+  /** A tube along Z from z0 (front) to z1 (back). */
+  const tube = (r0: number, r1: number, z0: number, z1: number, mat: THREE.Material) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, z1 - z0, 16), mat);
+    m.rotation.x = Math.PI / 2;
+    m.position.z = (z0 + z1) / 2;
+    jet.add(m);
+    return m;
+  };
+  let tail = 0;
+  let nozzle = 0;
+  if (kind === 'turbine') {
+    tube(0.036, 0.036, -0.1, 0.1, metal);
+    tube(0.036, 0.024, 0.1, 0.15, metal);
+    tube(0.03, 0.03, -0.103, -0.099, dark);
+    tail = 0.15;
+    nozzle = 0.022;
+    jet.position.set(0, 0.075, 0.02);
+  } else if (kind === 'pulsejet') {
+    tube(0.034, 0.034, -0.16, -0.08, metal);
+    tube(0.034, 0.016, -0.08, -0.03, metal);
+    tube(0.016, 0.016, -0.03, 0.22, metal);
+    tube(0.016, 0.022, 0.22, 0.26, metal);
+    const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.06, 0.12), dark);
+    pylon.position.set(0, -0.04, 0);
+    jet.add(pylon);
+    tail = 0.26;
+    nozzle = 0.02;
+    jet.position.set(0, 0.105, 0.0);
+  } else {
+    tube(0.032, 0.032, -0.08, 0.14, metal);
+    tube(0.032, 0.026, 0.14, 0.18, metal);
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.07, 16), dark);
+    spike.rotation.x = -Math.PI / 2;
+    spike.position.z = -0.1;
+    jet.add(spike);
+    tail = 0.18;
+    nozzle = 0.024;
+    jet.position.set(0, 0.07, 0.0);
+  }
+  const flame = new THREE.Mesh(new THREE.CircleGeometry(nozzle, 16), glow);
+  flame.position.z = tail + 0.001;
+  jet.add(flame);
+  jet.traverse((o) => {
+    if (o instanceof THREE.Mesh) o.castShadow = true;
+  });
+  model.add(jet);
 }
 
 /** Recolor a drone's props (and team accents) to its team color (ADR-0009). */

@@ -84,7 +84,7 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
   x8: {
     id: 'x8',
     name: 'X8 heavy lifter',
-    blurb: 'Eight motors, four hardpoints, 180 HP. Huge, slow, easy to hit',
+    blurb: 'Eight motors, four hardpoints, 180 HP. Huge, slow, self-levelling (horizon mode)',
     flight: 'quad',
     maxHp: 180,
     frameKg: 2.0,

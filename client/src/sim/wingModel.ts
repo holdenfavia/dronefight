@@ -1,5 +1,6 @@
 import { Quaternion, Vector3 } from 'three';
 import { SIM } from '../config';
+import { ramFactor, type Jet, type PropellerId } from '../../../shared/propellers';
 import type { FlightInput, FlightOutput, FlightState } from './flightModel';
 
 /**
@@ -108,22 +109,28 @@ export function stepWing(
   out: FlightOutput,
   /** Special held: maneuver mode (ADR-0022). */
   maneuver = false,
-  /** Thrust multiplier (afterburner, ADR-0033). */
+  /** Thrust multiplier (propeller or jet peak, afterburner; ADR-0033, ADR-0038). */
   thrustScale = 1,
+  /** Engine: spool-time multiplier, and the jet (ADR-0038) if it has one. */
+  engine: { id: PropellerId; spool: number; jet?: Jet } = { id: 'tri', spool: 1 },
 ): FlightOutput {
   const rot = state.rotation;
   invRot.copy(rot).invert();
   right.set(1, 0, 0).applyQuaternion(rot);
   forward.set(0, 0, -1).applyQuaternion(rot);
 
-  // --- Prop.
+  const speed = state.linvel.length();
+  const jet = engine.jet;
+
+  // --- Prop or jet (ADR-0038): turbines never fully idle and pulse jets barely throttle; a turbine spools slowly.
   const t = Math.max(0, Math.min(1, input.throttle));
-  const motorTarget = armed ? Math.pow(t, WING.throttleExponent) : 0;
-  out.motorOutput = state.motorOutput + (motorTarget - state.motorOutput) * (1 - Math.exp(-dt / WING.motorTau));
-  out.force.copy(forward).multiplyScalar(out.motorOutput * WING.maxThrustN * thrustScale);
+  const motorTarget = armed ? Math.max(jet?.idle ?? 0, Math.pow(t, WING.throttleExponent)) : 0;
+  out.motorOutput = state.motorOutput + (motorTarget - state.motorOutput) * (1 - Math.exp(-dt / (WING.motorTau * engine.spool)));
+  // A ramjet needs airspeed; a pulse jet's thrust comes in pulses.
+  const pulse = jet?.pulse ? 1 + jet.pulse.depth * Math.sin(2 * Math.PI * jet.pulse.hz * state.time) : 1;
+  out.force.copy(forward).multiplyScalar(out.motorOutput * WING.maxThrustN * thrustScale * ramFactor(engine.id, speed) * pulse);
 
   // --- Aerodynamics. Air moves opposite to the wing, so the flow direction is -velocity.
-  const speed = state.linvel.length();
   let alpha = 0;
   if (speed > 0.5) {
     vHat.copy(state.linvel).divideScalar(speed);
@@ -157,6 +164,13 @@ export function stepWing(
       -expo(input.yaw) * WING.maxYawDeg * DEG * authority,
       -expo(input.roll) * rollRate * DEG * authority,
     );
+    // A running pulse jet shakes the airframe (ADR-0038).
+    if (jet?.pulse && out.motorOutput > 0) {
+      const shake = jet.pulse.shakeDegPerSec * DEG * out.motorOutput;
+      target.x += shake * Math.sin(state.time * 61.3);
+      target.y += 0.5 * shake * Math.sin(state.time * 47.9 + 1.3);
+      target.z += shake * Math.sin(state.time * 83.1 + 2.1);
+    }
     // To world, then add the weathervane turn that swings the nose toward the flight path.
     target.applyQuaternion(rot);
     if (speed > 0.5) {

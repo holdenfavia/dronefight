@@ -3,7 +3,7 @@
 
 import type { DroneClassId } from './drones.js';
 
-export type PropellerId = 'tri' | 'bi' | 'quad' | 'heavy' | 'ducted';
+export type PropellerId = 'tri' | 'bi' | 'quad' | 'heavy' | 'ducted' | 'turbine' | 'pulsejet' | 'ramjet';
 
 export interface Propeller {
   id: PropellerId;
@@ -26,6 +26,19 @@ export interface Propeller {
   crashTolerance: number;
   /** Bodies it fits; undefined = all. */
   bodies?: readonly DroneClassId[];
+  /** A jet engine for the wing (ADR-0038): how it behaves beyond the multipliers above. */
+  jet?: Jet;
+}
+
+/** Jet behavior (ADR-0038). `thrust` above is the jet's peak. */
+export interface Jet {
+  kind: 'turbine' | 'pulsejet' | 'ramjet';
+  /** Lowest output while armed (0..1): turbines idle, pulse jets barely throttle. */
+  idle: number;
+  /** Pulse jet: thrust pulses at `hz`, varying by ±`depth`, and shake the airframe (deg/s of wobble). */
+  pulse?: { hz: number; depth: number; shakeDegPerSec: number };
+  /** Ramjet: only `booster` of its thrust until it rams air; lights from `lightSpeed`, full at `fullSpeed` (m/s). */
+  ram?: { booster: number; lightSpeed: number; fullSpeed: number };
 }
 
 export const PROPELLERS: Record<PropellerId, Propeller> = {
@@ -96,9 +109,55 @@ export const PROPELLERS: Record<PropellerId, Propeller> = {
     // Ducts are a quad thing: a pusher wing has nothing to guard.
     bodies: ['freestyle', 'quad3d', 'racer', 'x8'],
   },
+  // Jets (ADR-0038): wing only. `spool` multiplies the wing's 0.08 s motor time constant.
+  turbine: {
+    id: 'turbine',
+    name: 'Micro turbine',
+    real: 'model jet turbine',
+    blurb: 'Huge top speed, but ~1 s to spool up and it never fully idles. Heavy',
+    kg: 0.35,
+    thrust: 1.7,
+    response: 1,
+    spool: 15,
+    drag: 1,
+    wash: 1,
+    crashTolerance: 1,
+    bodies: ['wing'],
+    jet: { kind: 'turbine', idle: 0.08 },
+  },
+  pulsejet: {
+    id: 'pulsejet',
+    name: 'Pulse jet',
+    real: 'valved pulse jet',
+    blurb: "Loud, light and punchy. Can't throttle below half, and it shakes your aim",
+    kg: 0.2,
+    thrust: 1.35,
+    response: 1,
+    spool: 0.5,
+    drag: 1,
+    wash: 1,
+    crashTolerance: 1,
+    bodies: ['wing'],
+    jet: { kind: 'pulsejet', idle: 0.45, pulse: { hz: 48, depth: 0.35, shakeDegPerSec: 22 } },
+  },
+  ramjet: {
+    id: 'ramjet',
+    name: 'Ramjet',
+    real: 'ramjet with a booster',
+    blurb: 'Weak until it rams air: dive past 22 m/s to light it, then it is the fastest thing in the sky',
+    kg: 0.25,
+    thrust: 2.4,
+    response: 1,
+    spool: 3,
+    drag: 1,
+    wash: 1,
+    crashTolerance: 1,
+    bodies: ['wing'],
+    jet: { kind: 'ramjet', idle: 0, ram: { booster: 0.3, lightSpeed: 22, fullSpeed: 45 } },
+  },
 };
 
-export const PROPELLER_ORDER: readonly PropellerId[] = ['tri', 'bi', 'quad', 'heavy', 'ducted'];
+export const PROPELLER_ORDER: readonly PropellerId[] = ['tri', 'bi', 'quad', 'heavy', 'ducted', 'turbine', 'pulsejet', 'ramjet'];
 export const DEFAULT_PROPELLER: PropellerId = 'tri';
 
 export function isPropellerId(x: unknown): x is PropellerId {
@@ -108,4 +167,15 @@ export function isPropellerId(x: unknown): x is PropellerId {
 export function propellerFits(id: PropellerId, body: DroneClassId): boolean {
   const b = PROPELLERS[id].bodies;
   return !b || b.includes(body);
+}
+
+/**
+ * Thrust fraction a ramjet makes at `speed` m/s (ADR-0038): its booster alone when slow, rising to full once
+ * it rams enough air. 1 for every other engine.
+ */
+export function ramFactor(id: PropellerId, speed: number): number {
+  const ram = PROPELLERS[id].jet?.ram;
+  if (!ram) return 1;
+  const t = Math.max(0, Math.min(1, (speed - ram.lightSpeed) / (ram.fullSpeed - ram.lightSpeed)));
+  return ram.booster + (1 - ram.booster) * t * t * (3 - 2 * t);
 }

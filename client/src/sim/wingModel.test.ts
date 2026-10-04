@@ -1,6 +1,7 @@
 import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { SIM } from '../config';
+import { PROPELLERS, ramFactor } from '../../../shared/propellers';
 import { createFlightOutput, type FlightInput, type FlightState } from './flightModel';
 import { levelFlightSpeed, liftCoefficient, stepWing, WING } from './wingModel';
 
@@ -124,5 +125,38 @@ describe('Maneuver mode (ADR-0022): hold Special for more authority, easier to s
   it('a full pull can swing the nose far past the airflow (post-stall), which normal flight never does', () => {
     expect(hold(30, { pitch: -1 }, true, 0.6).aoa).toBeGreaterThan(90);
     expect(hold(30, { pitch: -1 }, false, 0.6).aoa).toBeLessThan(45);
+  });
+});
+
+describe('jets (ADR-0038)', () => {
+  /** Motor output after holding `throttle` for `seconds` (speed held constant), and the last thrust (N). */
+  function engine(id: 'tri' | 'turbine' | 'pulsejet' | 'ramjet', throttle: number, seconds: number, speed = 20) {
+    const p = PROPELLERS[id];
+    const state = flying(speed);
+    const out = createFlightOutput();
+    for (let i = 0; i < seconds * SIM.hz; i++) {
+      stepWing({ ...centered, throttle }, state, true, dt, out, false, p.thrust, p);
+      state.motorOutput = out.motorOutput;
+      state.time += dt;
+    }
+    return { motor: out.motorOutput, thrust: out.motorOutput * WING.maxThrustN * p.thrust * ramFactor(id, speed) };
+  }
+
+  it('the turbine spools slowly but ends up far stronger', () => {
+    expect(engine('turbine', 1, 0.3).motor).toBeLessThan(engine('tri', 1, 0.3).motor * 0.5);
+    expect(engine('turbine', 1, 6).thrust).toBeGreaterThan(engine('tri', 1, 6).thrust * 1.5);
+  });
+
+  it('the turbine never fully idles', () => {
+    expect(engine('turbine', 0, 8).motor).toBeGreaterThan(0.05);
+  });
+
+  it("the pulse jet can't throttle below its idle", () => {
+    expect(engine('pulsejet', 0, 1).motor).toBeGreaterThan(0.4);
+  });
+
+  it('the ramjet is weak slow and the strongest fast', () => {
+    expect(engine('ramjet', 1, 1, 10).thrust).toBeLessThan(engine('tri', 1, 1, 10).thrust);
+    expect(engine('ramjet', 1, 1, 50).thrust).toBeGreaterThan(engine('turbine', 1, 8, 50).thrust);
   });
 });

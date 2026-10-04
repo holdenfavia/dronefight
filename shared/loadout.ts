@@ -90,7 +90,15 @@ export function count(l: Loadout, id: WeaponId): number {
 }
 
 /** A plain-words read on a build, for the Loadout screen. */
-export function handling(tw: number): { label: string; level: 'good' | 'heavy' | 'pig' | 'grounded' } {
+export function handling(l: Loadout): { label: string; level: 'good' | 'heavy' | 'pig' | 'grounded' } {
+  const tw = thrustToWeight(l);
+  if (DRONE_CLASSES[l.body].flight === 'wing') {
+    // A wing flies on lift, not thrust (ADR-0013): judge it against its own stock build, and it never sits grounded.
+    const r = tw / thrustToWeight(defaultLoadout('wing'));
+    if (r < 0.6) return { label: 'Barely flies', level: 'pig' };
+    if (r < 0.85) return { label: 'Heavy and sluggish', level: 'heavy' };
+    return { label: 'Agile', level: 'good' };
+  }
   if (tw <= 1) return { label: "Too heavy to take off", level: 'grounded' };
   if (tw < 1.8) return { label: 'Barely flies', level: 'pig' };
   if (tw < 3.5) return { label: 'Heavy and sluggish', level: 'heavy' };

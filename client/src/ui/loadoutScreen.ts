@@ -72,7 +72,7 @@ export class LoadoutScreen {
   private render(): void {
     const lo = this.loadout;
     const body = droneClass(lo.body);
-    const feel = handling(thrustToWeight(this.hover ?? lo));
+    const feel = handling(this.hover ?? lo);
     this.root.innerHTML = `
       <div class="gunsmith">
         <header class="gs-head">
@@ -196,7 +196,7 @@ export class LoadoutScreen {
   private slotTitle(): string {
     if (this.slot === 'body') return 'Frame · choose a body';
     if (this.slot === 'special') return 'Special';
-    if (this.slot === 'propeller') return 'Propulsion · choose propellers';
+    if (this.slot === 'propeller') return this.loadout.body === 'wing' ? 'Propulsion · props or a jet' : 'Propulsion · choose propellers';
     const i = Number(this.slot.slice(1));
     return `Weapons · hardpoint ${i + 1} (${['upper left', 'upper right', 'lower left', 'lower right'][i]})`;
   }
@@ -278,7 +278,7 @@ export class LoadoutScreen {
     if (stats) stats.innerHTML = this.stats().map((s) => this.statRow(s)).join('') + this.numbers();
     const verdict = this.root.querySelector('.gs-verdict');
     if (verdict) {
-      const feel = handling(thrustToWeight(this.hover ?? this.loadout));
+      const feel = handling(this.hover ?? this.loadout);
       verdict.className = `gs-verdict ${feel.level}`;
       verdict.textContent = feel.label;
     }

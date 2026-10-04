@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RATES, QUAD, QUAD_3D, SIM } from '../config';
+import { DEFAULT_RATES, QUAD, QUAD_3D, SIM, X8, type QuadParams } from '../config';
 import {
   createFlightOutput,
   hoverThrottle,
@@ -143,5 +143,47 @@ describe('3D quad (ADR-0013)', () => {
     }
     expect(throttle).toBeGreaterThan(0);
     expect(throttle).toBeLessThan(0.5);
+  });
+});
+
+describe('horizon mode (ADR-0037)', () => {
+  /** Fly `p` for `seconds`, integrating rotation too, and return the final attitude. */
+  function fly(input: FlightInput, seconds: number, start: Quaternion, p: QuadParams) {
+    const state = level();
+    state.rotation.copy(start);
+    const out = createFlightOutput();
+    const q = new Quaternion();
+    for (let i = 0; i < seconds * SIM.hz; i++) {
+      stepFlight(input, state, DEFAULT_RATES, true, dt, out, p);
+      state.angvel.copy(out.angvel);
+      const w = out.angvel;
+      const angle = w.length() * dt;
+      if (angle > 0) state.rotation.premultiply(q.setFromAxisAngle(w.clone().normalize(), angle)).normalize();
+    }
+    return state.rotation;
+  }
+  const tilt = (r: Quaternion) => new Vector3(0, 1, 0).applyQuaternion(r).angleTo(new Vector3(0, 1, 0)) / (Math.PI / 180);
+  const rolled = (deg: number) => new Quaternion().setFromAxisAngle(new Vector3(0, 0, -1), (deg * Math.PI) / 180);
+
+  it('the X8 levels itself when you let go', () => {
+    expect(tilt(fly(centered, 1, rolled(40), X8))).toBeLessThan(2);
+  });
+
+  it('it rights itself from upside down', () => {
+    expect(tilt(fly(centered, 2, rolled(170), X8))).toBeLessThan(5);
+  });
+
+  it('a small stick holds a tilt instead of rolling on', () => {
+    const t = tilt(fly({ ...centered, roll: 0.3 }, 1.5, new Quaternion(), X8));
+    expect(t).toBeGreaterThan(5);
+    expect(t).toBeLessThan(40);
+  });
+
+  it('full stick still flips (acro past the transition)', () => {
+    expect(tilt(fly({ ...centered, roll: 1 }, 0.4, new Quaternion(), X8))).toBeGreaterThan(90);
+  });
+
+  it('other quads stay acro: no self-levelling', () => {
+    expect(tilt(fly(centered, 1, rolled(40), QUAD))).toBeGreaterThan(35);
   });
 });

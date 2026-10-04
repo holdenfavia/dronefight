@@ -81,4 +81,14 @@ export const PROPELLER_ICONS: Record<PropellerId, string> = {
   quad: prop(4, 13, 3.4),
   heavy: prop(3, 18, 4.6),
   ducted: prop(3, 14, 3.4, true),
+  // Jets (ADR-0038), side view, intake on the left, exhaust flame on the right.
+  turbine: svg(
+    '<path d="M8 13 H44 L52 16 V24 L44 27 H8 Z" fill="currentColor" fill-opacity="0.3"/><ellipse cx="8" cy="20" rx="3" ry="7"/><path d="M12 15 V25 M16 15 V25 M20 15 V25" stroke-width="1.4"/><path d="M52 17 L60 20 L52 23" fill="currentColor" fill-opacity="0.6" stroke="none"/>',
+  ),
+  pulsejet: svg(
+    '<path d="M6 14 Q6 12 10 12 H20 Q24 12 26 18 H56 V22 H26 Q24 28 20 28 H10 Q6 28 6 26 Z" fill="currentColor" fill-opacity="0.3"/><path d="M58 17 L62 20 L58 23 M58 13 L61 15 M58 27 L61 25" stroke-width="1.8"/>',
+  ),
+  ramjet: svg(
+    '<path d="M4 20 L16 17 V23 Z" fill="currentColor"/><path d="M12 13 H48 L54 16 V24 L48 27 H12 Z" fill="currentColor" fill-opacity="0.3"/><path d="M54 17 L62 20 L54 23" fill="currentColor" fill-opacity="0.6" stroke="none"/><path d="M24 31 h14 M34 28 l4 3 -4 3" stroke-width="1.6" opacity="0.7"/>',
+  ),
 };

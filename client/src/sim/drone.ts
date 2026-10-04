@@ -304,7 +304,7 @@ export class Drone {
       : Math.min(1, this.afterburnerFuel + dt / AFTERBURNER.refillSeconds);
     const out =
       this.droneClass === 'wing'
-        ? stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive, PROPELLERS[this.loadoutNow.propeller].thrust * (burning ? 1 + AFTERBURNER.thrustBoost : 1))
+        ? stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive, this.wingProp.thrust * (burning ? 1 + AFTERBURNER.thrustBoost : 1), this.wingProp)
         : stepFlight(control, this.state, rates, this.armed, dt, this.out, burning ? this.boosted : this.params);
     this.state.motorOutput = out.motorOutput;
     this.state.time += dt;
@@ -350,6 +350,11 @@ export class Drone {
       this.armed = false;
       this.crashTime = 0;
     }
+  }
+
+  /** The wing's propeller or jet (ADR-0035, ADR-0038). */
+  private get wingProp() {
+    return PROPELLERS[this.loadoutNow.propeller];
   }
 
   get speed(): number {

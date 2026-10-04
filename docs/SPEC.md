@@ -14,7 +14,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Friends ope
 
 ## Flight
 
-- Acro (rate) mode only: sticks command rotation rates, no self-levelling.
+- Acro (rate) mode: sticks command rotation rates, no self-levelling. Exception: the X8 always flies in horizon mode (self-levels near center stick, flips at full stick, ADR-0037).
 - Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable.
 - Custom flight model computes thrust, drag, prop wash and rate commands. Rapier applies all forces, with real gravity (9.81 m/s²), and handles motion and collisions. Tuned by feel (ADR-0008).
 - Adjustable FPV camera tilt (uptilt) and FOV.
@@ -24,7 +24,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Friends ope
 - **Bodies:** Freestyle 5" (default), 3D quad (reversible thrust; throttle center = zero), FPV wing (can't hover; spawns airborne), 3" racer (1 hardpoint, light, 70 HP, tiny: 1 m hit radius), X8 heavy lifter (4 hardpoints, 180 HP, huge: 5.4 m hit radius). Each has frame weight, thrust, hardpoints, HP and size (ADR-0036).
 - **Loadout:** a weapon per hardpoint plus one special, all with weight. Total weight against thrust sets how it flies; overloaded drones are sluggish, and at T/W ≤ 1 they can't take off. Nothing is blocked. Each body's default build flies exactly as originally tuned.
 - **Weapons:** gun (3-hit kill, ADR-0028), choked shotgun, rotary cannon (50/s), missile pod (you fly the missile; one-shot within 5 m, ADR-0025/0027), rail gun (75, near-instant, very heavy), burst rifle (3-round bursts), grenade launcher (bouncing grenades you set off with Fire again; 12 m blast, ADR-0034). Fire shoots all guns; missile pods are a second group (Special switches when the special slot is empty, else Switch weapon / Q).
-- **Propellers (ADR-0035):** race tri-blade (stock), bi-blade (agile, less lift), quad-blade (more lift, floaty), heavy-lift (+35% lift, sluggish), ducted (bounce off walls; quads only).
+- **Propellers (ADR-0035):** race tri-blade (stock), bi-blade (agile, less lift), quad-blade (more lift, floaty), heavy-lift (+35% lift, sluggish), ducted (bounce off walls; quads only). The wing can mount jets instead (ADR-0038): micro turbine, pulse jet, ramjet, each with its own sound.
 - **Specials:** maneuver mode (wing only, ADR-0022), smoke trail (ADR-0024), afterburner (hold: +60% thrust, limited fuel), shield (tap: absorbs 40 damage for 3 s).
 - Built in the Loadout screen (Play or pause menu); in a match a new build arrives at your next respawn. Everything is unlocked for now (levels gate it later, ADR-0032).
 
@@ -95,4 +95,4 @@ These must never be broken without a superseding decision:
 
 ## Out of scope (for now)
 
-Public matchmaking, mandatory accounts, pay-to-win or straight-upgrade unlocks, mobile, VR, more than 10 players per room, teams, angle/horizon mode.
+Public matchmaking, mandatory accounts, pay-to-win or straight-upgrade unlocks, mobile, VR, more than 10 players per room, teams, angle mode or pilot-selectable flight modes.

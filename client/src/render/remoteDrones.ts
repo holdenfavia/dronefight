@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { PropellerId } from '../../../shared/propellers';
 import { NET } from '../../../shared/protocol';
 import type { NetClient } from '../net/netClient';
 import { createSampledState, type SampleMode } from '../net/snapshotBuffer';
@@ -23,6 +24,8 @@ export interface RemoteView {
   armed: boolean;
   crashed: boolean;
   droneClass: DroneClassId;
+  /** Their propellers or jet (ADR-0035, ADR-0038), for their engine sound. */
+  propeller: PropellerId;
   /** Hidden by smoke from where you're looking (ADR-0016). */
   concealed: boolean;
 }
@@ -149,6 +152,7 @@ export class RemoteDrones {
           armed: false,
           crashed: false,
           droneClass: cls,
+          propeller: loadout.propeller,
           concealed: false,
         };
         this.viewPool.set(peer.id, view);
@@ -164,6 +168,7 @@ export class RemoteDrones {
       view.armed = s.armed;
       view.crashed = s.crashed;
       view.droneClass = cls;
+      view.propeller = loadout.propeller;
       view.concealed = isConcealed(peer.id);
       if (glow && view.concealed) glow.visible = false;
       this.views.push(view);

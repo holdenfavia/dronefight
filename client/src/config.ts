@@ -27,6 +27,20 @@ export interface QuadParams {
     /** Half-width of the zero-thrust band around center, as a fraction of stick travel. */
     centerDeadband: number;
   };
+  /**
+   * Present for horizon mode (ADR-0037): near center stick, roll and pitch set a tilt angle and the drone
+   * levels itself; the levelling fades out with stick travel, so full stick is plain acro (flips still work).
+   */
+  horizon?: {
+    /** Tilt at full stick, if levelling were still on (deg). */
+    maxAngleDeg: number;
+    /** Rotation rate toward the target tilt per radian of error (1/s). */
+    levelGain: number;
+    /** Stick deflection (0..1) where levelling has faded out completely. */
+    transition: number;
+    /** Cap on the levelling rate (deg/s). */
+    maxLevelDegPerSec: number;
+  };
 }
 
 /** A 5" freestyle quad, roughly. */
@@ -103,6 +117,8 @@ export const X8: QuadParams = {
   rateTau: 0.03,
   dragQuadratic: { x: 0.026, y: 0.05, z: 0.026 },
   dragLinear: 0.018,
+  // Always flies in horizon mode (ADR-0037): a stable gun platform, not a dodger.
+  horizon: { maxAngleDeg: 55, levelGain: 7, transition: 0.75, maxLevelDegPerSec: 300 },
 };
 
 export const CRASH = {

@@ -94,6 +94,9 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 - The server checks every loadout and uses the firing weapon's stats; a weapon you don't carry can't fire.
 - **Propellers (ADR-0035):** a Propellers slot on the Loadout screen. Tri-blade is stock; bi-blade = snappy but less lift; quad-blade = more lift, floaty; heavy-lift = +35% lift but sluggish (how you fly a heavy build); ducted = bounce off walls instead of crashing (quads only). Multipliers in `shared/propellers.ts`, applied in `flightParams` (`client/src/sim/drone.ts`).
 - **Grenade launcher (ADR-0034):** a Fire press lobs a grenade; the next Fire press sets off every grenade you have out (or they go off after 8 s). They bounce and roll (`GRENADE` in `shared/grenade.ts`); the blast reaches 12 m and hurts you too.
+- **Wing jets (ADR-0038):** in the wing's Propulsion slot: micro turbine (slow spool, never idles), pulse jet (can't throttle below ~45%, shakes), ramjet (30% booster until 22 m/s, full by 45 m/s). Behavior in `jet` in `shared/propellers.ts`, applied in `stepWing`; models in `mountJet` (`droneModel.ts`); sounds in `client/src/audio/jetVoice.ts` (`engineVoice` picks prop or jet, for you and other pilots).
+- **X8 horizon mode (ADR-0037):** the X8 self-levels near center stick and is acro past 75% stick. Tuning in `X8.horizon` (`client/src/config.ts`), logic in `horizonBlend` (`flightModel.ts`).
+- **Body sizes (ADR-0036):** `visualScale` and `hitRadius` per body in `shared/drones.ts`; keep hit radius ≈ 0.8 × drawn radius.
 - **Loadout preview:** the Loadout screen shows your build spinning on a turntable on the right, with numbered badges on each hardpoint (`client/src/render/loadoutPreview.ts`).
 
 ### Class specials (ADR-0016, ADR-0022)

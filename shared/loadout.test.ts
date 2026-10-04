@@ -22,10 +22,12 @@ describe('loadouts (ADR-0033)', () => {
     const x8Rails = cleanLoadout({ body: 'x8', weapons: ['rail', 'rail', 'rail', 'rail'], special: null });
     expect(totalKg(x8Rails)).toBeCloseTo(2 + 4 * 2.8, 5);
     expect(thrustToWeight(x8Rails)).toBeLessThan(1);
-    expect(handling(thrustToWeight(x8Rails)).level).toBe('grounded');
+    expect(handling(x8Rails).level).toBe('grounded');
     const freestyleRail = cleanLoadout({ body: 'freestyle', weapons: ['rail', 'gun'], special: null });
     expect(loadFactor(freestyleRail)).toBeGreaterThan(3);
-    expect(handling(thrustToWeight(freestyleRail)).level).toBe('heavy');
+    expect(handling(freestyleRail).level).toBe('heavy');
+    // Wings are judged against their own stock build (ADR-0013): the default reads agile.
+    expect(handling(defaultLoadout('wing')).level).toBe('good');
   });
 
   it('cleans bad input: hardpoint count, unknown modules, specials that do not fit', () => {

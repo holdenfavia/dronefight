@@ -40,3 +40,5 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0034](0034-grenade-launcher.md) | Grenade launcher: server-simulated bouncing grenades; Fire again detonates (8 s fuse); 95 dmg to 3 m, 0 at 12 m, hurts the shooter too | Accepted |
 | [0035](0035-propellers.md) | Propellers: tri (stock), bi-blade, quad-blade, heavy-lift, ducted; lift/response/spool/drag/wash/weight multipliers; ducts bounce off walls | Accepted |
 | [0036](0036-body-sizes.md) | Bodies differ in size: 3" racer ~2.5 m (hit 1 m), X8 ~13 m (hit 5.4 m); 5" and wing unchanged; preview keeps relative size | Accepted |
+| [0037](0037-x8-horizon-mode.md) | The X8 always flies in horizon mode (self-levels near center stick, acro past 75% stick); all other bodies stay acro-only | Accepted |
+| [0038](0038-wing-jets.md) | Wing jet engines in the propulsion slot: micro turbine (slow spool, never idles), pulse jet (can't throttle down, shakes), ramjet (needs speed to light); each with its own sound | Accepted |

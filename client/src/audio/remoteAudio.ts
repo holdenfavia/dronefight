@@ -1,14 +1,15 @@
 import type { RemoteView } from '../render/remoteDrones';
 import type { AudioEngine } from './audioEngine';
 import { CannonVoice } from './cannonVoice';
-import { MotorVoice, QUAD_MOTORS, WING_MOTOR } from './motorVoice';
+import { PROPELLERS, type PropellerId } from '../../../shared/propellers';
+import { engineVoice, type EngineVoice } from './jetVoice';
 
 /** A remote cannon counts as firing until this long after its last round arrived (ms). */
 const CANNON_HOLD_MS = 90;
 
 /** Other pilots' motors, positioned at their drones so you can hear where they are (ADR-0010). */
 export class RemoteAudio {
-  private readonly voices = new Map<string, { voice: MotorVoice; panner: PannerNode; wing: boolean; cannon: CannonVoice | null }>();
+  private readonly voices = new Map<string, { voice: EngineVoice; panner: PannerNode; wing: boolean; propeller: PropellerId; cannon: CannonVoice | null }>();
   private readonly lastCannon = new Map<string, number>();
 
   constructor(private readonly engine: AudioEngine) {}
@@ -24,8 +25,8 @@ export class RemoteAudio {
       seen.add(view.id);
       const wing = view.droneClass === 'wing';
       let entry = this.voices.get(view.id);
-      if (entry && entry.wing !== wing) {
-        // They switched class (ADR-0013): swap to the matching motor sound.
+      if (entry && (entry.wing !== wing || entry.propeller !== view.propeller)) {
+        // They switched body or engine (ADR-0013, ADR-0038): swap to the matching sound.
         entry.voice.dispose();
         entry.cannon?.dispose();
         entry.panner.disconnect();
@@ -35,9 +36,10 @@ export class RemoteAudio {
         const panner = this.engine.createPanner();
         panner.connect(this.engine.remote);
         entry = {
-          voice: new MotorVoice(this.engine, panner, wing ? WING_MOTOR : QUAD_MOTORS),
+          voice: engineVoice(this.engine, panner, wing, PROPELLERS[view.propeller].jet),
           panner,
           wing,
+          propeller: view.propeller,
           // Any drone can carry a rotary cannon now (ADR-0033).
           cannon: new CannonVoice(this.engine, panner, 1.4),
         };
@@ -48,7 +50,7 @@ export class RemoteAudio {
       entry.panner.positionY.value = p.y;
       entry.panner.positionZ.value = p.z;
       const active = view.mode !== 'hold' && view.armed && !view.crashed;
-      entry.voice.update(view.motor, 0, active);
+      entry.voice.update(view.motor, view.velocity.length(), active);
       entry.cannon?.setFiring(performance.now() - (this.lastCannon.get(view.id) ?? -Infinity) < CANNON_HOLD_MS);
     }
     for (const [id, entry] of this.voices) {

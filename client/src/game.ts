@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { CRASH, SIM } from './config';
 import { AudioEngine } from './audio/audioEngine';
-import { MotorVoice, QUAD_MOTORS, WING_MOTOR } from './audio/motorVoice';
+import { engineVoice } from './audio/jetVoice';
+import { PROPELLERS } from '../../shared/propellers';
 import { CannonVoice } from './audio/cannonVoice';
 import { RemoteAudio } from './audio/remoteAudio';
 import { Sfx } from './audio/sfx';
@@ -138,7 +139,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const trails = new Trails(world.scene);
   const audio = new AudioEngine();
   const sfx = new Sfx(audio);
-  let motorSound = new MotorVoice(audio, audio.motors, drone.classId === 'wing' ? WING_MOTOR : QUAD_MOTORS);
+  let motorSound = engineVoice(audio, audio.motors, drone.classId === 'wing', PROPELLERS[drone.loadout.propeller].jet);
   const remoteAudio = new RemoteAudio(audio);
   const cannon = new CannonVoice(audio, audio.sfx, 0.8);
   // Every menu button clicks.
@@ -292,7 +293,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     droneModel.visible = settings.camera.view === 'chase';
     world.scene.add(droneModel);
     motorSound.dispose();
-    motorSound = new MotorVoice(audio, audio.motors, cls === 'wing' ? WING_MOTOR : QUAD_MOTORS);
+    motorSound = engineVoice(audio, audio.motors, cls === 'wing', PROPELLERS[loadout.propeller].jet);
     rig.uptiltOverride = cls === 'wing' ? WING.cameraUptiltDeg : null;
   }
 

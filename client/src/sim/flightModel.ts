@@ -54,6 +54,7 @@ const bodyVec = new Vector3();
 const bodyAngvel = new Vector3();
 const targetBody = new Vector3();
 const up = new Vector3();
+const worldUpBody = new Vector3();
 
 export function createFlightOutput(): FlightOutput {
   return { force: new Vector3(), angvel: new Vector3(), motorOutput: 0, alpha: 0 };
@@ -100,6 +101,30 @@ function washNoise(t: number, seed: number): number {
   );
 }
 
+/**
+ * Horizon mode (ADR-0037): blend the acro rate setpoint in `target` (body frame, rad/s) with a self-levelling
+ * one. Near center stick roll and pitch steer toward a tilt angle set by the stick; past `transition` stick
+ * the levelling is gone and it's pure acro.
+ */
+export function horizonBlend(input: FlightInput, rotation: Quaternion, h: NonNullable<QuadParams['horizon']>, target: Vector3): Vector3 {
+  // World up seen from the body. Level: (0, 1, 0). Rolled right: x < 0. Nose down: z > 0.
+  worldUpBody.set(0, 1, 0).applyQuaternion(invRot.copy(rotation).invert());
+  // Roll uses atan2 so an upside-down drone rolls back upright; pitch is the tilt toward the nose (±90°).
+  const roll = Math.atan2(-worldUpBody.x, worldUpBody.y);
+  const pitch = Math.asin(Math.max(-1, Math.min(1, worldUpBody.z)));
+  const max = h.maxAngleDeg * DEG;
+  const cap = h.maxLevelDegPerSec * DEG;
+  const clamp = (x: number) => Math.max(-cap, Math.min(cap, x));
+  // Positive stick turns about the negative body axis (see stepFlight), so the rates are negated.
+  const levelX = -clamp((input.pitch * max - pitch) * h.levelGain);
+  const levelZ = -clamp((input.roll * max - roll) * h.levelGain);
+  const stick = Math.min(1, Math.max(Math.abs(input.roll), Math.abs(input.pitch)));
+  const level = Math.max(0, 1 - stick / h.transition);
+  target.x = level * levelX + (1 - level) * target.x;
+  target.z = level * levelZ + (1 - level) * target.z;
+  return target;
+}
+
 export function stepFlight(
   input: FlightInput,
   state: FlightState,
@@ -125,6 +150,7 @@ export function stepFlight(
       -betaflightRate(input.yaw, rates.yaw) * DEG,
       -betaflightRate(input.roll, rates.roll) * DEG,
     );
+    if (p.horizon) horizonBlend(input, state.rotation, p.horizon, targetBody);
 
     // Prop wash: descending into your own disturbed air shakes the quad.
     const descent = -state.linvel.dot(up);
