@@ -14,16 +14,15 @@ A browser FPV dogfighting game that **feels like real acro flying**. Friends ope
 ## Flight
 
 - Acro (rate) mode: sticks command rotation rates, no self-levelling. **Exception:** the X8 always flies in horizon mode (ADR-0037).
-- Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable. Adjustable FPV uptilt and FOV (default 105°, ADR-0040).
-- A custom flight model computes thrust (fading toward the props' pitch speed), drag, prop wash and rate commands; Rapier applies the forces with real gravity and handles motion and collisions (ADR-0008).
-- **One set of numbers (ADR-0040):** the physics uses exactly the weight and thrust the Loadout screen lists, and drones collide at the size they're drawn. These are game-size drones (a 4.5 m drone weighing ~1 kg); names don't imply size. A stock 5" falls flat at ~25 m/s and tops out ~46 m/s.
+- Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable. Adjustable FPV uptilt and FOV (default 105°, ADR-0040/0041).
+- A custom flight model computes thrust, drag, prop wash and rate commands; Rapier applies the forces with real gravity and handles motion and collisions (ADR-0008). Physics bodies are real size (a 5" collides as ~0.24 m) so tight gaps stay flyable; only drawing and hit spheres are enlarged (ADR-0029, ADR-0036, ADR-0041).
 - Crash = an impact over a speed-change threshold. Ducted props raise it (ADR-0035).
 
 ## Drones and loadouts (ADR-0033)
 
 A loadout = **body** + one **weapon per hardpoint** + one **special** + **propulsion**. Everything has weight; total weight against thrust sets how it flies. Overloading is allowed and physical (T/W ≤ 1 can't take off). Each body's default build flies exactly as originally tuned. Everything is unlocked for now.
 
-| Body | HP | Hardpoints | Drawn/collision width (hit radius) | Notes |
+| Body | HP | Hardpoints | Drawn width (hit radius) | Notes |
 |---|---|---|---|---|
 | Freestyle 5" (default) | 100 | 2 | 4.5 m (2.25 m) | all-rounder |
 | 3D quad | 90 | 2 | 4.5 m (2.25 m) | reversible thrust; throttle center = zero |

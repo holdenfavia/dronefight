@@ -1,6 +1,6 @@
 # ADR-0040: One set of numbers: physics uses the listed weight and thrust, collides at drawn size
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0041 (2026-10-04), except the 105° default FOV
 - **Date:** 2026-10-04
 - **Supersedes:** ADR-0029's "physics stay real 5\"" (collision size)
 - **Amends:** ADR-0033 (weight math), ADR-0036 (sizes)

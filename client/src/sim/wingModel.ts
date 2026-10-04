@@ -1,7 +1,6 @@
 import { Quaternion, Vector3 } from 'three';
 import { SIM } from '../config';
 import { ramFactor, type Jet, type PropellerId } from '../../../shared/propellers';
-import { DEFAULT_LOADOUTS, thrustKg, totalKg } from '../../../shared/loadout';
 import type { FlightInput, FlightOutput, FlightState } from './flightModel';
 
 /**
@@ -16,25 +15,17 @@ import type { FlightInput, FlightOutput, FlightState } from './flightModel';
  * Same frame as the quad: +X right, +Y up, -Z forward (the nose and camera).
  */
 
-/**
- * The wing was tuned as a 1 kg airframe. It now weighs its default build's listed weight (ADR-0040), and its
- * aerodynamic forces (wing area, side force) scale by the same factor, so it flies exactly as tuned.
- */
-const WING_KG = totalKg(DEFAULT_LOADOUTS.wing);
-const TUNED_SCALE = WING_KG / 1.0;
-
 export const WING = {
-  /** The default build's listed weight (kg). */
-  massKg: WING_KG,
-  /** createWingModel(): ~0.91 span, -0.08 to 0.12 tall (pod, fins), ~0.56 chord; collider = this x visualScale. */
-  modelBox: { half: { x: 0.456, y: 0.1, z: 0.28 }, centerY: 0.02 },
-  /** Pusher prop max thrust (N): the default build's listed thrust, about 1.6x weight. */
-  maxThrustN: thrustKg(DEFAULT_LOADOUTS.wing) * SIM.gravity,
+  massKg: 1.0,
+  /** Collision box half-extents (m): ~0.9 m span, thin, ~0.5 m chord. */
+  halfExtents: { x: 0.45, y: 0.04, z: 0.25 },
+  /** Pusher prop max thrust (N): about 1.6x weight. */
+  maxThrustN: 16,
   throttleExponent: 1.3,
   motorTau: 0.08,
   /** Air density (kg/m^3) and wing area (m^2). */
   rho: 1.225,
-  area: 0.22 * TUNED_SCALE,
+  area: 0.22,
   /** Lift coefficient at zero angle of attack, and slope per radian. Level stall speed ~9.7 m/s (35 km/h). */
   cl0: 0.15,
   clAlpha: 3.0,
@@ -46,7 +37,7 @@ export const WING = {
   inducedK: 0.06,
   cdBroadside: 0.5,
   /** Side force per (m/s of sideslip x m/s of airspeed): the winglets act as fins. */
-  sideDamping: 0.05 * TUNED_SCALE,
+  sideDamping: 0.05,
   /** Max commanded rates at full stick (deg/s). */
   maxRollDeg: 420,
   maxPitchDeg: 220,
