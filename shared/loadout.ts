@@ -86,3 +86,8 @@ export function handling(tw: number): { label: string; level: 'good' | 'heavy' |
   if (tw < 3.5) return { label: 'Heavy and sluggish', level: 'heavy' };
   return { label: 'Agile', level: 'good' };
 }
+
+/** Sustained gun damage per second if every round lands (guns only; missiles and grenades are listed apart). */
+export function gunDps(l: Loadout): number {
+  return guns(l).reduce((sum, id) => sum + WEAPONS[id].damage * WEAPONS[id].pellets * WEAPONS[id].fireRate, 0);
+}

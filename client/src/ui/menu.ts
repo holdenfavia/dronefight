@@ -3,12 +3,11 @@ import type { Account } from '../account/account';
 import { cleanPilotName, NAME_MAX } from '../../../shared/cosmetics';
 import { levelProgress } from '../../../shared/progression';
 import { CalibrationScreen } from '../input/calibrationScreen';
+import { LoadoutScreen } from './loadoutScreen';
 import { NET } from '../../../shared/protocol';
 import type { InputManager } from '../input/inputManager';
-import { droneClass, DRONE_ORDER } from '../../../shared/drones';
-import { cleanLoadout, defaultLoadout, handling, missilePods, thrustToWeight, totalKg, type Loadout } from '../../../shared/loadout';
-import { SPECIAL_ORDER, SPECIALS, specialFits, type SpecialId } from '../../../shared/specials';
-import { WEAPON_ORDER, WEAPONS, type WeaponId } from '../../../shared/weapons';
+import { droneClass } from '../../../shared/drones';
+import type { Loadout } from '../../../shared/loadout';
 import { getMap, MAP_ORDER } from '../../../shared/maps';
 import type { NetClient } from '../net/netClient';
 import { maxRate } from '../sim/rates';
@@ -37,6 +36,7 @@ export class Menu {
   /** Where the Loadout screen's Done goes back to (Play, the room screen, or the pause menu). */
   private droneReturn: Screen = 'main';
   private readonly calibration: CalibrationScreen;
+  private readonly loadoutScreen: LoadoutScreen;
 
   constructor(
     private readonly root: HTMLElement,
@@ -46,6 +46,11 @@ export class Menu {
     private readonly callbacks: MenuCallbacks,
     private readonly account: Account,
   ) {
+    this.loadoutScreen = new LoadoutScreen(root, settings, {
+      changed: () => this.callbacks.onDroneChanged(),
+      done: () => this.show(this.droneReturn),
+      inMatch: () => this.net.inRoom && this.net.match?.phase === 'playing',
+    });
     // Controller setup lives under Settings, so it returns there.
     this.calibration = new CalibrationScreen(root, input, () => this.show('settings'));
     this.show('main');
@@ -56,6 +61,7 @@ export class Menu {
 
   show(screen: Screen): void {
     if (screen !== this.screen) this.lastScreen = this.screen;
+    if (this.screen === 'drone' && screen !== 'drone') this.loadoutScreen.close();
     this.screen = screen;
     this.visible = true;
     this.root.hidden = false;
@@ -84,6 +90,11 @@ export class Menu {
     return this.visible && this.screen === 'drone' ? this.settings.loadouts[this.settings.drone] : null;
   }
 
+  /** Where on screen the preview should draw the drone (normalized -1..1), while the Loadout screen is open. */
+  previewAnchor(): { x: number; y: number } | null {
+    return this.previewLoadout ? this.loadoutScreen.anchor() : null;
+  }
+
     /** In a game (flying solo, or in a room): menus go back to the pause menu instead of the start screen. */
   private get inGame(): boolean {
     return this.flying || this.net.inRoom;
@@ -99,6 +110,7 @@ export class Menu {
     if (!this.visible) this.show(this.home);
     else if (this.screen === 'controller' || this.screen === 'buttons') this.show('settings');
     else if (this.screen === 'pause') this.fly();
+    else if (this.screen === 'drone') this.show(this.droneReturn);
     else if (this.screen !== this.home) this.show(this.home);
   }
 
@@ -181,90 +193,9 @@ export class Menu {
     });
   }
 
-  /**
-   * Loadout (ADR-0033): pick a body, put a weapon on each hardpoint and a special in the slot. Weight against
-   * thrust is shown as you build, with plain warnings, but nothing is blocked: bad builds are allowed.
-   */
+  /** Loadout (ADR-0033): the gunsmith-style screen in loadoutScreen.ts. */
   private renderDrone(): void {
-    const s = this.settings;
-    const inMatch = this.net.inRoom && this.net.match?.phase === 'playing';
-    const body = droneClass(s.drone);
-    const lo = s.loadouts[s.drone];
-    const kg = totalKg(lo);
-    const tw = thrustToWeight(lo);
-    const feel = handling(tw);
-    // Quads hover where thrust equals weight: throttle^1.5 = 1 / (T/W) (config throttleExponent).
-    const hover = body.flight === 'wing' ? null : tw > 1 ? Math.pow(1 / tw, 1 / 1.5) : null;
-    const weaponOptions = (current: WeaponId | null) =>
-      [`<option value="" ${current === null ? 'selected' : ''}>Empty</option>`]
-        .concat(WEAPON_ORDER.map((id) => `<option value="${id}" ${current === id ? 'selected' : ''}>${WEAPONS[id].name} · ${WEAPONS[id].kg} kg</option>`))
-        .join('');
-    const specialOptions = [`<option value="" ${lo.special === null ? 'selected' : ''}>None${missilePods(lo) > 0 ? ' (Special switches guns/missiles)' : ''}</option>`]
-      .concat(
-        SPECIAL_ORDER.filter((id) => specialFits(id, s.drone)).map(
-          (id) => `<option value="${id}" ${lo.special === id ? 'selected' : ''}>${SPECIALS[id].name} · ${SPECIALS[id].kg} kg</option>`,
-        ),
-      )
-      .join('');
-    const twPct = Math.min(100, (tw / 8) * 100);
-    this.root.innerHTML = `
-      <div class="panel loadout">
-        <div class="panel-head"><span class="kicker">Loadout</span><h2>Build your drone</h2></div>
-        <div class="body-tabs">
-          ${DRONE_ORDER.map((id) => `<button class="body-tab ${id === s.drone ? 'on' : ''}" data-body="${id}">${droneClass(id).name}</button>`).join('')}
-        </div>
-        <p class="body-blurb">${body.blurb}</p>
-        <div class="body-stats">${body.maxHp} HP · frame ${body.frameKg} kg · thrust ${body.thrustKg.toFixed(1)} kgf · ${body.hardpoints} hardpoint${body.hardpoints > 1 ? 's' : ''}</div>
-        <div class="slots">
-          ${lo.weapons
-            .map(
-              (w, i) => `<label class="slot"><span>Hardpoint ${i + 1}</span><select data-slot="${i}">${weaponOptions(w)}</select></label>
-              ${w ? `<div class="slot-blurb">${WEAPONS[w].blurb}</div>` : ''}`,
-            )
-            .join('')}
-          <label class="slot"><span>Special</span><select data-special>${specialOptions}</select></label>
-          ${lo.special ? `<div class="slot-blurb">${SPECIALS[lo.special].blurb}</div>` : ''}
-        </div>
-        <div class="tw ${feel.level}">
-          <div class="tw-row"><b>${kg.toFixed(2)} kg</b> total · thrust ${body.thrustKg.toFixed(1)} kgf · <b>T/W ${tw.toFixed(1)}</b>${hover !== null ? ` · hovers at ${Math.round(hover * 100)}% throttle` : ''}</div>
-          <div class="tw-bar"><div style="width:${twPct.toFixed(0)}%"></div></div>
-          <div class="tw-label">${feel.label}${body.flight === 'wing' && tw < 1.4 ? ' · stalls fast when this heavy' : ''}</div>
-        </div>
-        <p class="hint">${inMatch ? 'In a match, your new build arrives at your next respawn.' : 'Takes effect right away.'}</p>
-        <div class="actions">
-          <button class="btn ghost" data-default>Default build</button>
-          <button class="btn" data-done>Done</button>
-        </div>
-      </div>`;
-    const save = (l: Loadout) => {
-      s.loadouts[s.drone] = cleanLoadout(l, s.drone);
-      saveSettings(s);
-      this.callbacks.onDroneChanged();
-      this.renderDrone();
-    };
-    this.root.querySelectorAll<HTMLButtonElement>('[data-body]').forEach((b) =>
-      b.addEventListener('click', () => {
-        const id = b.dataset.body as (typeof DRONE_ORDER)[number];
-        if (id === s.drone) return;
-        s.drone = id;
-        saveSettings(s);
-        this.callbacks.onDroneChanged();
-        this.renderDrone();
-      }),
-    );
-    this.root.querySelectorAll<HTMLSelectElement>('[data-slot]').forEach((sel) =>
-      sel.addEventListener('change', () => {
-        const weapons = [...lo.weapons];
-        weapons[Number(sel.dataset.slot)] = (sel.value || null) as WeaponId | null;
-        save({ ...lo, weapons });
-      }),
-    );
-    this.root.querySelector<HTMLSelectElement>('[data-special]')?.addEventListener('change', (e) => {
-      const v = (e.target as HTMLSelectElement).value;
-      save({ ...lo, special: (v || null) as SpecialId | null });
-    });
-    this.root.querySelector('[data-default]')?.addEventListener('click', () => save(defaultLoadout(s.drone)));
-    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show(this.droneReturn));
+    this.loadoutScreen.open();
   }
 
   /**

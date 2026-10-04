@@ -54,6 +54,17 @@ export function lookAngvel(rot: Quaternion, from: Vector3, target: Vector3, upti
 const QUAD_PARAMS: Record<Exclude<DroneClassId, 'wing'>, QuadParams> = { freestyle: QUAD, quad3d: QUAD_3D, racer: RACER, x8: X8 };
 
 /**
+ * How snappy a build feels, 0..100, for the Loadout stat sheet (ADR-0033): the body's rate response, slowed
+ * by load exactly as in flight (loadedParams). A 3" racer at its default build is 100.
+ */
+export function agilityScore(loadout: Loadout): number {
+  const k = loadFactor(loadout);
+  if (loadout.body === 'wing') return Math.round(Math.min(100, 62 / Math.sqrt(k)));
+  const tau = loadedParams(QUAD_PARAMS[loadout.body], k).rateTau;
+  return Math.round(Math.max(0, Math.min(100, (100 * RACER.rateTau) / tau)));
+}
+
+/**
  * A quad's flight parameters for a loadout `k` times heavier than its tuned default (ADR-0033): more mass,
  * the same thrust (so a lower thrust-to-weight), and slower response as the load grows.
  */

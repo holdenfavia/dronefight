@@ -8,6 +8,9 @@ import { droneClass } from '../../../shared/drones';
  * of the screen, with numbered badges on each hardpoint (1-4, matching the corner it fires from). It's its
  * own little scene drawn over the paused game view, so it never clips into walls wherever you stopped.
  */
+/** How far in front of the preview camera the stage stands (m). */
+const DIST = 15;
+
 export class LoadoutPreview {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
@@ -17,6 +20,8 @@ export class LoadoutPreview {
   private spin = 0;
   private active = false;
   private readonly badges = new Map<number, THREE.SpriteMaterial>();
+  private halfWidth = 8;
+  private halfHeight = 4;
 
   constructor() {
     this.scene.add(new THREE.HemisphereLight('#ffffff', '#5a5f66', 1.6));
@@ -35,16 +40,20 @@ export class LoadoutPreview {
     this.scene.add(this.stage);
   }
 
-  /** Show `loadout` (or nothing, with null) in the pilot's color. Rebuilds only when the build changes. */
-  update(loadout: Loadout | null, color: string, dt: number): void {
+  /**
+   * Show `loadout` (or nothing, with null) in the pilot's color, centered on `anchor` (normalized screen
+   * coords, -1..1). Rebuilds only when the build changes.
+   */
+  update(loadout: Loadout | null, color: string, dt: number, anchor: { x: number; y: number } | null = null): void {
     this.active = !!loadout;
     if (!loadout) return;
+    if (anchor) this.stage.position.set(anchor.x * this.halfWidth, anchor.y * this.halfHeight - 0.6, -DIST);
     const key = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}`;
     if (key !== this.key) {
       if (this.model) this.stage.remove(this.model);
       this.model = createClassModel(loadout.body, color, loadout);
       // Sized to fit the turntable whatever the body (a racer and an X8 show at a similar size).
-      this.model.scale.multiplyScalar(1.5 / droneClass(loadout.body).hitRadius);
+      this.model.scale.multiplyScalar(1.45 / droneClass(loadout.body).hitRadius);
       this.model.position.y = 0.1;
       this.addBadges(this.model);
       this.stage.add(this.model);
@@ -53,8 +62,8 @@ export class LoadoutPreview {
     if (this.model) setDronePropColor(this.model, color);
     this.spin += dt * 0.6;
     this.stage.rotation.y = this.spin;
-    // Tip it gently so you see the top, then the weapons underneath.
-    if (this.model) this.model.rotation.x = 0.25 * Math.sin(this.spin * 0.8);
+    // Tip it toward you so you see the top, rocking now and then to show the weapons underneath.
+    if (this.model) this.model.rotation.x = 0.3 + 0.25 * Math.sin(this.spin * 0.8);
   }
 
   /** Draw over the frame already rendered. */
@@ -71,12 +80,9 @@ export class LoadoutPreview {
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
     // The stage sits in the right part of the screen, beside the Loadout panel.
-    const dist = 15;
-    const halfWidth = dist * Math.tan(((this.camera.fov / 2) * Math.PI) / 180) * aspect;
-    this.stage.position.set(halfWidth * 0.48, 0, -dist);
-    // Look down on it a little, so you see the frame and the weapons hanging under it.
-    this.camera.position.set(0, 5, 0);
-    this.camera.lookAt(0, 0, -dist);
+    this.halfHeight = DIST * Math.tan(((this.camera.fov / 2) * Math.PI) / 180);
+    this.halfWidth = this.halfHeight * aspect;
+    this.stage.position.set(this.halfWidth * 0.48, 0, -DIST);
   }
 
   /** Numbered badges under each mounted weapon (1 upper left … 4 lower right on screen). */

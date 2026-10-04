@@ -659,7 +659,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
     renderer.render(world.scene, rig.camera);
     // The Loadout screen's 3D preview, drawn over the paused view (ADR-0033).
-    loadoutPreview.update(menu.previewLoadout, combat.myColor, frameDt);
+    loadoutPreview.update(menu.previewLoadout, combat.myColor, frameDt, menu.previewAnchor());
     loadoutPreview.render(renderer);
   });
 }
