@@ -1,9 +1,9 @@
 import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { cleanLoadout, DEFAULT_LOADOUTS, loadFactor, thrustToWeight } from '../../../shared/loadout';
-import { DEFAULT_RATES, QUAD, SIM, X8 } from '../config';
+import { cleanLoadout, DEFAULT_LOADOUTS, loadFactor, thrustKg, thrustToWeight, totalKg } from '../../../shared/loadout';
+import { DEFAULT_RATES, FLAT_FALL_SPEED, QUAD, SIM, X8 } from '../config';
 import { agilityScore, flightParams, loadedParams, lookAngvel } from './drone';
-import { createFlightOutput, stepFlight } from './flightModel';
+import { createFlightOutput, maxThrust, stepFlight } from './flightModel';
 
 /** Integrate a rotation under lookAngvel and return the angle (deg) between the camera and the target. */
 function settle(start: Quaternion, target: Vector3, uptiltDeg: number, seconds: number): number {
@@ -104,5 +104,46 @@ describe('propellers in flight (ADR-0035)', () => {
   it('agility follows the props', () => {
     expect(agilityScore({ ...base, propeller: 'bi' })).toBeGreaterThan(agilityScore(base));
     expect(agilityScore({ ...base, propeller: 'heavy' })).toBeLessThan(agilityScore(base));
+  });
+});
+
+describe('one set of numbers (ADR-0040)', () => {
+  const builds = [
+    ...Object.values(DEFAULT_LOADOUTS).filter((l) => l.body !== 'wing'),
+    cleanLoadout({ body: 'x8', weapons: ['rail', 'rail', 'gun', 'grenade'], special: 'shield', propeller: 'heavy' }),
+    cleanLoadout({ body: 'racer', weapons: ['shotgun'], special: 'afterburner', propeller: 'bi' }),
+  ];
+
+  it('the physics weighs and pushes exactly what the Loadout screen lists', () => {
+    for (const l of builds) {
+      const p = flightParams(l);
+      expect(p.massKg).toBeCloseTo(totalKg(l), 6);
+      expect(maxThrust(p)).toBeCloseTo(thrustKg(l) * SIM.gravity, 4);
+    }
+  });
+
+  /** Integrate translation for `seconds` from rest at `tiltDeg` nose-down; returns the final velocity. */
+  function fly(params: ReturnType<typeof flightParams>, throttle: number, tiltDeg: number, seconds: number): Vector3 {
+    const state = { rotation: new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), (-tiltDeg * Math.PI) / 180), linvel: new Vector3(), angvel: new Vector3(), motorOutput: 0, time: 0 };
+    const out = createFlightOutput();
+    for (let i = 0; i < seconds * SIM.hz; i++) {
+      stepFlight({ throttle, roll: 0, pitch: 0, yaw: 0 }, state, DEFAULT_RATES, true, 1 / SIM.hz, out, params);
+      state.motorOutput = out.motorOutput;
+      state.linvel.addScaledVector(out.force, 1 / SIM.hz / params.massKg);
+      state.linvel.y -= SIM.gravity / SIM.hz;
+    }
+    return state.linvel;
+  }
+
+  it('default builds fall flat at ~25 m/s with the throttle cut, not 16', () => {
+    for (const l of Object.values(DEFAULT_LOADOUTS).filter((b) => b.body !== 'wing' && b.body !== 'quad3d')) {
+      expect(-fly(flightParams(l), 0, 0, 10).y).toBeCloseTo(FLAT_FALL_SPEED, 0);
+    }
+  });
+
+  it('a stock Freestyle tops out around 46 m/s: the props run out of pitch, not the drag', () => {
+    const v = Math.max(...[60, 70, 80].map((t) => fly(flightParams(DEFAULT_LOADOUTS.freestyle), 1, t, 15).length()));
+    expect(v).toBeGreaterThan(42);
+    expect(v).toBeLessThan(52);
   });
 });

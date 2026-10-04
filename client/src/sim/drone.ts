@@ -1,9 +1,9 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { Euler, Quaternion, Vector3 } from 'three';
-import type { DroneClassId } from '../../../shared/drones';
+import { droneClass, type DroneClassId } from '../../../shared/drones';
 import type { SpawnPoint } from '../../../shared/maps';
 import { CRASH, INPUT, QUAD, QUAD_3D, RACER, SIM, X8, type QuadParams, type Rates } from '../config';
-import { defaultLoadout, loadFactor, type Loadout } from '../../../shared/loadout';
+import { defaultLoadout, loadFactor, totalKg, type Loadout } from '../../../shared/loadout';
 import { AFTERBURNER } from '../../../shared/specials';
 import { PROPELLERS } from '../../../shared/propellers';
 import type { ControlState } from '../input/inputManager';
@@ -143,6 +143,8 @@ export class Drone {
   private readonly velBefore = new Vector3();
   private readonly spawnRot = new Quaternion();
   private collider: RAPIER.Collider | null = null;
+  /** Body height above the ground when resting on its collider (m). */
+  private restHeight = 0;
   private droneClass: DroneClassId = 'freestyle';
   /** The loadout and the flight parameters it gives (ADR-0033); boosted = with the afterburner lit. */
   private loadoutNow: Loadout = defaultLoadout('freestyle');
@@ -181,17 +183,23 @@ export class Drone {
     const id = loadout.body;
     this.loadoutNow = loadout;
     this.droneClass = id;
-    const k = loadFactor(loadout);
     if (id !== 'wing') {
       this.params = flightParams(loadout);
       this.boosted = { ...this.params, thrustToWeight: this.params.thrustToWeight * (1 + AFTERBURNER.thrustBoost) };
     }
     const { rapier, world } = this.physics;
     if (this.collider) world.removeCollider(this.collider, false);
-    const e = id === 'wing' ? WING.halfExtents : QUAD_PARAMS[id].halfExtents;
-    const mass = id === 'wing' ? WING.massKg * k : this.params.massKg;
-    const desc = rapier.ColliderDesc.cuboid(e.x, e.y, e.z).setMass(mass).setRestitution(0.2).setFriction(0.6);
+    // You collide at the size you're drawn (ADR-0040), and weigh what the Loadout screen says.
+    const box = id === 'wing' ? WING.modelBox : QUAD_PARAMS[id].modelBox;
+    const s = droneClass(id).visualScale;
+    const desc = rapier.ColliderDesc.cuboid(box.half.x * s, box.half.y * s, box.half.z * s)
+      .setTranslation(0, box.centerY * s, 0)
+      .setMass(totalKg(loadout))
+      .setRestitution(0.2)
+      .setFriction(0.6);
     this.collider = world.createCollider(desc, this.body);
+    // Resting on the ground: the collider's bottom just touches it.
+    this.restHeight = (box.half.y - box.centerY) * s + 0.01;
   }
 
   /** The 3D quad's throttle rests at center; everything else at the bottom. */
@@ -220,7 +228,7 @@ export class Drone {
     const yawDeg = wing ? Math.round(this.spawn.yawDeg / 90) * 90 : this.spawn.yawDeg;
     this.spawnRot.setFromAxisAngle(new Vector3(0, 1, 0), (yawDeg * Math.PI) / 180);
     const r = this.spawnRot;
-    const lift = wing ? WING.launchHeight : QUAD.halfExtents.y + 0.01;
+    const lift = wing ? WING.launchHeight : this.restHeight;
     this.body.setTranslation({ x, y: y + lift, z }, true);
     this.body.setRotation({ x: r.x, y: r.y, z: r.z, w: r.w }, true);
     const launch = new Vector3(0, 0, wing ? -WING.launchSpeed : 0).applyQuaternion(r);

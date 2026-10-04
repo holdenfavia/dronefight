@@ -14,21 +14,22 @@ A browser FPV dogfighting game that **feels like real acro flying**. Friends ope
 ## Flight
 
 - Acro (rate) mode: sticks command rotation rates, no self-levelling. **Exception:** the X8 always flies in horizon mode (ADR-0037).
-- Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable. Adjustable FPV uptilt and FOV.
-- A custom flight model computes thrust, drag, prop wash and rate commands; Rapier applies the forces with real gravity and handles motion and collisions (ADR-0008). Physics bodies are real size; only drawing and hit spheres are enlarged (ADR-0029, ADR-0036).
+- Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable. Adjustable FPV uptilt and FOV (default 105°, ADR-0040).
+- A custom flight model computes thrust (fading toward the props' pitch speed), drag, prop wash and rate commands; Rapier applies the forces with real gravity and handles motion and collisions (ADR-0008).
+- **One set of numbers (ADR-0040):** the physics uses exactly the weight and thrust the Loadout screen lists, and drones collide at the size they're drawn. These are game-size drones (a 4.5 m drone weighing ~1 kg); names don't imply size. A stock 5" falls flat at ~25 m/s and tops out ~46 m/s.
 - Crash = an impact over a speed-change threshold. Ducted props raise it (ADR-0035).
 
 ## Drones and loadouts (ADR-0033)
 
 A loadout = **body** + one **weapon per hardpoint** + one **special** + **propulsion**. Everything has weight; total weight against thrust sets how it flies. Overloading is allowed and physical (T/W ≤ 1 can't take off). Each body's default build flies exactly as originally tuned. Everything is unlocked for now.
 
-| Body | HP | Hardpoints | Size (hit radius) | Notes |
+| Body | HP | Hardpoints | Drawn/collision width (hit radius) | Notes |
 |---|---|---|---|---|
-| Freestyle 5" (default) | 100 | 2 | 2.25 m | all-rounder |
-| 3D quad | 90 | 2 | 2.25 m | reversible thrust; throttle center = zero |
-| FPV wing | 130 | 2 | 2.7 m | fixed-wing, can't hover, launches airborne; weight raises stall speed |
-| 3" racer | 70 | 1 | 1 m | tiny and twitchy (ADR-0036) |
-| X8 heavy lifter | 180 | 4 | 5.4 m | huge, horizon mode (ADR-0036, ADR-0037) |
+| Freestyle 5" (default) | 100 | 2 | 4.5 m (2.25 m) | all-rounder |
+| 3D quad | 90 | 2 | 4.5 m (2.25 m) | reversible thrust; throttle center = zero |
+| FPV wing | 130 | 2 | 5.5 m span (2.7 m) | fixed-wing, can't hover, launches airborne; weight raises stall speed |
+| 3" racer | 70 | 1 | 2 m (1 m) | tiny and twitchy (ADR-0036) |
+| X8 heavy lifter | 180 | 4 | 10.7 m (5.4 m) | huge, horizon mode (ADR-0036, ADR-0037) |
 
 - **Weapons** (numbers in `shared/weapons.ts`): gun (34/hit, 3-hit kill on a 5", ADR-0028), choked shotgun (8 pellets), rotary cannon (50/s), rail gun (75, near-instant, very heavy), burst rifle (3-round bursts), missile pod (you fly the missile; one-shot within 5 m, ADR-0025/0027), grenade launcher (bouncing grenades, Fire again detonates, 12 m blast, ADR-0034).
 - **Fire groups:** Fire shoots all guns together. Missile pods and grenade launchers are a second group; Switch weapon (Q / mapped button) changes group, and so does Special when the special slot is empty.

@@ -56,7 +56,7 @@ export function loadSettings(): Settings {
       pitch: { ...d.rates.pitch, ...saved.rates?.pitch },
       yaw: { ...d.rates.yaw, ...saved.rates?.yaw },
     },
-    camera: { ...d.camera, ...saved.camera },
+    camera: { ...d.camera, ...saved.camera, ...fovMigration(saved.camera?.fovHorizontalDeg) },
     graphics: { ...d.graphics, ...saved.graphics },
     audio: { ...d.audio, ...saved.audio },
     map: isMapId(saved.map) ? saved.map : d.map,
@@ -66,6 +66,11 @@ export function loadSettings(): Settings {
       DRONE_ORDER.map((id) => [id, saved.loadouts?.[id] ? cleanLoadout({ ...saved.loadouts[id], body: id }, id) : d.loadouts[id]]),
     ) as Record<DroneClassId, Loadout>,
   };
+}
+
+/** Pilots still on the old default FOV move to the new one (ADR-0040); a FOV you picked yourself stays. */
+function fovMigration(fov: number | undefined): { fovHorizontalDeg?: number } {
+  return fov === CAMERA_DEFAULTS.oldFovHorizontalDeg ? { fovHorizontalDeg: CAMERA_DEFAULTS.fovHorizontalDeg } : {};
 }
 
 export function saveSettings(settings: Settings): void {

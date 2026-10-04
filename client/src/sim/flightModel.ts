@@ -125,6 +125,11 @@ export function horizonBlend(input: FlightInput, rotation: Quaternion, h: NonNul
   return target;
 }
 
+/** Fraction of static thrust left with `inflow` m/s of air coming into the props (ADR-0040). */
+export function propEfficiency(inflow: number, p: QuadParams): number {
+  return Math.max(0, 1 - Math.max(0, inflow) / p.pitchSpeed);
+}
+
 export function stepFlight(
   input: FlightInput,
   state: FlightState,
@@ -174,8 +179,9 @@ export function stepFlight(
     out.angvel.copy(state.angvel);
   }
 
-  // --- Forces: thrust along body up, drag computed in the body frame.
-  out.force.copy(up).multiplyScalar(out.motorOutput * maxThrust(p));
+  // --- Forces: thrust along body up, fading as the air flows into the props near their pitch speed (ADR-0040);
+  // drag computed in the body frame.
+  out.force.copy(up).multiplyScalar(out.motorOutput * maxThrust(p) * propEfficiency(state.linvel.dot(up) * Math.sign(out.motorOutput), p));
 
   bodyVec.copy(state.linvel).applyQuaternion(invRot);
   const speed = bodyVec.length();
