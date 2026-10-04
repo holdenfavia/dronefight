@@ -83,7 +83,7 @@ export class LoadoutScreen {
         <aside class="gs-stats">${this.stats().map((s) => this.statRow(s)).join('')}${this.numbers()}</aside>
         <nav class="gs-slots">${this.slots().join('')}</nav>
         <div class="gs-hero"></div>
-        <footer class="gs-bar">
+        <footer class="gs-bar ${this.group()}">
           <div class="gs-bar-title">${this.slotTitle()} <span class="gs-hint">hover to compare · click to equip · ← → Enter</span></div>
           <div class="gs-cards">${this.cards().join('')}</div>
         </footer>
@@ -156,23 +156,49 @@ export class LoadoutScreen {
 
   // --- Parts list
 
+  /**
+   * The parts, grouped so you can find them at a glance: Frame, Weapons (a 2x2 grid laid out like your
+   * screen: hardpoint 1 upper left ... 4 lower right; corners this body doesn't have are greyed), Propulsion,
+   * and Special. Each group has its own accent color.
+   */
   private slots(): string[] {
     const lo = this.loadout;
-    const item = (slot: Slot, label: string, icon: string, name: string) =>
-      `<button class="gs-slot ${this.slot === slot ? 'on' : ''}" data-slot="${slot}"><span class="gs-slot-icon">${icon}</span><span class="gs-slot-text"><small>${label}</small>${name}</span></button>`;
+    const tile = (slot: Slot, icon: string, name: string, small = '') =>
+      `<button class="gs-slot ${this.slot === slot ? 'on' : ''}" data-slot="${slot}"><span class="gs-slot-icon">${icon}</span><span class="gs-slot-text">${small ? `<small>${small}</small>` : ''}${name}</span></button>`;
+    const corners = ['↖ upper left', '↗ upper right', '↙ lower left', '↘ lower right'];
+    const hardpoints = [0, 1, 2, 3]
+      .map((i) => {
+        if (i >= lo.weapons.length) return `<div class="gs-hp none"><span>${i + 1}</span><small>no mount</small></div>`;
+        const w = lo.weapons[i];
+        return `<button class="gs-hp ${this.slot === `w${i}` ? 'on' : ''}" data-slot="w${i}" title="Hardpoint ${i + 1} (${corners[i]})">
+          <span class="gs-hp-num">${i + 1} <em>${corners[i]!.split(' ')[0]}</em></span>
+          <span class="gs-hp-icon">${w ? WEAPON_ICONS[w] : EMPTY_ICON}</span>
+          <span class="gs-hp-name">${w ? WEAPONS[w].name : 'Empty'}</span>
+        </button>`;
+      })
+      .join('');
     return [
-      item('body', 'Body', BODY_ICONS[lo.body], droneClass(lo.body).name),
-      ...lo.weapons.map((w, i) => item(`w${i}`, `Hardpoint ${i + 1} · ${['upper left', 'upper right', 'lower left', 'lower right'][i]}`, w ? WEAPON_ICONS[w] : EMPTY_ICON, w ? WEAPONS[w].name : 'Empty')),
-      item('propeller', 'Propellers', PROPELLER_ICONS[lo.propeller], PROPELLERS[lo.propeller].name),
-      item('special', 'Special', lo.special ? SPECIAL_ICONS[lo.special] : EMPTY_ICON, lo.special ? SPECIALS[lo.special].name : missilePods(lo) ? 'None (switches guns/missiles)' : 'None'),
+      `<section class="gs-group frame"><h3>Frame</h3>${tile('body', BODY_ICONS[lo.body], droneClass(lo.body).name)}</section>`,
+      `<section class="gs-group weapons"><h3>Weapons <span>${lo.weapons.filter(Boolean).length}/${lo.weapons.length}</span></h3><div class="gs-hardpoints">${hardpoints}</div></section>`,
+      `<section class="gs-group propulsion"><h3>Propulsion</h3>${tile('propeller', PROPELLER_ICONS[lo.propeller], PROPELLERS[lo.propeller].name)}</section>`,
+      `<section class="gs-group special"><h3>Special</h3>${tile('special', lo.special ? SPECIAL_ICONS[lo.special] : EMPTY_ICON, lo.special ? SPECIALS[lo.special].name : 'None', !lo.special && missilePods(lo) ? 'Special switches guns / missiles' : '')}</section>`,
     ];
   }
 
+  /** Which group the selected slot belongs to (the option bar takes its color). */
+  private group(): 'frame' | 'weapons' | 'propulsion' | 'special' {
+    if (this.slot === 'body') return 'frame';
+    if (this.slot === 'propeller') return 'propulsion';
+    if (this.slot === 'special') return 'special';
+    return 'weapons';
+  }
+
   private slotTitle(): string {
-    if (this.slot === 'body') return 'Choose a body';
-    if (this.slot === 'special') return 'Choose a special';
-    if (this.slot === 'propeller') return 'Choose propellers';
-    return `Hardpoint ${Number(this.slot.slice(1)) + 1}`;
+    if (this.slot === 'body') return 'Frame · choose a body';
+    if (this.slot === 'special') return 'Special';
+    if (this.slot === 'propeller') return 'Propulsion · choose propellers';
+    const i = Number(this.slot.slice(1));
+    return `Weapons · hardpoint ${i + 1} (${['upper left', 'upper right', 'lower left', 'lower right'][i]})`;
   }
 
   // --- Option cards
