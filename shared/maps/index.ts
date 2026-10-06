@@ -1,15 +1,16 @@
+import { CAVERN } from './cavern.js';
 import { DOWNTOWN } from './downtown.js';
 import type { MapDef, MapId, SpawnPoint } from './types.js';
 import { PLAYGROUND } from './playground.js';
 import { TRAINING } from './training.js';
 import { YARD } from './yard.js';
 
-export type { ArenaBox, ArenaMaterial, MapDef, MapId, SpawnPoint } from './types.js';
+export type { ArenaBox, ArenaMaterial, Atmosphere, MapDef, MapId, SpawnPoint } from './types.js';
 export type { MoverDef, MoverKind } from './movers.js';
 export { moverPose } from './movers.js';
 
-export const MAPS: Record<MapId, MapDef> = { downtown: DOWNTOWN, yard: YARD, playground: PLAYGROUND, training: TRAINING };
-export const MAP_ORDER: readonly MapId[] = ['downtown', 'yard', 'playground', 'training'];
+export const MAPS: Record<MapId, MapDef> = { downtown: DOWNTOWN, yard: YARD, playground: PLAYGROUND, cavern: CAVERN, training: TRAINING };
+export const MAP_ORDER: readonly MapId[] = ['downtown', 'yard', 'playground', 'cavern', 'training'];
 export const DEFAULT_MAP: MapId = 'downtown';
 
 export function isMapId(x: unknown): x is MapId {

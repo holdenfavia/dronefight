@@ -24,6 +24,9 @@ export type ArenaMaterial =
   | 'gridOrange'
   | 'gridWhite'
   | 'gridSand'
+  /** Cavern (ADR-0048): cave rock, and glowing crystal. */
+  | 'rock'
+  | 'crystal'
   | 'invisible';
 
 export interface ArenaBox {
@@ -55,7 +58,7 @@ export interface ExplosiveDef {
   color?: string;
 }
 
-export type MapId = 'downtown' | 'yard' | 'playground' | 'training';
+export type MapId = 'downtown' | 'yard' | 'playground' | 'cavern' | 'training';
 
 export interface MapDef {
   id: MapId;
@@ -68,9 +71,22 @@ export interface MapDef {
   decor: readonly ArenaBox[];
   /** 8 per map; the server picks one at random away from opponents (ADR-0012). */
   spawns: readonly SpawnPoint[];
-  ground: 'concrete' | 'asphalt' | 'grid';
+  ground: 'concrete' | 'asphalt' | 'grid' | 'rock';
   /** Moving props: traffic, coaster trains, tractors (ADR-0020). Posed from the shared clock. */
   movers?: readonly MoverDef[];
   /** Static explosives: parked cars, barrels, propane and water tanks (ADR-0023). */
   explosives?: readonly ExplosiveDef[];
+  /** Lighting and fog for enclosed maps (ADR-0048); omitted = open sky. */
+  atmosphere?: Atmosphere;
+}
+
+/** A map's own light and air (ADR-0048), e.g. a cave: fog color and range, ambient light, sun strength. */
+export interface Atmosphere {
+  fog: string;
+  fogNear: number;
+  fogFar: number;
+  hemiSky: string;
+  hemiGround: string;
+  hemiIntensity: number;
+  sunIntensity: number;
 }

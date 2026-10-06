@@ -148,6 +148,11 @@ Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, s
 - Pick the map with **Map: … ▸** on the Play screen. It applies to solo flying and to rooms you create; people joining get the room's map.
 - Mountains, clouds and the sun glow are in `client/src/world/scenery.ts`; building textures in `textures.ts`.
 
+### Cavern (ADR-0048)
+
+- One huge chamber with loop tunnels (north, south, east) and a west tunnel to a crystal grotto; stalactites, stalagmites, columns, floor mounds; sunlight through three roof holes (invisible lids), glowing crystals. Built from boxes in `shared/maps/cavern.ts` (deterministic seed; `ceilingAt` gives the roof height).
+- Its light and fog come from `atmosphere` on the map (applied by `applyAtmosphere` in `client/src/world/scene.ts`); materials `rock` and `crystal`, ground `rock`.
+
 ### Moving props and grid textures (ADR-0020)
 
 - **Downtown** has 10 cars on two loops (inner at 16 m/s, outer at 20 m/s), the **Playground** a roller coaster train, the **Yard** a tractor towing a trailer. They're posed from the shared clock (server time in a room), so both pilots see them in the same place.

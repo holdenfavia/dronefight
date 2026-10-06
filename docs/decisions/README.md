@@ -51,3 +51,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0045](0045-flight-assist.md) | Pilot-selectable flight assist (Acro / Horizon / Angle) and altitude hold; X8 always Horizon; Acro default except on touch | Accepted |
 | [0046](0046-room-settings.md) | Room settings at create (map, kills, time limit, assist, allowed drones/weapons/specials), changeable by the host from the pause menu (restarts the match); server-enforced | Accepted |
 | [0047](0047-teams-and-prematch.md) | Teams mode (Orange vs Lime, no friendly fire, team kill totals) and a pre-match menu: pick team, ready up, host starts; back to it after results | Accepted |
+| [0048](0048-cavern-map.md) | Cavern map: one huge chamber, loop tunnels and a crystal grotto, stalactites, stalagmites and columns; light shafts and crystals; per-map atmosphere | Accepted |

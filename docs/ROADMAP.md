@@ -138,7 +138,8 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [ ] Play-test touch on a real iPad and iPhone (Safari and Home Screen)
 - [x] Paint: pick body color, finish and accent on the Loadout screen; others see it
 - [x] Teams mode and a pre-match menu (ADR-0047)
-- [ ] Cave map: one huge cave with tunnel offshoots, stalactites and stalagmites
+- [x] Cavern map: one huge cave with tunnels, stalactites and stalagmites (ADR-0048)
+- [ ] Fly the Cavern together and tune light, formations and tunnel sizes
 - [ ] Paint and pilot name shown to others
 - [ ] Unlock track: levels unlock bodies, modules and paints
 - [ ] More content: flak, laser, rocket pod, flares, mines, cinewhoop, 7" long range, X8 gunship

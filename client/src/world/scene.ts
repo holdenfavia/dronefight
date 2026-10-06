@@ -22,6 +22,8 @@ import {
   PAINT_TILE_M,
   padTexture,
   paintedMetalTexture,
+  rockTexture,
+  ROCK_TILE_M,
 } from './textures';
 
 // Art direction per ADR-0007: bright sky, clean light, orange / black / white on concrete.
@@ -75,6 +77,7 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
     concrete: groundMaterial(concreteGroundTexture(aniso)),
     asphalt: groundMaterial(asphaltTexture(aniso)),
     grid: groundMaterial(gridGroundTexture(aniso)),
+    rock: groundMaterial(rockTexture(aniso, true)),
   };
   const groundGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
   let arena: THREE.Group | null = null;
@@ -84,7 +87,21 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
   const gridAlternates = gridVersions(materials, aniso);
   const materialFor = (key: VisibleMaterial) => (gridStyle ? gridAlternates[key] : materials[key].material);
 
+  /** A map's light and air (ADR-0048): a cave gets dark, near fog and dimmer fill; open maps the defaults. */
+  function applyAtmosphere(map: MapDef): void {
+    const a = map.atmosphere;
+    const fog = scene.fog as THREE.Fog;
+    fog.color.set(a ? a.fog : PALETTE.fog);
+    fog.near = a ? a.fogNear : 250;
+    fog.far = a ? a.fogFar : 1100;
+    hemi.color.set(a ? a.hemiSky : PALETTE.hemiSky);
+    hemi.groundColor.set(a ? a.hemiGround : PALETTE.hemiGround);
+    hemi.intensity = a ? a.hemiIntensity : 1.15;
+    sun.intensity = a ? a.sunIntensity : 3.2;
+  }
+
   function setMap(map: MapDef): void {
+    applyAtmosphere(map);
     if (arena) {
       scene.remove(arena);
       arena.traverse((o) => {
@@ -279,6 +296,15 @@ function arenaMaterials(aniso: number): Record<VisibleMaterial, MaterialDef> {
     gridOrange: grid('#ff8a2a'),
     gridWhite: grid('#eeeeec'),
     gridSand: grid('#e6d49c'),
+    // Cavern (ADR-0048): rock, and crystals that glow (emissive, so they read in the dark).
+    rock: {
+      material: new THREE.MeshStandardMaterial({ map: rockTexture(aniso), roughness: 0.95, metalness: 0 }),
+      tileM: ROCK_TILE_M,
+    },
+    crystal: {
+      material: new THREE.MeshStandardMaterial({ color: '#7fe8ff', emissive: '#3ad0ff', emissiveIntensity: 1.6, roughness: 0.2, metalness: 0.1 }),
+      tileM: 0,
+    },
   };
 
   function grid(color: string): MaterialDef {
@@ -298,6 +324,8 @@ const GRID_EQUIVALENT: Record<Exclude<VisibleMaterial, `grid${string}` | 'pad'>,
   roof: '#62666c',
   sidewalk: '#cbc7bf',
   foliage: '#45b865',
+  rock: '#8a7f74',
+  crystal: '#7fe8ff',
   paint: '#f2f1ec',
 };
 

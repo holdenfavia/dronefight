@@ -376,3 +376,51 @@ export function gridGroundTexture(anisotropy: number): THREE.CanvasTexture {
   ctx.fillRect(size - 3, 0, 3, size);
   return finish(c, anisotropy);
 }
+
+/** Cave rock (ADR-0048): layered strata, cracks and grit, seamless. Applied at ROCK_TILE_M metres per repeat. */
+export const ROCK_TILE_M = 10;
+
+export function rockTexture(anisotropy: number, floor = false): THREE.CanvasTexture {
+  const size = 512;
+  const [c, ctx] = canvas(size);
+  const rand = seeded(floor ? 57 : 48);
+  ctx.fillStyle = floor ? '#6d6259' : '#7a6e63';
+  ctx.fillRect(0, 0, size, size);
+  // Strata: soft horizontal bands that wrap around (drawn on both edges so tiles join).
+  for (let i = 0; i < 14; i++) {
+    const y = rand() * size;
+    const h = 10 + rand() * 40;
+    const shade = rand() < 0.5 ? '60,50,42' : '150,138,124';
+    ctx.fillStyle = `rgba(${shade},${0.12 + rand() * 0.12})`;
+    for (const dy of [0, -size, size]) ctx.fillRect(0, y + dy, size, h);
+  }
+  // Blotches.
+  for (let i = 0; i < 50; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    const r = 20 + rand() * 70;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const shade = rand() < 0.5 ? '40,34,30' : '170,158,142';
+    g.addColorStop(0, `rgba(${shade},0.18)`);
+    g.addColorStop(1, `rgba(${shade},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  // Cracks: short jagged dark lines.
+  ctx.strokeStyle = 'rgba(30,25,22,0.5)';
+  for (let i = 0; i < 26; i++) {
+    let x = rand() * size;
+    let y = rand() * size;
+    ctx.lineWidth = 1 + rand() * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    for (let k = 0; k < 6; k++) {
+      x += (rand() - 0.5) * 50;
+      y += (rand() - 0.3) * 40;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  speckle(ctx, size, 14000, rand, 0.22);
+  return finish(c, anisotropy);
+}
