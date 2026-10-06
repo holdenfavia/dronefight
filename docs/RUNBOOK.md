@@ -114,6 +114,20 @@ Numbers: `shared/abilities.ts` (smoke), `shared/missile.ts` (missile flight mode
 
 A switch works as Special: in **Map buttons**, flip the switch on when asked for Special. While it's on, maneuver mode stays on.
 
+### Room settings (ADR-0046)
+
+- **Create room** opens Room settings: map, kills to win, time limit, flight assist (Any / Acro only), allowed drones, weapons, specials. In a room, the host changes them from **Pause → Room settings** or the room screen; Apply restarts the match. Others see them read-only.
+- Rules and the "nearest allowed build" swap: `shared/roomOptions.ts`; server side `Match.setOptions`.
+
+### Paint (ADR-0030)
+
+- Loadout screen → **Paint**: body color, finish (solid, racing stripes, checker, camo, carbon weave, chrome) and accent (battery and camera), per body. Saved to your profile (and account when signed in) and sent to the room (`looks` message) so others see it. Your pilot color stays on props, glow and trail.
+- Drawn by `applyLook` in `client/src/render/droneModel.ts` (pattern textures drawn once and cached).
+
+### Bullet impacts
+
+- Rounds that stop on something splash there, by surface (`client/src/render/impacts.ts`): dirt on dirt (Playground ground, sandbox), dust and chips on concrete and sidewalks, dark grit on asphalt, sparks on steel, glints on glass, leaves on foliage, painted chips on colored blocks.
+
 ### Training ground (ADR-0017)
 
 Pick **Map: Training** and **Fly solo**. Bots: **white** stationary (40/80/130/180 m down the lanes), **blue** fixed paths, **yellow** random, **red** evasive (they jink harder while your crosshair is on them). Hits, kills and accuracy show at the top. **R** respawns you and resets the stats. The lead circle follows the bot nearest your crosshair. Bots are solo-only; hits on them are checked locally (`client/src/training/`).
@@ -178,6 +192,7 @@ Gamepads the browser reports as "standard" (Xbox, PlayStation, Logitech in XInpu
 
 - Open https://dronefight.fly.dev in Safari, hold the device sideways. For a near-fullscreen view: Share → **Add to Home Screen**, then launch from the icon.
 - Left thumb anywhere on the left half: climb/sink and turn (with altitude hold, centered = hold height; without it the throttle stays where you leave it). Right thumb anywhere on the right half: aim (pitch and roll). Top-right corner = Fire (index finger), top-left = Special; any second finger on the right half also fires. Double-tap the left half to switch weapons. Pause is top center.
+- The hamburger button (top middle) opens the pause menu. **Edit layout** (in Touch controls) lets you drag the triggers, menu button and fixed sticks and resize the triggers from their corner handle; saved per device as screen fractions (`TouchLayout` in `settings.ts`).
 - **Pause → Touch controls** (or Settings → Touch controls) replaces Controller setup on touch: floating/fixed sticks, size, sensitivity, swap sides, flight assist, altitude hold, corner trigger, second-finger fire, auto-fire on target, trigger lock, opacity, button size. Saved per device.
 - A Bluetooth Xbox/PlayStation controller paired to the iPad takes over from touch automatically.
 - Code: `client/src/input/touchInput.ts` (fingers → sticks, drawing), read only through `InputManager.readTouch` (Hard rule 3). Tuning in `TOUCH`.

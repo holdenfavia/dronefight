@@ -17,9 +17,11 @@ import { interceptTime } from '../../shared/lead';
 import type { DroneState } from '../../shared/protocol';
 import { InputManager } from './input/inputManager';
 import { TouchInput } from './input/touchInput';
+import { emitImpact, SurfaceLookup } from './render/impacts';
 import { defaultServerUrl, NetClient } from './net/netClient';
 import { CameraRig } from './render/cameraRig';
-import { createClassModel, setDronePropColor } from './render/droneModel';
+import { applyLook, createClassModel, setDronePropColor } from './render/droneModel';
+import { lookKey } from '../../shared/cosmetics';
 import { RemoteDrones } from './render/remoteDrones';
 import { Tracers } from './render/tracers';
 import { LoadoutPreview } from './render/loadoutPreview';
@@ -149,6 +151,11 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     for (const c of props.centers(propClock())) fuseTargets.push(new THREE.Vector3(c[0], c[1], c[2]));
     return fuseTargets;
   };
+  // Bullet impacts: a little splash where a round lands, matched to the surface (dirt only where there's dirt).
+  const surfaces = new SurfaceLookup();
+  surfaces.setMap(currentMap);
+  tracers.onImpact = (at) => emitImpact(particles, at, surfaces.at(at));
+
   const trails = new Trails(world.scene);
   const audio = new AudioEngine();
   const sfx = new Sfx(audio);
@@ -276,6 +283,13 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
         respawn();
       }
     },
+    onEditTouchLayout: () => {
+      // The game stays paused while you arrange the controls; Done saves and returns to Touch controls.
+      touch.startEditing(() => {
+        saveSettings(settings);
+        menu.show('touch');
+      });
+    },
     onLeaveGame: () => {
       // Back to the start screen: out of any room, on your chosen map, drone reset at a spawn.
       paused = true;
@@ -302,7 +316,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     const cls = loadout.body;
     drone.setLoadout(loadout);
     world.scene.remove(droneModel);
-    droneModel = createClassModel(cls, combat.myColor, loadout);
+    droneModel = createClassModel(cls, combat.myColor, loadout, account.profile.looks[cls]);
     droneModel.visible = settings.camera.view === 'chase';
     world.scene.add(droneModel);
     motorSound.dispose();
@@ -322,6 +336,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     combat.setMap(currentMap);
   combat.onLocalRound = (o, d, speed, damage, maxDist) => training.addRound(o, d, speed, damage, maxDist);
     mapColliders = buildColliders(currentMap.boxes);
+    surfaces.setMap(currentMap);
     boundaryGrid.setHalfSize(currentMap.halfSize);
     drone.respawnAt(randomSpawn(currentMap));
     input.resetKeyboardThrottle(drone.restingThrottle);
@@ -562,7 +577,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     input.touchSettings = settings.touch;
     input.altitudeHoldAllowed = drone.canHoldAltitude;
     const control = input.poll(frameDt);
-    drone.setAssist(resolveAssist(settings, input.source === 'touch'));
+    // A room set to Acro only overrides your choice (ADR-0046); the X8 stays Horizon regardless.
+    drone.setAssist(net.inRoom && net.match?.options.assist === 'acro' ? 'acro' : resolveAssist(settings, input.source === 'touch'));
     touch.setVisible(!menu.visible && input.touchActive);
     touch.render();
     // Rooms decide the map; follow it when joining one.
@@ -656,6 +672,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     training.update(paused ? 0 : frameDt, rig.camera);
     trails.update(remotes.views, rig.camera, (team) => pilotColor(team ?? 1));
     setDronePropColor(droneModel, combat.myColor);
+    // Your paint (ADR-0030): repaint when it changes, and keep the room up to date.
+    const myLook = account.profile.looks[drone.classId];
+    if (droneModel.userData.lookKey !== lookKey(myLook)) applyLook(droneModel, myLook);
+    net.setLooks(account.profile.looks);
 
     // Audio: ears at the camera, motors follow the quad (ADR-0010).
     const cam = rig.camera;
@@ -701,7 +721,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
     renderer.render(world.scene, rig.camera);
     // The Loadout screen's 3D preview, drawn over the paused view (ADR-0033).
-    loadoutPreview.update(menu.previewLoadout, combat.myColor, frameDt, menu.previewAnchor());
+    loadoutPreview.update(menu.previewLoadout, combat.myColor, frameDt, menu.previewAnchor(), menu.previewLoadout ? menu.previewLook : undefined);
     loadoutPreview.render(renderer);
   });
 }

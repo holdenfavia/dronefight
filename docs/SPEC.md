@@ -39,7 +39,7 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 ## Controls
 
 - Real radios through the browser Gamepad API, always behind mapping and calibration (ADR-0006). Primary test device: **DJI FPV Remote Controller 2** over USB-C. Also Xbox/PlayStation/Logitech gamepads (guessed layouts), touch on iPad/iPhone (floating sticks, corner triggers, second-finger fire, ADR-0044), and keyboard (testing only).
-- Inputs: sticks, arm, Fire, Special, Switch weapon. Settings persist per browser. F fullscreen, M mute, Esc pause menu.
+- Inputs: sticks, arm, Fire, Special, Switch weapon. Settings persist per browser. F fullscreen, M mute, Esc pause menu (on touch, the hamburger button top middle).
 - Near the map edge an orange grid fades in on the invisible boundary wall.
 
 ## Multiplayer and hosting
@@ -53,7 +53,8 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 - Each hardpoint fires from its own screen corner (1 upper-left, 2 upper-right, 3 lower-left, 4 lower-right), converging ~40 m ahead along the FPV view. Each weapon has its own projectile look (ADR-0033). Rounds stop at walls.
 - Drones are drawn at real size; hit spheres are much bigger on purpose (ADR-0043). Other pilots get a War Thunder-style name tag (name, level, distance, health) while on screen, edge arrows when off screen, plus a glow, a fading trail and a lead indicator (ADR-0011, ADR-0043); smoke hides all but the frame (ADR-0024).
 - Crash = death; the kill goes to whoever damaged you in the last 5 s. Respawn after 3 s at one of 8 spawns away from other pilots (ADR-0012).
-- Free-for-all, first to 10 kills, then a new match (ADR-0026). Solo has no combat except Training bots (ADR-0017).
+- Free-for-all, first to 10 kills by default, then a new match (ADR-0026). The room's host sets kills to win, a time limit, the map, flight assist and the allowed drones, weapons and specials (Room settings, ADR-0046). Solo has no combat except Training bots (ADR-0017).
+- Rounds that miss splash where they land, matched to the surface: dirt only on dirt, dust and chips on concrete, sparks on steel.
 
 ## Maps (ADR-0012)
 
@@ -75,9 +76,9 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 
 ## Accounts and progression (ADR-0030, ADR-0031, ADR-0032)
 
-- Optional Google sign-in (Supabase). Guests always play; a guest profile moves into the account on first sign-in. The account saves pilot name and paint per body; **builds are saved per browser only** for now.
+- Optional Google sign-in (Supabase). Guests always play; a guest profile moves into the account on first sign-in. The account saves pilot name and **paint** per body (body color, finish, accent; picked on the Loadout screen and seen by others, your pilot color stays on props, glow and trail); **builds are saved per browser only** for now.
 - XP and levels come only from online matches and only the server awards them. **Built, switched off** until the server's secret key is set.
-- Later: levels unlock sidegrade bodies, modules and paints (never straight upgrades); paint and pilot name shown to others.
+- Later: levels unlock sidegrade bodies, modules and paints (never straight upgrades); pilot name shown to others.
 
 ## Hard rules
 

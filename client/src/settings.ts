@@ -2,6 +2,7 @@ import { CAMERA_DEFAULTS, DEFAULT_RATES, type FlightAssist, type Rates } from '.
 import { DEFAULT_DRONE, DRONE_ORDER, isDroneClassId, type DroneClassId } from '../../shared/drones';
 import { cleanLoadout, defaultLoadout, type Loadout } from '../../shared/loadout';
 import { DEFAULT_MAP, isMapId, type MapId } from '../../shared/maps';
+import { cleanRoomOptions, defaultRoomOptions, type RoomOptions } from '../../shared/roomOptions';
 import { loadJson, saveJson } from './storage';
 
 export type CameraView = 'fpv' | 'chase';
@@ -21,6 +22,8 @@ export interface Settings {
   flightAssist: FlightAssist | 'auto';
   /** Touch controls (ADR-0044). */
   touch: TouchSettings;
+  /** The match settings you last created a room with (ADR-0046). */
+  roomOptions: RoomOptions;
 }
 
 /** Touch controls (ADR-0044): saved per device. */
@@ -43,6 +46,36 @@ export interface TouchSettings {
   /** Control opacity (0.2..1) and trigger size multiplier (0.6..1.6). */
   opacity: number;
   buttonSize: number;
+  /** Your own arrangement from the layout editor, or null for the default (ADR-0044). */
+  layout: TouchLayout | null;
+}
+
+/** A spot or box on screen, as fractions of the screen's width and height (fits any device). */
+export interface TouchRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Where the touch controls sit (layout editor, ADR-0044): triggers, menu button, and fixed stick centers. */
+export interface TouchLayout {
+  fire: TouchRect;
+  special: TouchRect;
+  menu: { x: number; y: number };
+  left: { x: number; y: number };
+  right: { x: number; y: number };
+}
+
+/** A saved layout, or null if it's missing or malformed. */
+export function cleanTouchLayout(raw: unknown): TouchLayout | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, Record<string, unknown>>;
+  const frac = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= -0.5 && v <= 1.5;
+  const pt = (o: Record<string, unknown> | undefined) => !!o && frac(o.x) && frac(o.y);
+  const rect = (o: Record<string, unknown> | undefined) => pt(o) && frac(o!.w) && frac(o!.h);
+  if (!rect(r.fire) || !rect(r.special) || !pt(r.menu) || !pt(r.left) || !pt(r.right)) return null;
+  return raw as TouchLayout;
 }
 
 export const DEFAULT_TOUCH: TouchSettings = {
@@ -57,6 +90,7 @@ export const DEFAULT_TOUCH: TouchSettings = {
   triggerLock: false,
   opacity: 0.6,
   buttonSize: 1,
+  layout: null,
 };
 
 /** The assist to fly with: the pilot's choice, or for 'auto' Horizon on touch and Acro otherwise (ADR-0045). */
@@ -92,6 +126,7 @@ export function defaultSettings(): Settings {
     loadouts: allDefaults(),
     flightAssist: 'auto',
     touch: { ...DEFAULT_TOUCH },
+    roomOptions: defaultRoomOptions(DEFAULT_MAP),
   };
 }
 
@@ -115,7 +150,8 @@ export function loadSettings(): Settings {
       DRONE_ORDER.map((id) => [id, saved.loadouts?.[id] ? cleanLoadout({ ...saved.loadouts[id], body: id }, id) : d.loadouts[id]]),
     ) as Record<DroneClassId, Loadout>,
     flightAssist: ASSISTS.includes(saved.flightAssist as (typeof ASSISTS)[number]) ? (saved.flightAssist as Settings['flightAssist']) : d.flightAssist,
-    touch: { ...d.touch, ...saved.touch },
+    touch: { ...d.touch, ...saved.touch, layout: cleanTouchLayout(saved.touch?.layout) },
+    roomOptions: cleanRoomOptions(saved.roomOptions, d.map),
   };
 }
 

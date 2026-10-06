@@ -1,3 +1,6 @@
+import type { RoomOptions } from '../../../shared/roomOptions';
+import type { DroneLook } from '../../../shared/cosmetics';
+import type { DroneClassId } from '../../../shared/drones';
 import type { Loadout } from '../../../shared/loadout';
 import { DEFAULT_SERVER_PORT, PROTOCOL_VERSION } from '../../../shared/constants';
 import type { MapId } from '../../../shared/maps';
@@ -72,7 +75,7 @@ export class NetClient {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** The room to be in. `rejoin` (after we were in it) may recreate it if the server lost it on a restart. */
-  private wantRoom: { kind: 'create'; map: MapId } | { kind: 'join'; code: string } | { kind: 'rejoin'; code: string; map: MapId } | null = null;
+  private wantRoom: { kind: 'create'; map: MapId; options?: RoomOptions } | { kind: 'join'; code: string } | { kind: 'rejoin'; code: string; map: MapId } | null = null;
 
   constructor(
     private readonly url: string,
@@ -88,9 +91,20 @@ export class NetClient {
     return this.clock.serverNow(performance.now());
   }
 
-  createRoom(map: MapId): void {
-    this.wantRoom = { kind: 'create', map };
+  /** Create a room with these match settings (ADR-0046). */
+  createRoom(map: MapId, options?: RoomOptions): void {
+    this.wantRoom = options ? { kind: 'create', map, options } : { kind: 'create', map };
     this.ensureConnected();
+  }
+
+  /** The host changes the room's match settings (ADR-0046); the server restarts the match with them. */
+  sendOptions(options: RoomOptions): void {
+    if (this.inRoom) this.send({ t: 'options', options });
+  }
+
+  /** You may change the room's settings (you created it, or the creator left). */
+  get isHost(): boolean {
+    return this.inRoom && !!this.match && this.match.host === this.you;
   }
 
   joinRoom(code: string): void {
@@ -104,6 +118,14 @@ export class NetClient {
   setLoadout(loadout: Loadout): void {
     this.loadout = loadout;
     if (this.inRoom) this.send({ t: 'loadout', loadout });
+  }
+
+  /** Your paint for every body (ADR-0030); sent on join and whenever it changes. */
+  private looks: Record<DroneClassId, DroneLook> | null = null;
+  setLooks(looks: Record<DroneClassId, DroneLook>): void {
+    if (this.looks === looks || (this.looks && JSON.stringify(this.looks) === JSON.stringify(looks))) return;
+    this.looks = looks;
+    if (this.inRoom) this.send({ t: 'looks', looks });
   }
 
   /** Tell the room we used a special here: smoke (ADR-0024) or shield (ADR-0033). */
@@ -206,7 +228,7 @@ export class NetClient {
   private requestRoom(): void {
     const want = this.wantRoom;
     if (!want) return;
-    if (want.kind === 'create') this.send({ t: 'create', map: want.map });
+    if (want.kind === 'create') this.send(want.options ? { t: 'create', map: want.map, options: want.options } : { t: 'create', map: want.map });
     else if (want.kind === 'rejoin') this.send({ t: 'join', room: want.code, map: want.map });
     else this.send({ t: 'join', room: want.code });
   }
@@ -262,6 +284,7 @@ export class NetClient {
         for (const id of msg.peers) this.addPeer(id);
         this.setStatus('in-room');
         if (this.loadout) this.send({ t: 'loadout', loadout: this.loadout });
+        if (this.looks) this.send({ t: 'looks', looks: this.looks });
         break;
       case 'peer-joined':
         this.addPeer(msg.id);

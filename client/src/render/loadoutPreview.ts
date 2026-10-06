@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { Loadout } from '../../../shared/loadout';
-import { createClassModel, setDronePropColor } from './droneModel';
+import { createClassModel, modelKey, setDronePropColor } from './droneModel';
+import { DEFAULT_LOOKS, type DroneLook } from '../../../shared/cosmetics';
 
 /**
  * Live 3D preview for the Loadout screen (ADR-0033): your build spinning on a glowing turntable on the right
@@ -48,14 +49,15 @@ export class LoadoutPreview {
    * Show `loadout` (or nothing, with null) in the pilot's color, centered on `anchor` (normalized screen
    * coords, -1..1). Rebuilds only when the build changes.
    */
-  update(loadout: Loadout | null, color: string, dt: number, anchor: { x: number; y: number } | null = null): void {
+  update(loadout: Loadout | null, color: string, dt: number, anchor: { x: number; y: number } | null = null, look?: DroneLook): void {
     this.active = !!loadout;
     if (!loadout) return;
     if (anchor) this.stage.position.set(anchor.x * this.halfWidth, anchor.y * this.halfHeight - 0.6, -DIST);
-    const key = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}:${loadout.propeller}`;
+    const paint = look ?? DEFAULT_LOOKS[loadout.body];
+    const key = modelKey(loadout, paint);
     if (key !== this.key) {
       if (this.model) this.stage.remove(this.model);
-      this.model = createClassModel(loadout.body, color, loadout);
+      this.model = createClassModel(loadout.body, color, loadout, paint);
       // Sized by drawn width against a 5" (ADR-0043), square-root compressed so a racer is still visible and
       // an X8 still fits the turntable.
       const width = PREVIEW_BOX.setFromObject(this.model).getSize(PREVIEW_SIZE).x;

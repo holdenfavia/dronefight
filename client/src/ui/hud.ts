@@ -48,6 +48,8 @@ export interface CombatHudInfo {
   won: boolean | null;
   /** Short-lived message ("KILL +1", "SHOT DOWN"), or null. */
   toast: string | null;
+  /** Seconds left under the room's time limit (ADR-0046), or null for none. */
+  timeLeft: number | null;
 }
 
 export interface HudInfo {
@@ -271,7 +273,8 @@ export class Hud {
 
     const place = c.rank === 1 ? 'leading' : `${ordinal(c.rank)} of ${c.pilots}`;
     const leader = c.leader ? ` · leader ${c.leader.name} ${c.leader.score}` : '';
-    this.set(this.el.score, `You ${c.myScore} · ${place}${leader} · first to ${c.killsToWin}`);
+    const clock = c.timeLeft !== null ? ` · ${Math.floor(c.timeLeft / 60)}:${String(Math.floor(c.timeLeft % 60)).padStart(2, '0')}` : '';
+    this.set(this.el.score, `You ${c.myScore} · ${place}${leader} · first to ${c.killsToWin}${clock}`);
 
     let banner = c.toast ?? '';
     if (c.phase === 'ended') banner = c.won ? 'VICTORY' : `${(c.winnerName ?? 'Someone').toUpperCase()} WINS`;

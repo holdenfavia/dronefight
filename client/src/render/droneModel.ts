@@ -4,6 +4,7 @@ import { defaultLoadout, type Loadout } from '../../../shared/loadout';
 import type { WeaponId } from '../../../shared/weapons';
 import { PROPELLERS, type PropellerId } from '../../../shared/propellers';
 import { PALETTE } from '../world/scene';
+import { DEFAULT_LOOKS, lookKey, paintColor, type DroneLook, type PatternId } from '../../../shared/cosmetics';
 
 /**
  * A 5" freestyle quad built from primitives. Forward is -Z, matching the flight model.
@@ -38,9 +39,12 @@ export function createDroneModel(propColor: string = PALETTE.orange): THREE.Grou
   cam.position.set(0, 0.022, -0.045);
   group.add(cam);
 
-  const battery = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.03, 0.075), new THREE.MeshStandardMaterial({ color: PALETTE.white, roughness: 0.7 }));
+  const batteryMat = new THREE.MeshStandardMaterial({ color: PALETTE.white, roughness: 0.7 });
+  const battery = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.03, 0.075), batteryMat);
   battery.position.y = 0.05;
   group.add(battery);
+  // Paint (ADR-0030): the frame takes the body color and finish; battery and camera the accent.
+  group.userData.paint = { frame: [carbon], accent: [batteryMat, orange] };
 
   const motorGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.016, 12);
   const propGeo = new THREE.CylinderGeometry(0.064, 0.064, 0.002, 24);
@@ -122,6 +126,8 @@ export function createWingModel(teamColor: string = PALETTE.orange): THREE.Group
   });
   group.userData.propMaterial = propMat;
   group.userData.teamMaterials = [team];
+  // Paint (ADR-0030): the foam takes the body color and finish, the pod the accent. Stripes and fins stay the pilot's color.
+  group.userData.paint = { frame: [foam], accent: [carbon] };
   return group;
 }
 
@@ -144,9 +150,11 @@ export function createX8Model(propColor: string = PALETTE.orange): THREE.Group {
   const plate = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.035, 0.14), carbon);
   plate.position.y = 0.02;
   group.add(plate);
-  const battery = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.11), new THREE.MeshStandardMaterial({ color: PALETTE.white, roughness: 0.7 }));
+  const batteryMat = new THREE.MeshStandardMaterial({ color: PALETTE.white, roughness: 0.7 });
+  const battery = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.11), batteryMat);
   battery.position.y = 0.06;
   group.add(battery);
+  group.userData.paint = { frame: [carbon], accent: [batteryMat, accent] };
   const cam = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.03, 0.025), accent);
   cam.position.set(0, 0.03, -0.08);
   group.add(cam);
@@ -259,16 +267,15 @@ function weaponModel(id: WeaponId): THREE.Group {
  * The model for a loadout (ADR-0033): its body, drawn at the body's scale (ADR-0011, ADR-0029), with its
  * weapons hung under the frame so other pilots can see what you carry.
  */
-export function createClassModel(cls: DroneClassId, teamColor: string, loadout: Loadout = defaultLoadout(cls)): THREE.Group {
+export function createClassModel(cls: DroneClassId, teamColor: string, loadout: Loadout = defaultLoadout(cls), look: DroneLook = DEFAULT_LOOKS[cls]): THREE.Group {
   const model = cls === 'wing' ? createWingModel(teamColor) : cls === 'x8' ? createX8Model(teamColor) : createDroneModel(teamColor);
   if (cls === 'quad3d') {
     // 3D quads fly both ways up: a second battery underneath makes them look symmetric.
-    const battery = new THREE.Mesh(
-      new THREE.BoxGeometry(0.035, 0.03, 0.075),
-      new THREE.MeshStandardMaterial({ color: '#141516', roughness: 0.7 }),
-    );
+    const underMat = new THREE.MeshStandardMaterial({ color: '#141516', roughness: 0.7 });
+    const battery = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.03, 0.075), underMat);
     battery.position.y = -0.03;
     model.add(battery);
+    (model.userData.paint as { accent: THREE.MeshStandardMaterial[] }).accent.push(underMat);
   }
   // Weapons: under the frame (on a wing, under the wing either side of the pod).
   const width = cls === 'wing' ? 0.5 : cls === 'x8' ? 0.16 : 0.08;
@@ -283,12 +290,92 @@ export function createClassModel(cls: DroneClassId, teamColor: string, loadout: 
     model.add(m);
   });
   dressPropellers(model, loadout.propeller);
+  applyLook(model, look);
   // Each body has its own draw scale, so a racer and an X8 look nothing alike in size (ADR-0036).
   model.scale.setScalar(droneClass(cls).visualScale);
   model.userData.droneClass = cls;
   model.userData.weaponMounts = mounts;
-  model.userData.loadoutKey = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}:${loadout.propeller}`;
+  model.userData.loadoutKey = modelKey(loadout, look);
   return model;
+}
+
+/** A key for a model's build and paint, to tell when it needs rebuilding. */
+export function modelKey(loadout: Loadout, look: DroneLook): string {
+  return `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}:${loadout.propeller}:${lookKey(look)}`;
+}
+
+/** How each finish looks (ADR-0030): roughness and metalness, and whether it has a pattern texture. */
+const FINISH: Record<PatternId, { roughness: number; metalness: number; texture: boolean }> = {
+  solid: { roughness: 0.55, metalness: 0.2, texture: false },
+  stripes: { roughness: 0.5, metalness: 0.2, texture: true },
+  checker: { roughness: 0.5, metalness: 0.2, texture: true },
+  camo: { roughness: 0.75, metalness: 0.05, texture: true },
+  carbonweave: { roughness: 0.35, metalness: 0.35, texture: true },
+  chrome: { roughness: 0.12, metalness: 1, texture: false },
+};
+
+const patternCache = new Map<string, THREE.CanvasTexture>();
+
+/** A small tiling texture for a finish in the body and accent colors (drawn once per combination). */
+function patternTexture(pattern: PatternId, body: string, accent: string): THREE.CanvasTexture {
+  const key = `${pattern}/${body}/${accent}`;
+  const cached = patternCache.get(key);
+  if (cached) return cached;
+  const n = 64;
+  const c = document.createElement('canvas');
+  c.width = c.height = n;
+  const g = c.getContext('2d')!;
+  g.fillStyle = body;
+  g.fillRect(0, 0, n, n);
+  g.fillStyle = accent;
+  if (pattern === 'stripes') {
+    g.fillRect(n * 0.38, 0, n * 0.08, n);
+    g.fillRect(n * 0.54, 0, n * 0.08, n);
+  } else if (pattern === 'checker') {
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) if ((x + y) % 2) g.fillRect((x * n) / 4, (y * n) / 4, n / 4, n / 4);
+  } else if (pattern === 'camo') {
+    // Fixed blotches (no randomness, so every client draws the same camo).
+    const blobs = [[12, 14, 11], [40, 10, 9], [52, 40, 12], [22, 44, 10], [6, 58, 7], [36, 30, 6]];
+    blobs.forEach(([x, y, r], i) => {
+      g.fillStyle = i % 2 ? accent : 'rgba(0,0,0,0.35)';
+      g.beginPath();
+      g.ellipse(x!, y!, r!, r! * 0.7, i, 0, Math.PI * 2);
+      g.fill();
+    });
+  } else if (pattern === 'carbonweave') {
+    for (let y = 0; y < 8; y++)
+      for (let x = 0; x < 8; x++) {
+        g.fillStyle = (x + y) % 2 ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.25)';
+        g.fillRect((x * n) / 8, (y * n) / 8, n / 8, n / 8);
+      }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(pattern === 'checker' || pattern === 'carbonweave' ? 6 : 3, pattern === 'checker' || pattern === 'carbonweave' ? 6 : 3);
+  patternCache.set(key, tex);
+  return tex;
+}
+
+/**
+ * Paint a drone (ADR-0030): body color and finish on the frame, the accent on the battery and camera. The
+ * pilot's match color stays on the props, glow and trail, so you can always tell who's who (ADR-0026).
+ */
+export function applyLook(model: THREE.Group, look: DroneLook): void {
+  const paint = model.userData.paint as { frame: THREE.MeshStandardMaterial[]; accent: THREE.MeshStandardMaterial[] } | undefined;
+  if (!paint) return;
+  const body = paintColor(look.body);
+  const accent = paintColor(look.accent);
+  const finish = FINISH[look.pattern];
+  for (const m of paint.frame) {
+    m.map = finish.texture ? patternTexture(look.pattern, body, accent) : null;
+    m.color.set(finish.texture ? '#ffffff' : body);
+    m.roughness = finish.roughness;
+    m.metalness = finish.metalness;
+    m.needsUpdate = true;
+  }
+  for (const m of paint.accent) m.color.set(accent);
+  model.userData.lookKey = lookKey(look);
 }
 
 /**

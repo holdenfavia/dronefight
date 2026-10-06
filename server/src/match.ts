@@ -6,6 +6,8 @@ import { DEFAULT_DRONE, droneClass, type DroneClassId } from '../../shared/drone
 import { cleanLoadout, count, defaultLoadout, launchers, missilePods, type Loadout } from '../../shared/loadout.js';
 import { SHIELD } from '../../shared/specials.js';
 import { WEAPONS, type WeaponId } from '../../shared/weapons.js';
+import { cleanRoomOptions, restrictLoadout, type RoomOptions } from '../../shared/roomOptions.js';
+import type { DroneLook } from '../../shared/cosmetics.js';
 import {
   NET,
   type DroneState,
@@ -64,6 +66,8 @@ interface Pilot {
   damagedBy: Map<string, number>;
   /** Level, for signed-in pilots (ADR-0032); set by the room. */
   level: number | null;
+  /** Paint per body (ADR-0030), if the pilot sent it. */
+  looks: Record<DroneClassId, DroneLook> | null;
   lastCrashed: boolean;
   /** Token bucket for fire-rate checks (ADR-0014): rounds available, and when it was last refilled. */
   ammo: Map<WeaponId, { ammo: number; at: number }>;
@@ -133,25 +137,69 @@ export class Match {
   private grenadeClock = 0;
   private now = 0;
   private protectedAnnounced = new Set<string>();
-  private readonly map: MapDef;
-  private readonly colliders: ReturnType<typeof buildColliders>;
+  private map: MapDef;
+  private colliders: ReturnType<typeof buildColliders>;
   /** Cars, barrels, tanks: shot, blown up and respawned here (ADR-0023). */
-  private readonly props: PropField;
+  private props: PropField;
+  /** Match settings (ADR-0046), and the pilot who may change them. */
+  private options: RoomOptions;
+  private host: string | null = null;
+  /** Server time the running match ends by its time limit (null: no limit). */
+  private endsAt: number | null = null;
 
   constructor(
-    mapId: MapId,
+    mapOrOptions: MapId | RoomOptions,
     private readonly emit: Emit,
     private readonly random: () => number = Math.random,
     /** Progress events for XP (ADR-0032), only while a match is running. */
     private readonly onProgress: (pilotId: string, event: ProgressEvent) => void = () => {},
   ) {
-    this.map = getMap(mapId);
+    this.options = typeof mapOrOptions === 'string' ? cleanRoomOptions(null, mapOrOptions) : mapOrOptions;
+    this.map = getMap(this.options.map);
     this.colliders = buildColliders(this.map.boxes);
     this.props = new PropField(this.map);
   }
 
+  /** The room's map (it can change with the settings). */
+  get mapId(): MapId {
+    return this.map.id;
+  }
+
+  /**
+   * The host changes the match settings (ADR-0046). Builds are brought within the new rules, a new map loads,
+   * and a running match restarts so everyone plays by the same rules from zero.
+   */
+  setOptions(id: string, raw: RoomOptions, now: number): void {
+    if (id !== this.host) return;
+    this.now = now;
+    const options = cleanRoomOptions(raw, this.options.map);
+    if (options.map !== this.map.id) {
+      this.map = getMap(options.map);
+      this.colliders = buildColliders(this.map.boxes);
+      this.props = new PropField(this.map);
+      this.bullets = [];
+      this.missiles = [];
+      this.grenades = [];
+    }
+    this.options = options;
+    for (const p of this.pilots.values()) {
+      p.pendingLoadout = restrictLoadout(p.pendingLoadout ?? p.loadout, options);
+      p.lastSpawn = null;
+    }
+    if (this.pilots.size >= MIN_PILOTS) this.startMatch(now);
+    else {
+      for (const p of this.pilots.values()) {
+        applyPending(p);
+        p.hp = droneClass(p.drone).maxHp;
+      }
+      this.broadcastState();
+    }
+  }
+
   addPlayer(id: string, now: number, choice: Loadout | DroneClassId = DEFAULT_DRONE): void {
-    const loadout = asLoadout(choice);
+    const loadout = restrictLoadout(asLoadout(choice), this.options);
+    // The first pilot in (the room's creator) sets the rules (ADR-0046).
+    if (this.host === null || !this.pilots.has(this.host)) this.host = id;
     this.now = now;
     // Each pilot gets the lowest free color slot (ADR-0026).
     const used = new Set([...this.pilots.values()].map((p) => p.team));
@@ -172,6 +220,7 @@ export class Match {
       lastDamagedAt: 0,
       damagedBy: new Map(),
       level: null,
+      looks: null,
       lastCrashed: false,
       ammo: new Map(),
       shieldUntil: 0,
@@ -192,6 +241,8 @@ export class Match {
   removePlayer(id: string, now: number): void {
     this.now = now;
     this.pilots.delete(id);
+    // The host left: the next pilot in charge of the settings.
+    if (this.host === id) this.host = this.pilots.keys().next().value ?? null;
     this.bullets = this.bullets.filter((b) => b.shooter !== id);
     this.missiles = this.missiles.filter((m) => m.shooter !== id);
     this.grenades = this.grenades.filter((g) => g.shooter !== id);
@@ -212,6 +263,14 @@ export class Match {
     this.broadcastState();
   }
 
+  /** A pilot's paint (ADR-0030), shown to everyone on the body they fly. */
+  setLooks(id: string, looks: Record<DroneClassId, DroneLook>): void {
+    const pilot = this.pilots.get(id);
+    if (!pilot) return;
+    pilot.looks = looks;
+    this.broadcastState();
+  }
+
   /** A signed-in pilot's level (ADR-0032), shown to everyone in the match state. */
   setLevel(id: string, level: number | null): void {
     const pilot = this.pilots.get(id);
@@ -224,7 +283,8 @@ export class Match {
   onLoadout(id: string, choice: Loadout | DroneClassId, now: number): void {
     const pilot = this.pilots.get(id);
     if (!pilot) return;
-    const loadout = asLoadout(choice);
+    // Only what the room allows (ADR-0046).
+    const loadout = restrictLoadout(asLoadout(choice), this.options);
     if (sameLoadout(pilot.loadout, loadout)) {
       pilot.pendingLoadout = null;
       return;
@@ -496,6 +556,10 @@ export class Match {
       this.startMatch(now);
       return;
     }
+    if (this.phase === 'playing' && this.endsAt !== null && now >= this.endsAt) {
+      this.endByTime(now);
+      return;
+    }
     for (const pilot of this.pilots.values()) {
       if (!pilot.alive && pilot.respawnAt !== null && now >= pilot.respawnAt) this.respawn(pilot, now);
       if (this.protectedAnnounced.has(pilot.id) && now >= pilot.protectedUntil) {
@@ -536,7 +600,10 @@ export class Match {
       props: this.props.downList(),
       phase: this.phase,
       winner: this.winner,
-      killsToWin: COMBAT.killsToWin,
+      killsToWin: this.options.killsToWin,
+      options: this.options,
+      host: this.host,
+      ...(this.endsAt !== null && this.phase === 'playing' ? { endsAt: this.endsAt } : {}),
       players: [...this.pilots.values()].map((p) => ({
         id: p.id,
         team: p.team,
@@ -548,6 +615,7 @@ export class Match {
         alive: p.alive,
         protected: p.protectedUntil > this.now,
         ...(p.level !== null ? { level: p.level } : {}),
+        ...(p.looks ? { look: p.looks[p.drone] } : {}),
       })),
     };
   }
@@ -654,19 +722,31 @@ export class Match {
     const killer = killerId ? this.pilots.get(killerId) : undefined;
     if (killer) {
       killer.score++;
-      if (killer.score >= COMBAT.killsToWin) {
-        // Match over: everyone still here finished it; the killer won it.
-        for (const p of this.pilots.values()) this.onProgress(p.id, 'finish');
-        this.onProgress(killer.id, 'win');
-        this.phase = 'ended';
-        this.winner = killer.id;
-        this.resultsUntil = now + COMBAT.resultsMs;
-        this.bullets = [];
-        this.missiles = [];
-        this.grenades = [];
-        for (const p of this.pilots.values()) p.respawnAt = null;
-      }
+      if (killer.score >= this.options.killsToWin) this.endMatch(killer.id, now);
     }
+    this.broadcastState();
+  }
+
+  /** Match over (kill limit, or time, ADR-0046): everyone still here finished it; the winner (if any) won it. */
+  private endMatch(winnerId: string | null, now: number): void {
+    for (const p of this.pilots.values()) this.onProgress(p.id, 'finish');
+    if (winnerId) this.onProgress(winnerId, 'win');
+    this.phase = 'ended';
+    this.winner = winnerId;
+    this.endsAt = null;
+    this.resultsUntil = now + COMBAT.resultsMs;
+    this.bullets = [];
+    this.missiles = [];
+    this.grenades = [];
+    for (const p of this.pilots.values()) p.respawnAt = null;
+  }
+
+  /** Time's up (ADR-0046): the most kills wins; a tie at the top is a draw. */
+  private endByTime(now: number): void {
+    const ranked = [...this.pilots.values()].sort((a, b) => b.score - a.score);
+    const top = ranked[0];
+    const tie = top && ranked[1] && ranked[1].score === top.score;
+    this.endMatch(top && !tie ? top.id : null, now);
     this.broadcastState();
   }
 
@@ -721,6 +801,7 @@ export class Match {
   private startMatch(now: number): void {
     this.phase = 'playing';
     this.winner = null;
+    this.endsAt = this.options.timeLimitMin > 0 ? now + this.options.timeLimitMin * 60_000 : null;
     this.bullets = [];
     this.missiles = [];
     this.grenades = [];

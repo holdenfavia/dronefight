@@ -92,3 +92,20 @@ export const PROPELLER_ICONS: Record<PropellerId, string> = {
     '<path d="M4 20 L16 17 V23 Z" fill="currentColor"/><path d="M12 13 H48 L54 16 V24 L48 27 H12 Z" fill="currentColor" fill-opacity="0.3"/><path d="M54 17 L62 20 L54 23" fill="currentColor" fill-opacity="0.6" stroke="none"/><path d="M24 31 h14 M34 28 l4 3 -4 3" stroke-width="1.6" opacity="0.7"/>',
   ),
 };
+
+/** A paint chip (ADR-0030). */
+export function paintSwatch(color: string): string {
+  return `<svg viewBox="0 0 64 40" aria-hidden="true"><rect x="10" y="6" width="44" height="28" rx="5" fill="${color}" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/></svg>`;
+}
+
+/** A finish chip in your body and accent colors (ADR-0030). */
+export function finishSwatch(pattern: string, body: string, accent: string): string {
+  const clip = '<clipPath id="fs"><rect x="10" y="6" width="44" height="28" rx="5"/></clipPath>';
+  let marks = '';
+  if (pattern === 'stripes') marks = `<rect x="27" y="6" width="4" height="28" fill="${accent}"/><rect x="34" y="6" width="4" height="28" fill="${accent}"/>`;
+  else if (pattern === 'checker') for (let y = 0; y < 4; y++) for (let x = 0; x < 6; x++) marks += (x + y) % 2 ? `<rect x="${10 + x * 7.4}" y="${6 + y * 7}" width="7.4" height="7" fill="${accent}"/>` : '';
+  else if (pattern === 'camo') marks = `<ellipse cx="20" cy="14" rx="8" ry="5" fill="${accent}"/><ellipse cx="42" cy="26" rx="9" ry="6" fill="${accent}"/><ellipse cx="34" cy="12" rx="6" ry="4" fill="rgba(0,0,0,0.35)"/><ellipse cx="18" cy="28" rx="6" ry="4" fill="rgba(0,0,0,0.35)"/>`;
+  else if (pattern === 'carbonweave') for (let y = 0; y < 5; y++) for (let x = 0; x < 8; x++) marks += `<rect x="${10 + x * 5.5}" y="${6 + y * 5.6}" width="5.5" height="5.6" fill="${(x + y) % 2 ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.3)'}"/>`;
+  else if (pattern === 'chrome') marks = '<rect x="10" y="6" width="44" height="9" fill="rgba(255,255,255,0.55)"/><rect x="10" y="22" width="44" height="4" fill="rgba(255,255,255,0.3)"/>';
+  return `<svg viewBox="0 0 64 40" aria-hidden="true"><defs>${clip}</defs><g clip-path="url(#fs)"><rect x="10" y="6" width="44" height="28" fill="${body}"/>${marks}</g><rect x="10" y="6" width="44" height="28" rx="5" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/></svg>`;
+}

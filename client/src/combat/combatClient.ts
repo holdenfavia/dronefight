@@ -98,6 +98,7 @@ export class CombatClient {
   /** 3D quad: when the smoke trail is ready again (performance.now() ms). */
   private smokeReadyAt = 0;
   private readonly hudInfo: CombatHudInfo = {
+    timeLeft: null,
     phase: 'waiting',
     myScore: 0,
     rank: 1,
@@ -398,6 +399,7 @@ export class CombatClient {
     h.respawnIn = this.respawnDeadline !== null ? Math.max(0, (this.respawnDeadline - performance.now()) / 1000) : null;
     h.won = m.phase === 'ended' ? m.winner === this.net.you : null;
     h.toast = this.toast?.text ?? null;
+    h.timeLeft = m.endsAt !== undefined && m.phase === 'playing' ? Math.max(0, (m.endsAt - this.net.serverNow()) / 1000) : null;
     return h;
   }
 
@@ -467,7 +469,7 @@ export class CombatClient {
         this.propAt.copy(o).addScaledVector(d, prop.dist);
         this.onPropRound?.(prop.i, gun.damage, (prop.dist / gun.speed) * 1000, this.propAt);
       }
-      if (id !== 'missile' && id !== 'grenade') this.tracers.spawn(o, d, maxDist, this.myColor, gun.speed, id);
+      if (id !== 'missile' && id !== 'grenade') this.tracers.spawn(o, d, maxDist, this.myColor, gun.speed, id, 0, maxDist < gun.range - 0.01);
       this.onLocalRound?.(o, d, gun.speed, gun.damage, maxDist);
       this.net.sendShot({ ts, p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)], w: id });
     }
@@ -598,7 +600,7 @@ export class CombatClient {
       this.shotDir.set(dx, dy, dz);
       const wall = raycastArena(this.colliders, px, py, pz, dx, dy, dz, gun.range);
       const maxDist = this.propHit(this.shotOrigin, this.shotDir, wall, gun.speed, shot.s.ts)?.dist ?? wall;
-      this.tracers.spawn(this.shotOrigin, this.shotDir, maxDist, pilotColor(team ?? 1), gun.speed, shot.s.w);
+      this.tracers.spawn(this.shotOrigin, this.shotDir, maxDist, pilotColor(team ?? 1), gun.speed, shot.s.w, 0, maxDist < gun.range - 0.01);
       if (gun.sound === 'vulcan') {
         this.sounds.remoteCannon(shot.id);
       } else {

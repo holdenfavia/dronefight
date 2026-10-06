@@ -1,4 +1,4 @@
-import type { TouchSettings } from '../settings';
+import type { TouchLayout, TouchSettings } from '../settings';
 
 /**
  * Touch controls for iPad and iPhone (ADR-0044), layout B: floating sticks under your thumbs, corner triggers
@@ -25,7 +25,12 @@ export const TOUCH = {
   tapSlopPx: 14,
   /** Pause button size (CSS px). */
   pausePx: 44,
+  /** Layout editor: smallest trigger (fraction of the screen side), and the resize handle (CSS px). */
+  minTrigger: 0.06,
+  handlePx: 26,
 } as const;
+
+type Part = 'fire' | 'special' | 'menu' | 'left' | 'right';
 
 type Side = 'left' | 'right';
 
@@ -57,7 +62,7 @@ export class TouchInput {
   climbMode = false;
   /** Last time a finger touched the controls (performance.now()), 0 if never. */
   lastTouchAt = 0;
-  /** Pause button. */
+  /** The hamburger menu button (top middle): opens the pause menu, same as Escape. */
   onPause: () => void = () => {};
 
   private readonly root: HTMLElement;
@@ -72,6 +77,12 @@ export class TouchInput {
   private visible = false;
   private tapStart = { id: -1, t: 0, x: 0, y: 0 };
   private lastTapAt = 0;
+  /** Layout editor (ADR-0044): on while arranging the controls; the part being dragged, and how. */
+  editing = false;
+  private onEditDone: (() => void) | null = null;
+  private drag: { id: number; part: Part; resize: boolean; x: number; y: number; start: TouchLayout } | null = null;
+  private readonly editBar: HTMLElement;
+  private readonly handles: Record<'fire' | 'special', HTMLElement>;
 
   constructor(
     root: HTMLElement,
@@ -82,9 +93,16 @@ export class TouchInput {
     root.innerHTML = `
       <div class="touch-trigger special" data-special>Special</div>
       <div class="touch-trigger fire" data-fire>Fire</div>
-      <button class="touch-pause" data-pause aria-label="Pause">❚❚</button>
+      <button class="touch-pause" data-pause aria-label="Menu"><span></span><span></span><span></span></button>
       <div class="touch-stick" data-stick="left"><div class="touch-nub"></div></div>
-      <div class="touch-stick" data-stick="right"><div class="touch-nub"></div></div>`;
+      <div class="touch-stick" data-stick="right"><div class="touch-nub"></div></div>
+      <div class="touch-handle" data-handle="fire"></div>
+      <div class="touch-handle" data-handle="special"></div>
+      <div class="touch-editbar" hidden>
+        <span>Drag to move · drag a corner to resize</span>
+        <button data-edit="reset">Reset</button>
+        <button data-edit="done" class="on">Done</button>
+      </div>`;
     const stick = (side: Side): Stick => {
       const base = root.querySelector(`[data-stick="${side}"]`) as HTMLElement;
       return { pointer: null, baseX: 0, baseY: 0, x: 0, y: 0, base, nub: base.firstElementChild as HTMLElement };
@@ -93,6 +111,8 @@ export class TouchInput {
     this.fireEl = root.querySelector('[data-fire]') as HTMLElement;
     this.specialEl = root.querySelector('[data-special]') as HTMLElement;
     this.pauseEl = root.querySelector('[data-pause]') as HTMLElement;
+    this.editBar = root.querySelector('.touch-editbar') as HTMLElement;
+    this.handles = { fire: root.querySelector('[data-handle="fire"]') as HTMLElement, special: root.querySelector('[data-handle="special"]') as HTMLElement };
     root.hidden = true;
 
     root.addEventListener('pointerdown', (e) => this.down(e));
@@ -120,6 +140,25 @@ export class TouchInput {
     return s;
   }
 
+  /** Open the layout editor (ADR-0044); `done` runs when you tap Done (the layout is already saved in settings). */
+  startEditing(done: () => void): void {
+    this.releaseAll();
+    this.editing = true;
+    this.onEditDone = done;
+    this.root.classList.add('editing');
+    this.editBar.hidden = false;
+  }
+
+  private stopEditing(): void {
+    this.editing = false;
+    this.drag = null;
+    this.root.classList.remove('editing');
+    this.editBar.hidden = true;
+    const done = this.onEditDone;
+    this.onEditDone = null;
+    done?.();
+  }
+
   /** Show the controls while flying; hiding lets go of everything. */
   setVisible(visible: boolean): void {
     if (visible === this.visible) return;
@@ -133,20 +172,43 @@ export class TouchInput {
     this.throttle = rest;
   }
 
+  /** The default arrangement, as fractions of the screen (corners for triggers, menu top middle). */
+  private defaultLayout(w: number, h: number, r: number): TouchLayout {
+    const size = this.settings.buttonSize;
+    const fw = TOUCH.fireW * size;
+    return {
+      fire: { x: 1 - fw, y: 0, w: fw, h: TOUCH.fireH * size },
+      special: { x: 0, y: 0, w: TOUCH.specialW * size, h: TOUCH.specialH * size },
+      menu: { x: 0.5, y: (6 + TOUCH.pausePx * 0.4) / h },
+      left: { x: (r * TOUCH.fixedInset) / w, y: 1 - (r * TOUCH.fixedInset) / h },
+      right: { x: 1 - (r * TOUCH.fixedInset) / w, y: 1 - (r * TOUCH.fixedInset) / h },
+    };
+  }
+
+  /** Your layout from the editor, or the default. */
+  private layout(w: number, h: number, r: number): TouchLayout {
+    return this.settings.layout ?? this.defaultLayout(w, h, r);
+  }
+
   /** Lay out and draw the controls for this frame. */
   render(): void {
     if (!this.visible) return;
     const s = this.settings;
     const { w, h, r } = this.metrics();
-    this.root.style.setProperty('--touch-opacity', String(s.opacity));
-    const size = s.buttonSize;
-    this.place(this.fireEl, w - w * TOUCH.fireW * size, 0, w * TOUCH.fireW * size, h * TOUCH.fireH * size);
-    this.fireEl.hidden = !s.cornerTriggers;
+    const L = this.layout(w, h, r);
+    this.root.style.setProperty('--touch-opacity', String(this.editing ? 0.9 : s.opacity));
+    this.place(this.fireEl, L.fire.x * w, L.fire.y * h, L.fire.w * w, L.fire.h * h);
+    this.fireEl.hidden = !s.cornerTriggers && !this.editing;
     this.fireEl.classList.toggle('on', this.fire);
     this.fireEl.classList.toggle('locked', this.locked);
-    this.place(this.specialEl, 0, 0, w * TOUCH.specialW * size, h * TOUCH.specialH * size);
+    this.place(this.specialEl, L.special.x * w, L.special.y * h, L.special.w * w, L.special.h * h);
     this.specialEl.classList.toggle('on', this.special);
-    this.place(this.pauseEl, (w - TOUCH.pausePx) / 2, 6, TOUCH.pausePx, TOUCH.pausePx * 0.8);
+    this.place(this.pauseEl, L.menu.x * w - TOUCH.pausePx / 2, L.menu.y * h - TOUCH.pausePx * 0.4, TOUCH.pausePx, TOUCH.pausePx * 0.8);
+    // Resize handles on the triggers' inner bottom corners, only while editing.
+    const hp = TOUCH.handlePx;
+    this.place(this.handles.fire, L.fire.x * w - hp / 2, (L.fire.y + L.fire.h) * h - hp / 2, hp, hp);
+    this.place(this.handles.special, (L.special.x + L.special.w) * w - hp / 2, (L.special.y + L.special.h) * h - hp / 2, hp, hp);
+    for (const el of Object.values(this.handles)) el.hidden = !this.editing;
     for (const side of ['left', 'right'] as const) {
       const st = this.sticks[side];
       const fixed = s.sticks === 'fixed';
@@ -174,8 +236,9 @@ export class TouchInput {
   }
 
   private fixedBase(st: Stick, side: Side, w: number, h: number, r: number): void {
-    st.baseX = side === 'left' ? r * TOUCH.fixedInset : w - r * TOUCH.fixedInset;
-    st.baseY = h - r * TOUCH.fixedInset;
+    const p = this.layout(w, h, r)[side];
+    st.baseX = p.x * w;
+    st.baseY = p.y * h;
   }
 
   /** Where the throttle stick's nub rests: at the current throttle (it stays put), or centered for altitude hold. */
@@ -196,6 +259,11 @@ export class TouchInput {
   }
 
   private down(e: PointerEvent): void {
+    if (this.editing) {
+      e.preventDefault();
+      this.editDown(e);
+      return;
+    }
     if (e.pointerType === 'mouse') return;
     e.preventDefault();
     this.lastTouchAt = performance.now();
@@ -242,6 +310,10 @@ export class TouchInput {
   }
 
   private move(e: PointerEvent): void {
+    if (this.editing) {
+      this.editMove(e);
+      return;
+    }
     if (e.pointerType === 'mouse') return;
     for (const side of ['left', 'right'] as const) {
       const st = this.sticks[side];
@@ -253,6 +325,10 @@ export class TouchInput {
   }
 
   private up(e: PointerEvent): void {
+    if (this.editing) {
+      if (this.drag?.id === e.pointerId) this.drag = null;
+      return;
+    }
     const id = e.pointerId;
     this.firePointers.delete(id);
     if (this.specialPointer === id) {
@@ -304,6 +380,71 @@ export class TouchInput {
       this.roll = dx;
       this.pitch = -dy;
     }
+  }
+
+  // --- Layout editor (ADR-0044)
+
+  private editDown(e: PointerEvent): void {
+    const { clientX: x, clientY: y, pointerId: id } = e;
+    const bar = this.editBar.getBoundingClientRect();
+    if (x >= bar.left && x <= bar.right && y >= bar.top && y <= bar.bottom) {
+      const btn = [...this.editBar.querySelectorAll<HTMLElement>('[data-edit]')].find((b) => this.inside(b, x, y));
+      if (btn?.dataset.edit === 'reset') this.settings.layout = null;
+      else if (btn?.dataset.edit === 'done') this.stopEditing();
+      return;
+    }
+    const { w, h, r } = this.metrics();
+    const start = structuredClone(this.layout(w, h, r));
+    const pick = (): { part: Part; resize: boolean } | null => {
+      if (this.inside(this.handles.fire, x, y)) return { part: 'fire', resize: true };
+      if (this.inside(this.handles.special, x, y)) return { part: 'special', resize: true };
+      if (this.inside(this.pauseEl, x, y)) return { part: 'menu', resize: false };
+      if (this.inside(this.fireEl, x, y)) return { part: 'fire', resize: false };
+      if (this.inside(this.specialEl, x, y)) return { part: 'special', resize: false };
+      if (this.settings.sticks === 'fixed') {
+        for (const side of ['left', 'right'] as const) if (this.inside(this.sticks[side].base, x, y)) return { part: side, resize: false };
+      }
+      return null;
+    };
+    const hit = pick();
+    if (!hit) return;
+    try {
+      this.root.setPointerCapture(id);
+    } catch {
+      // Synthetic pointer.
+    }
+    this.drag = { id, ...hit, x, y, start };
+  }
+
+  private editMove(e: PointerEvent): void {
+    const d = this.drag;
+    if (!d || d.id !== e.pointerId) return;
+    const { w, h } = this.metrics();
+    const dx = (e.clientX - d.x) / w;
+    const dy = (e.clientY - d.y) / h;
+    const L = structuredClone(d.start);
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    if (d.part === 'fire' || d.part === 'special') {
+      const box = L[d.part];
+      if (d.resize && d.part === 'fire') {
+        // Fire's handle is its inner (bottom-left) corner: keep the top-right corner where it is.
+        const right = box.x + box.w;
+        box.w = clamp(box.w - dx, TOUCH.minTrigger, 0.6);
+        box.h = clamp(box.h + dy, TOUCH.minTrigger, 0.6);
+        box.x = right - box.w;
+      } else if (d.resize) {
+        box.w = clamp(box.w + dx, TOUCH.minTrigger, 0.6);
+        box.h = clamp(box.h + dy, TOUCH.minTrigger, 0.6);
+      } else {
+        box.x = clamp(box.x + dx, 0, 1 - box.w);
+        box.y = clamp(box.y + dy, 0, 1 - box.h);
+      }
+    } else {
+      const p = L[d.part];
+      p.x = clamp(p.x + dx, 0.03, 0.97);
+      p.y = clamp(p.y + dy, 0.05, 0.97);
+    }
+    this.settings.layout = L;
   }
 
   private releaseAll(): void {

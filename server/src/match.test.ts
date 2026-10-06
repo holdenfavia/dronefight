@@ -11,6 +11,7 @@ import { interceptTime } from '../../shared/lead.js';
 import { MAPS, SPAWN_SAFE_DISTANCE } from '../../shared/maps/index.js';
 import { mapProps, PROPS } from '../../shared/props.js';
 import { Match, sampleHistory, takeRound } from './match.js';
+import { defaultRoomOptions, type RoomOptions } from '../../shared/roomOptions.js';
 
 function droneAt(p: Vec3, v: Vec3 = [0, 0, 0], crashed = false): DroneState {
   return { ts: 0, p, v, q: [0, 0, 0, 1], m: 0.3, armed: true, crashed };
@@ -876,5 +877,54 @@ describe('grenade launcher (ADR-0034)', () => {
     t.advance(afterProtection);
     lob(t, 9, [0, 0, -1]);
     expect(t.log.some((m) => m.t === 'shot' && m.s.w === 'grenade')).toBe(false);
+  });
+});
+
+describe('room settings (ADR-0046)', () => {
+  const opts = (o: Partial<RoomOptions> = {}): RoomOptions => ({ ...defaultRoomOptions('yard'), ...o });
+  const latest = (log: ServerMessage[]) => [...log].reverse().find((m): m is Extract<ServerMessage, { t: 'match' }> => m.t === 'match')!.m;
+
+  it('only the host (first pilot in) can change them; the match restarts with them', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match('yard', (m) => log.push(m));
+    match.addPlayer('A', 0);
+    match.addPlayer('B', 0);
+    expect(latest(log).host).toBe('A');
+    match.setOptions('B', opts({ killsToWin: 5 }), 100);
+    expect(latest(log).killsToWin).toBe(10);
+    match.setOptions('A', opts({ killsToWin: 5, map: 'downtown' }), 100);
+    expect(latest(log).killsToWin).toBe(5);
+    expect(latest(log).map).toBe('downtown');
+    expect(match.mapId).toBe('downtown');
+  });
+
+  it('when the host leaves, the next pilot takes over', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match('yard', (m) => log.push(m));
+    match.addPlayer('A', 0);
+    match.addPlayer('B', 0);
+    match.removePlayer('A', 10);
+    expect(latest(log).host).toBe('B');
+  });
+
+  it('builds are brought within the rules', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match(opts({ bodies: ['racer'], weapons: ['gun'], specials: [] }), (m) => log.push(m));
+    match.addPlayer('A', 0, { body: 'x8', weapons: ['rail', 'rail', 'missile', null], special: 'shield', propeller: 'tri' });
+    const a = match.state().players.find((p) => p.id === 'A')!;
+    expect(a.loadout.body).toBe('racer');
+    expect(a.loadout.weapons).toEqual(['gun']);
+    expect(a.loadout.special).toBeNull();
+  });
+
+  it('time limit: when it runs out, the most kills wins', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match(opts({ timeLimitMin: 5 }), (m) => log.push(m));
+    match.addPlayer('A', 0);
+    match.addPlayer('B', 0);
+    expect(latest(log).endsAt).toBe(5 * 60_000);
+    match.tick(5 * 60_000 + 1);
+    expect(latest(log).phase).toBe('ended');
+    expect(latest(log).winner).toBeNull(); // 0-0 is a draw
   });
 });

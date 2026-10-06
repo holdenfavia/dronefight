@@ -1,19 +1,24 @@
 import { DEFAULT_RATES, type AxisRates } from '../config';
 import type { Account } from '../account/account';
-import { cleanPilotName, NAME_MAX } from '../../../shared/cosmetics';
+import { cleanPilotName, NAME_MAX, type DroneLook } from '../../../shared/cosmetics';
 import { levelProgress } from '../../../shared/progression';
 import { CalibrationScreen } from '../input/calibrationScreen';
 import { LoadoutScreen } from './loadoutScreen';
 import { NET } from '../../../shared/protocol';
 import type { InputManager } from '../input/inputManager';
-import { droneClass } from '../../../shared/drones';
+import { DRONE_ORDER, droneClass, type DroneClassId } from '../../../shared/drones';
+import { cleanRoomOptions, defaultRoomOptions, KILL_LIMITS, TIME_LIMITS, type RoomOptions } from '../../../shared/roomOptions';
+import { WEAPON_ORDER, WEAPONS, type WeaponId } from '../../../shared/weapons';
+import { SPECIAL_ORDER, SPECIALS, type SpecialId } from '../../../shared/specials';
+import { pilotName } from '../../../shared/combat';
+import { BODY_ICONS, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
 import type { Loadout } from '../../../shared/loadout';
-import { getMap, MAP_ORDER } from '../../../shared/maps';
+import { getMap, MAP_ORDER, type MapId } from '../../../shared/maps';
 import type { NetClient } from '../net/netClient';
 import { maxRate } from '../sim/rates';
 import { DEFAULT_TOUCH, defaultSettings, saveSettings, type Settings, type TouchSettings } from '../settings';
 
-type Screen = 'main' | 'pause' | 'drone' | 'play' | 'room' | 'settings' | 'controller' | 'buttons' | 'account' | 'touch';
+type Screen = 'main' | 'pause' | 'drone' | 'play' | 'room' | 'settings' | 'controller' | 'buttons' | 'account' | 'touch' | 'rules';
 
 export interface MenuCallbacks {
   onFly(): void;
@@ -25,6 +30,8 @@ export interface MenuCallbacks {
   onDroneChanged(): void;
   /** Leave the current game (solo or room) and go back to the start screen. */
   onLeaveGame(): void;
+  /** Open the touch layout editor (ADR-0044); the menu comes back to Touch controls when it's done. */
+  onEditTouchLayout(): void;
 }
 
 /** Pause menu with main, settings and controller-setup screens. */
@@ -37,6 +44,9 @@ export class Menu {
   private droneReturn: Screen = 'main';
   /** Where the Touch controls screen's Done goes back to (the pause menu or Settings). */
   private touchReturn: Screen = 'main';
+  /** Room settings (ADR-0046): the draft being edited, and where Back goes. */
+  private rulesDraft: RoomOptions | null = null;
+  private rulesReturn: Screen = 'play';
   private readonly calibration: CalibrationScreen;
   private readonly loadoutScreen: LoadoutScreen;
 
@@ -52,6 +62,10 @@ export class Menu {
       changed: () => this.callbacks.onDroneChanged(),
       done: () => this.show(this.droneReturn),
       inMatch: () => this.net.inRoom && this.net.match?.phase === 'playing',
+      rules: () => (this.net.inRoom ? (this.net.match?.options ?? null) : null),
+      // Paint lives on your profile (ADR-0030): saved here and, signed in, to your account.
+      look: (body) => this.account.profile.looks[body],
+      setLook: (body, look) => this.account.update({ looks: { ...this.account.profile.looks, [body]: look } }),
     });
     // Controller setup lives under Settings, so it returns there.
     this.calibration = new CalibrationScreen(root, input, () => this.show('settings'));
@@ -75,6 +89,15 @@ export class Menu {
       this.renderDrone();
     }
     else if (screen === 'settings') this.renderSettings();
+    else if (screen === 'rules') {
+      if (this.lastScreen !== 'rules') {
+        this.rulesReturn = this.lastScreen;
+        // Creating: start from the settings you used last time, on the map you picked. In a room: the room's.
+        const base = this.net.inRoom && this.net.match ? this.net.match.options : { ...this.settings.roomOptions, map: this.settings.map };
+        this.rulesDraft = cleanRoomOptions(structuredClone(base), this.settings.map);
+      }
+      this.renderRules();
+    }
     else if (screen === 'touch') {
       if (this.lastScreen !== 'touch') this.touchReturn = this.lastScreen;
       this.renderTouch();
@@ -97,6 +120,11 @@ export class Menu {
   }
 
   /** Where on screen the preview should draw the drone (normalized -1..1), while the Loadout screen is open. */
+  /** The paint to show on the Loadout preview (the hovered paint option, else yours). */
+  get previewLook(): DroneLook {
+    return this.loadoutScreen.previewLook;
+  }
+
   previewAnchor(): { x: number; y: number } | null {
     return this.previewLoadout ? this.loadoutScreen.anchor() : null;
   }
@@ -116,6 +144,7 @@ export class Menu {
     if (!this.visible) this.show(this.home);
     else if (this.screen === 'controller' || this.screen === 'buttons') this.show('settings');
     else if (this.screen === 'touch') this.show(this.touchReturn);
+    else if (this.screen === 'rules') this.show(this.rulesReturn);
     else if (this.screen === 'pause') this.fly();
     else if (this.screen === 'drone') this.show(this.droneReturn);
     else if (this.screen !== this.home) this.show(this.home);
@@ -186,6 +215,7 @@ export class Menu {
         <button class="btn big" data-resume>Resume</button>
         <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
         ${inRoom ? `<button class="btn ghost" data-room>Room ${this.net.room}: invite ▸</button>` : ''}
+        ${inRoom ? `<button class="btn ghost" data-rules>Room settings ▸</button>` : ''}
         ${this.input.touchActive ? '<button class="btn ghost" data-touch>Touch controls ▸</button>' : ''}
         <button class="btn ghost" data-settings>Settings</button>
         <button class="btn ghost leave" data-leave>Leave game</button>
@@ -196,6 +226,7 @@ export class Menu {
     this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
     this.root.querySelector('[data-room]')?.addEventListener('click', () => this.show('room'));
     this.root.querySelector('[data-touch]')?.addEventListener('click', () => this.show('touch'));
+    this.root.querySelector('[data-rules]')?.addEventListener('click', () => this.show('rules'));
     this.root.querySelector('[data-settings]')?.addEventListener('click', () => this.show('settings'));
     this.root.querySelector('[data-account]')?.addEventListener('click', () => this.show('account'));
     this.root.querySelector('[data-leave]')?.addEventListener('click', () => {
@@ -312,11 +343,8 @@ export class Menu {
       this.renderPlay();
     });
     this.root.querySelector('[data-solo]')?.addEventListener('click', () => this.fly());
-    this.root.querySelector('[data-create]')?.addEventListener('click', () => {
-      this.joining = null;
-      this.net.createRoom(this.settings.map);
-      this.updateJoinStatus('Creating a room…');
-    });
+    // Create room: pick the match settings first (ADR-0046).
+    this.root.querySelector('[data-create]')?.addEventListener('click', () => this.show('rules'));
     this.root.querySelector('[data-back]')?.addEventListener('click', () => this.show('main'));
 
     // Two digit boxes: typing moves along, the second digit joins straight away.
@@ -415,7 +443,9 @@ export class Menu {
         <div class="room-map">${net.map ? getMap(net.map).name : ''}</div>
         <div class="room-hint">${found ? 'you\'re in' : 'read this code to your friends'} · up to ${NET.maxPlayersPerRoom} pilots</div>
         <div class="peer-status ${pilots > 1 ? 'ok' : ''}">${pilots > 1 ? `✓ ${pilots} pilots in the room` : 'Waiting for pilots…'}</div>
+        <div class="room-rules">${this.rulesSummary(net.match?.options)}</div>
         <button class="btn ghost" data-drone>Drone: ${droneClass(this.settings.drone).name} ▸</button>
+        <button class="btn ghost" data-rules>Room settings ▸</button>
         <div class="actions">
           <button class="btn ghost" data-copy>Copy invite link</button>
           <button class="btn ghost" data-leave>Leave room</button>
@@ -424,6 +454,7 @@ export class Menu {
       </div>`;
     this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.fly());
     this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
+    this.root.querySelector('[data-rules]')?.addEventListener('click', () => this.show('rules'));
     this.root.querySelector('[data-leave]')?.addEventListener('click', () => {
       this.flying = false;
       this.joining = null;
@@ -437,6 +468,102 @@ export class Menu {
         () => (btn.textContent = 'Copied ✓'),
         () => (btn.textContent = link),
       );
+    });
+  }
+
+  /** One line about a room's rules, for the room screen. */
+  private rulesSummary(o: RoomOptions | undefined): string {
+    if (!o) return '';
+    const parts = [`First to ${o.killsToWin}`, o.timeLimitMin ? `${o.timeLimitMin} min` : 'no time limit'];
+    if (o.bodies.length < DRONE_ORDER.length) parts.push(o.bodies.map((b) => droneClass(b).name).join(', ') + ' only');
+    if (o.weapons.length < WEAPON_ORDER.length) parts.push(`${o.weapons.length} weapons`);
+    if (o.assist === 'acro') parts.push('Acro only');
+    return escapeHtml(parts.join(' · '));
+  }
+
+  /**
+   * Room settings (ADR-0046): when creating a room, and from the pause menu or room screen in one. The host
+   * edits (Apply restarts the match); everyone else sees the rules.
+   */
+  private renderRules(): void {
+    const d = this.rulesDraft ?? defaultRoomOptions(this.settings.map);
+    const creating = !this.net.inRoom;
+    const canEdit = creating || this.net.isHost;
+    const dis = canEdit ? '' : 'disabled';
+    const seg = (key: string, items: readonly (readonly [string | number, string])[], current: string | number) =>
+      `<div class="seg-choice" data-rseg="${key}">${items.map(([v, l]) => `<button type="button" ${dis} data-value="${v}" class="${String(v) === String(current) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    const chips = (key: 'bodies' | 'weapons' | 'specials', ids: readonly string[], on: readonly string[], label: (id: string) => string, icon: (id: string) => string) =>
+      `<div class="rule-chips" data-rchips="${key}">${ids.map((id) => `<button type="button" ${dis} class="rule-chip ${on.includes(id) ? 'on' : ''}" data-id="${id}"><span class="rule-chip-icon">${icon(id)}</span>${escapeHtml(label(id))}</button>`).join('')}</div>`;
+    const hostName = this.net.match?.players.find((p) => p.id === this.net.match?.host);
+    this.root.innerHTML = `
+      <div class="panel rules">
+        <div class="panel-head"><span class="kicker">${creating ? 'Create room' : `Room ${this.net.room}`}</span><h2>Room settings</h2></div>
+        ${canEdit ? '' : `<p class="hint">Only the room's host${hostName ? ` (${escapeHtml(pilotName(hostName.team))})` : ''} can change these.</p>`}
+        <div class="calib-sub">Map</div>
+        ${seg('map', MAP_ORDER.filter((m) => m !== 'training').map((m) => [m, getMap(m).name] as const), d.map)}
+        <div class="rules-row">
+          <div><div class="calib-sub">Kills to win</div>${seg('killsToWin', KILL_LIMITS.map((k) => [k, String(k)] as const), d.killsToWin)}</div>
+          <div><div class="calib-sub">Time limit</div>${seg('timeLimitMin', TIME_LIMITS.map((t) => [t, t ? `${t} min` : 'Off'] as const), d.timeLimitMin)}</div>
+        </div>
+        <div class="calib-sub">Flight assist</div>
+        ${seg('assist', [['any', 'Any'], ['acro', 'Acro only']], d.assist)}
+        <div class="calib-sub">Drones</div>
+        ${chips('bodies', DRONE_ORDER, d.bodies, (id) => droneClass(id as DroneClassId).name, (id) => BODY_ICONS[id as DroneClassId])}
+        <div class="calib-sub">Weapons</div>
+        ${chips('weapons', WEAPON_ORDER, d.weapons, (id) => WEAPONS[id as WeaponId].name, (id) => WEAPON_ICONS[id as WeaponId])}
+        <div class="calib-sub">Specials</div>
+        ${chips('specials', SPECIAL_ORDER, d.specials, (id) => SPECIALS[id as SpecialId].name, (id) => SPECIAL_ICONS[id as SpecialId])}
+        <p class="hint">Builds that break the rules are swapped for the nearest allowed one.${creating ? '' : ' Applying restarts the match.'}</p>
+        <div class="join-status" data-join-status></div>
+        <div class="actions">
+          <button class="btn ghost" data-back>Back</button>
+          ${canEdit ? `<button class="btn big" data-apply>${creating ? 'Create room' : 'Apply'}</button>` : ''}
+        </div>
+      </div>`;
+    this.root.querySelectorAll<HTMLElement>('[data-rseg]').forEach((group) =>
+      group.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
+        b.addEventListener('click', () => {
+          const key = group.dataset.rseg!;
+          const v = b.dataset.value ?? '';
+          if (key === 'map') d.map = v as MapId;
+          else if (key === 'killsToWin') d.killsToWin = Number(v);
+          else if (key === 'timeLimitMin') d.timeLimitMin = Number(v);
+          else if (key === 'assist') d.assist = v === 'acro' ? 'acro' : 'any';
+          group.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+        }),
+      ),
+    );
+    this.root.querySelectorAll<HTMLElement>('[data-rchips]').forEach((group) =>
+      group.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
+        b.addEventListener('click', () => {
+          const key = group.dataset.rchips as 'bodies' | 'weapons' | 'specials';
+          const list = d[key] as string[];
+          const id = b.dataset.id!;
+          const i = list.indexOf(id);
+          // Pilots need at least one drone and one weapon.
+          if (i >= 0 && key !== 'specials' && list.length === 1) return;
+          if (i >= 0) list.splice(i, 1);
+          else list.push(id);
+          b.classList.toggle('on', i < 0);
+        }),
+      ),
+    );
+    this.root.querySelector('[data-back]')?.addEventListener('click', () => this.show(this.rulesReturn));
+    this.root.querySelector('[data-apply]')?.addEventListener('click', () => {
+      const options = cleanRoomOptions(d, d.map);
+      if (creating) {
+        this.settings.roomOptions = options;
+        this.settings.map = options.map;
+        saveSettings(this.settings);
+        this.callbacks.onMapChanged();
+        this.joining = null;
+        this.net.createRoom(options.map, options);
+        this.show('play');
+        this.updateJoinStatus('Creating a room…');
+      } else {
+        this.net.sendOptions(options);
+        this.show(this.rulesReturn);
+      }
     });
   }
 
@@ -594,6 +721,7 @@ export class Menu {
         </div>
         <p class="hint">Double-tap the left side to switch weapons. Saved on this device.</p>
         <div class="actions">
+          <button class="btn ghost" data-tedit>Edit layout</button>
           <button class="btn ghost" data-treset>Reset</button>
           <button class="btn" data-done>Done</button>
         </div>
@@ -625,6 +753,10 @@ export class Menu {
         }),
       ),
     );
+    this.root.querySelector('[data-tedit]')?.addEventListener('click', () => {
+      this.hide();
+      this.callbacks.onEditTouchLayout();
+    });
     this.root.querySelector('[data-treset]')?.addEventListener('click', () => {
       s.touch = { ...DEFAULT_TOUCH };
       this.commit();

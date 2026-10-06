@@ -55,6 +55,8 @@ interface Round {
   maxDist: number;
   speed: number;
   style: ProjectileStyle;
+  /** It stops on something solid (wall, ground, prop), not at max range: show an impact there. */
+  impact: boolean;
 }
 
 const Z = new THREE.Vector3(0, 0, 1);
@@ -69,6 +71,9 @@ export class Tracers {
   private readonly pos = new THREE.Vector3();
   private readonly scale = new THREE.Vector3();
   private readonly color = new THREE.Color();
+  private readonly impactPoint = new THREE.Vector3();
+  /** A round struck a surface here: the game draws a little hit marker (sparks). */
+  onImpact: ((at: THREE.Vector3, color: string) => void) | null = null;
 
   constructor(scene: THREE.Scene) {
     // A tapered rod, 1 unit across at the head (+Z) and TAPER at the tail.
@@ -85,7 +90,7 @@ export class Tracers {
       scene.add(mesh);
     }
     for (let i = 0; i < CAPACITY; i++) {
-      this.pool.push({ active: false, origin: new THREE.Vector3(), dir: new THREE.Vector3(), born: 0, maxDist: 0, speed: 1, style: PROJECTILE_STYLES.gun });
+      this.pool.push({ active: false, origin: new THREE.Vector3(), dir: new THREE.Vector3(), born: 0, maxDist: 0, speed: 1, style: PROJECTILE_STYLES.gun, impact: false });
       this.core.setMatrixAt(i, this.m.makeScale(0, 0, 0));
       this.glow.setMatrixAt(i, this.m);
       this.core.setColorAt(i, this.color.set('#ffffff'));
@@ -93,8 +98,8 @@ export class Tracers {
     }
   }
 
-  /** A round from `weapon`, fired by a pilot of `pilotColor`. */
-  spawn(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number, pilotColor: string, speed: number, weapon: RoundWeapon = 'gun', ageMs = 0): void {
+  /** A round from `weapon`, fired by a pilot of `pilotColor`; `impact` when it ends on something solid. */
+  spawn(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number, pilotColor: string, speed: number, weapon: RoundWeapon = 'gun', ageMs = 0, impact = false): void {
     const i = this.next;
     this.next = (this.next + 1) % CAPACITY;
     const t = this.pool[i];
@@ -106,6 +111,7 @@ export class Tracers {
     t.maxDist = maxDist;
     t.speed = speed;
     t.style = PROJECTILE_STYLES[weapon];
+    t.impact = impact;
     // Brighter than 1.0 so they read as glowing (tone mapping is off for these materials).
     this.core.setColorAt(i, this.color.set(t.style.color).multiplyScalar(1.8));
     this.glow.setColorAt(i, this.color.set(pilotColor).multiplyScalar(1.4));
@@ -131,9 +137,11 @@ export class Tracers {
         head = t.maxDist;
         tail = NEAR;
         thin = 1 - age / t.style.beam.fadeMs;
+        this.strike(t);
       } else {
         const dist = (age / 1000) * t.speed;
         head = Math.min(dist, t.maxDist);
+        if (dist >= t.maxDist) this.strike(t);
         tail = Math.max(NEAR, dist - t.style.streak);
         if (tail >= t.maxDist) {
           this.hide(i, t);
@@ -154,6 +162,13 @@ export class Tracers {
     }
     this.core.instanceMatrix.needsUpdate = true;
     this.glow.instanceMatrix.needsUpdate = true;
+  }
+
+  /** The round reached what it hits: one impact marker, once. */
+  private strike(t: Round): void {
+    if (!t.impact) return;
+    t.impact = false;
+    this.onImpact?.(this.impactPoint.copy(t.origin).addScaledVector(t.dir, t.maxDist), t.style.color);
   }
 
   private hide(i: number, t: Round): void {

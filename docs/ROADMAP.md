@@ -131,9 +131,13 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Drag from real-size shape (ADR-0042)
 - [x] Touch controls on iPad and iPhone: floating sticks, corner triggers, second-finger fire, auto-fire, trigger lock, Touch controls screen (ADR-0044)
 - [x] Flight assist (Acro / Horizon / Angle) and altitude hold; X8 always Horizon (ADR-0045)
-- [ ] Touch: drag-to-edit layout editor; a "Try it" practice view
+- [x] Touch: drag-to-edit layout editor; hamburger menu button
+- [ ] Touch: a "Try it" practice view
+- [x] Room settings at create and from the pause menu (ADR-0046)
+- [x] Surface-matched bullet impact splashes
 - [ ] Play-test touch on a real iPad and iPhone (Safari and Home Screen)
-- [ ] Paint: pick body color, finish and accent on the Loadout screen; others see it
+- [x] Paint: pick body color, finish and accent on the Loadout screen; others see it
+- [ ] Teams (a mode in Room settings)
 - [ ] Paint and pilot name shown to others
 - [ ] Unlock track: levels unlock bodies, modules and paints
 - [ ] More content: flak, laser, rocket pod, flares, mines, cinewhoop, 7" long range, X8 gunship

@@ -3,6 +3,8 @@ import { cleanLoadout, type Loadout } from './loadout.js';
 import { isWeaponId, type WeaponId } from './weapons.js';
 import type { XpReason } from './progression.js';
 import { isMapId, type MapId } from './maps/index.js';
+import { cleanRoomOptions, type RoomOptions } from './roomOptions.js';
+import { completeLooks, type DroneLook } from './cosmetics.js';
 
 // Network protocol shared by client and server (ADR-0002, ADR-0004, ADR-0005).
 // JSON over WebSocket. Times are milliseconds on the server's clock unless noted.
@@ -98,6 +100,8 @@ export interface MatchPlayer {
   shielded?: boolean;
   /** Level, for signed-in pilots (ADR-0032). */
   level?: number;
+  /** Paint for the body they fly (ADR-0030), if they sent one. */
+  look?: DroneLook;
 }
 
 export interface MatchState {
@@ -109,12 +113,22 @@ export interface MatchState {
   players: MatchPlayer[];
   winner: string | null;
   killsToWin: number;
+  /** The room's match settings (ADR-0046), and who may change them (the creator, or the next pilot if they leave). */
+  options: RoomOptions;
+  host: string | null;
+  /** Server time the match ends by time limit, if it has one. */
+  endsAt?: number;
 }
 
 // ---- Client -> server
 
 export type ClientMessage =
-  | { t: 'create'; map: MapId }
+  /** Create a room with these match settings (ADR-0046). */
+  | { t: 'create'; map: MapId; options?: RoomOptions }
+  /** Your paint for every body (ADR-0030), so others see it on whichever you fly. */
+  | { t: 'looks'; looks: Record<DroneClassId, DroneLook> }
+  /** The host changes the room's match settings (ADR-0046): the match restarts with them. */
+  | { t: 'options'; options: RoomOptions }
   /** `map` only when rejoining after a dropped connection: recreate the room with this code if it's gone (e.g. a server restart). */
   | { t: 'join'; room: string; map?: MapId }
   | { t: 'leave' }
@@ -201,8 +215,14 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   if (typeof msg !== 'object' || msg === null) return null;
   const m = msg as Record<string, unknown>;
   switch (m.t) {
-    case 'create':
-      return { t: 'create', map: isMapId(m.map) ? m.map : 'downtown' };
+    case 'create': {
+      const map = isMapId(m.map) ? m.map : 'downtown';
+      return m.options !== undefined ? { t: 'create', map, options: cleanRoomOptions(m.options, map) } : { t: 'create', map };
+    }
+    case 'looks':
+      return typeof m.looks === 'object' && m.looks !== null ? { t: 'looks', looks: completeLooks(m.looks) } : null;
+    case 'options':
+      return typeof m.options === 'object' && m.options !== null ? { t: 'options', options: cleanRoomOptions(m.options) } : null;
     case 'leave':
       return { t: 'leave' };
     case 'join':

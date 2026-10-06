@@ -49,3 +49,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0043](0043-real-size-drones-name-tags.md) | Drones drawn at real size (5" ~0.31 m); hitboxes stay big; War Thunder-style name tags (name, level, distance, health) | Accepted |
 | [0044](0044-touch-controls.md) | Touch controls on iPad and iPhone: floating sticks, corner triggers, second-finger fire, optional auto-fire and trigger lock; Touch controls screen replaces Controller setup on touch | Accepted |
 | [0045](0045-flight-assist.md) | Pilot-selectable flight assist (Acro / Horizon / Angle) and altitude hold; X8 always Horizon; Acro default except on touch | Accepted |
+| [0046](0046-room-settings.md) | Room settings at create (map, kills, time limit, assist, allowed drones/weapons/specials), changeable by the host from the pause menu (restarts the match); server-enforced | Accepted |

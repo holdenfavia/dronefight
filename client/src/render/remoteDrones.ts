@@ -5,7 +5,8 @@ import type { NetClient } from '../net/netClient';
 import { createSampledState, type SampleMode } from '../net/snapshotBuffer';
 import { pilotColor } from '../../../shared/combat';
 import { DRONE_VISUAL } from '../config';
-import { createClassModel, setDronePropColor } from './droneModel';
+import { createClassModel, modelKey, setDronePropColor } from './droneModel';
+import { DEFAULT_LOOKS } from '../../../shared/cosmetics';
 import { droneClass, type DroneClassId } from '../../../shared/drones';
 import { defaultLoadout } from '../../../shared/loadout';
 
@@ -86,7 +87,8 @@ export class RemoteDrones {
       const player = net.match?.players.find((p) => p.id === peer.id);
       const cls = player?.drone ?? 'freestyle';
       const loadout = player?.loadout ?? defaultLoadout(cls);
-      const key = `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}:${loadout.propeller}`;
+      const look = player?.look ?? DEFAULT_LOOKS[cls];
+      const key = modelKey(loadout, look);
       let model = this.models.get(peer.id);
       // Their body or build changed (ADR-0013, ADR-0033): swap the model.
       if (model && model.userData.loadoutKey !== key) {
@@ -96,7 +98,7 @@ export class RemoteDrones {
       }
       if (!model) {
         // Drawn at the class's readable size; their physics stay real size (ADR-0011, ADR-0013).
-        model = createClassModel(cls, '#f4f2ee', loadout);
+        model = createClassModel(cls, '#f4f2ee', loadout, look);
         // A shield bubble (ADR-0033), shown while their shield is up.
         const bubble = new THREE.Mesh(this.bubbleGeo, this.bubbleMat);
         bubble.scale.setScalar(droneClass(cls).hitRadius / droneClass(cls).visualScale);

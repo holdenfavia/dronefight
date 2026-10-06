@@ -1,3 +1,4 @@
+import { loadoutAllowed, type RoomOptions } from '../../../shared/roomOptions';
 import { droneClass, DRONE_ORDER, type DroneClassId } from '../../../shared/drones';
 import { cleanLoadout, gunDps, handling, launchers, missilePods, thrustKg, thrustToWeight, totalKg, type Loadout } from '../../../shared/loadout';
 import { SPECIAL_ORDER, SPECIALS, specialFits, type SpecialId } from '../../../shared/specials';
@@ -5,7 +6,8 @@ import { WEAPON_ORDER, WEAPONS, type WeaponId } from '../../../shared/weapons';
 import { saveSettings, type Settings } from '../settings';
 import { agilityScore, speedScore } from '../sim/drone';
 import { PROPELLER_ORDER, PROPELLERS, propellerFits } from '../../../shared/propellers';
-import { BODY_ICONS, EMPTY_ICON, PROPELLER_ICONS, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
+import { BODY_ICONS, EMPTY_ICON, finishSwatch, paintSwatch, PROPELLER_ICONS, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
+import { PAINTS, PATTERNS, paintColor, type DroneLook } from '../../../shared/cosmetics';
 
 /**
  * Loadout screen (ADR-0033), laid out like a shooter's gunsmith: your drone up top (the 3D preview draws there),
@@ -13,7 +15,9 @@ import { BODY_ICONS, EMPTY_ICON, PROPELLER_ICONS, SPECIAL_ICONS, WEAPON_ICONS } 
  * Hover an option to see what it would change (green better, red worse); click to equip.
  */
 
-type Slot = 'body' | 'special' | 'propeller' | `w${number}`;
+type Slot = 'body' | 'special' | 'propeller' | `w${number}` | 'paintBody' | 'paintFinish' | 'paintAccent';
+/** One option card: the build it makes, or (paint slots) the look it makes. */
+interface Option { loadout: Loadout; look?: DroneLook; icon: string; name: string; line: string; kg: number | null; equipped: boolean }
 
 interface Stat {
   label: string;
@@ -32,12 +36,20 @@ export class LoadoutScreen {
   private slot: Slot = 'body';
   /** The option under the pointer, previewed in the stats; null = none. */
   private hover: Loadout | null = null;
+  /** A paint option under the pointer, previewed on the 3D model. */
+  private hoverLook: DroneLook | null = null;
+
+  /** The paint to show on the preview: the hovered option's, else yours. */
+  get previewLook(): DroneLook {
+    return this.hoverLook ?? this.hooks.look(this.loadout.body);
+  }
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
   constructor(
     private readonly root: HTMLElement,
     private readonly settings: Settings,
-    private readonly hooks: { changed(): void; done(): void; inMatch(): boolean },
+    /** `rules`: the room's match settings (ADR-0046), if you're in a room; parts it doesn't allow can't be equipped. */
+    private readonly hooks: { changed(): void; done(): void; inMatch(): boolean; rules(): RoomOptions | null; look(body: DroneClassId): DroneLook; setLook(body: DroneClassId, look: DroneLook): void },
   ) {}
 
   /** Where the drone should be drawn: the middle of the hero area, in normalized screen coords (-1..1). */
@@ -52,6 +64,7 @@ export class LoadoutScreen {
   open(): void {
     this.slot = 'body';
     this.hover = null;
+    this.hoverLook = null;
     this.render();
     if (!this.keyHandler) {
       this.keyHandler = (e) => this.onKey(e);
@@ -182,11 +195,27 @@ export class LoadoutScreen {
       `<section class="gs-group weapons"><h3>Weapons <span>${lo.weapons.filter(Boolean).length}/${lo.weapons.length}</span></h3><div class="gs-hardpoints">${hardpoints}</div></section>`,
       `<section class="gs-group propulsion"><h3>Propulsion</h3>${tile('propeller', PROPELLER_ICONS[lo.propeller], PROPELLERS[lo.propeller].name)}</section>`,
       `<section class="gs-group special"><h3>Special</h3>${tile('special', lo.special ? SPECIAL_ICONS[lo.special] : EMPTY_ICON, lo.special ? SPECIALS[lo.special].name : 'None', !lo.special && missilePods(lo) ? 'Special switches guns / missiles' : '')}</section>`,
+      this.paintGroup(),
     ];
   }
 
+  /** Paint (ADR-0030): body color, finish and accent, saved per body; others see it. Your match color stays on props, glow and trail. */
+  private paintGroup(): string {
+    const look = this.hooks.look(this.loadout.body);
+    const chip = (slot: Slot, icon: string, small: string, name: string) =>
+      `<button class="gs-paint ${this.slot === slot ? 'on' : ''}" data-slot="${slot}"><span class="gs-paint-icon">${icon}</span><small>${small}</small><span>${escapeText(name)}</span></button>`;
+    const body = paintColor(look.body);
+    const accent = paintColor(look.accent);
+    return `<section class="gs-group paint"><h3>Paint</h3><div class="gs-paints">
+      ${chip('paintBody', paintSwatch(body), 'Body', PAINTS.find((p) => p.id === look.body)?.name ?? '')}
+      ${chip('paintFinish', finishSwatch(look.pattern, body, accent), 'Finish', PATTERNS.find((p) => p.id === look.pattern)?.name ?? '')}
+      ${chip('paintAccent', paintSwatch(accent), 'Accent', PAINTS.find((p) => p.id === look.accent)?.name ?? '')}
+    </div></section>`;
+  }
+
   /** Which group the selected slot belongs to (the option bar takes its color). */
-  private group(): 'frame' | 'weapons' | 'propulsion' | 'special' {
+  private group(): 'frame' | 'weapons' | 'propulsion' | 'special' | 'paint' {
+    if (this.slot.startsWith('paint')) return 'paint';
     if (this.slot === 'body') return 'frame';
     if (this.slot === 'propeller') return 'propulsion';
     if (this.slot === 'special') return 'special';
@@ -194,6 +223,9 @@ export class LoadoutScreen {
   }
 
   private slotTitle(): string {
+    if (this.slot === 'paintBody') return 'Paint · body color';
+    if (this.slot === 'paintFinish') return 'Paint · finish';
+    if (this.slot === 'paintAccent') return 'Paint · accent (battery and camera)';
     if (this.slot === 'body') return 'Frame · choose a body';
     if (this.slot === 'special') return 'Special';
     if (this.slot === 'propeller') return this.loadout.body === 'wing' ? 'Propulsion · props or a jet' : 'Propulsion · choose propellers';
@@ -204,8 +236,32 @@ export class LoadoutScreen {
   // --- Option cards
 
   /** The options for the selected slot, each as the loadout it would make. */
-  private options(): { loadout: Loadout; icon: string; name: string; line: string; kg: number | null; equipped: boolean }[] {
+  private options(): Option[] {
     const lo = this.loadout;
+    if (this.slot === 'paintBody' || this.slot === 'paintAccent' || this.slot === 'paintFinish') {
+      const look = this.hooks.look(lo.body);
+      if (this.slot === 'paintFinish') {
+        return PATTERNS.map((p) => ({
+          loadout: lo,
+          look: { ...look, pattern: p.id },
+          icon: finishSwatch(p.id, paintColor(look.body), paintColor(look.accent)),
+          name: p.name,
+          line: 'Cosmetic only',
+          kg: null,
+          equipped: look.pattern === p.id,
+        }));
+      }
+      const key = this.slot === 'paintBody' ? 'body' : 'accent';
+      return PAINTS.map((p) => ({
+        loadout: lo,
+        look: { ...look, [key]: p.id },
+        icon: paintSwatch(p.color),
+        name: p.name,
+        line: 'Cosmetic only',
+        kg: null,
+        equipped: look[key] === p.id,
+      }));
+    }
     if (this.slot === 'body') {
       return DRONE_ORDER.map((id) => {
         const b = droneClass(id);
@@ -259,12 +315,19 @@ export class LoadoutScreen {
     });
   }
 
+  /** The room doesn't allow this build (ADR-0046). */
+  private blocked(l: Loadout, look?: DroneLook): boolean {
+    if (look) return false;
+    const rules = this.hooks.rules();
+    return !!rules && !loadoutAllowed(l, rules);
+  }
+
   private cards(): string[] {
     return this.options().map(
-      (o, i) => `<button class="gs-card ${o.equipped ? 'equipped' : ''}" data-option="${i}">
+      (o, i) => `<button class="gs-card ${o.equipped ? 'equipped' : ''} ${this.blocked(o.loadout, o.look) ? 'blocked' : ''}" data-option="${i}">
         <span class="gs-card-icon">${o.icon}</span>
         <span class="gs-card-name">${o.name}</span>
-        <span class="gs-card-line">${o.line}</span>
+        <span class="gs-card-line">${this.blocked(o.loadout, o.look) ? 'Not allowed in this room' : o.line}</span>
         <span class="gs-card-foot">${o.kg !== null ? `${o.kg} kg` : '—'}${o.equipped ? '<b>Equipped</b>' : ''}</span>
       </button>`,
     );
@@ -272,7 +335,8 @@ export class LoadoutScreen {
 
   private preview(i: number): void {
     const o = i >= 0 ? this.options()[i] : undefined;
-    this.hover = o ? o.loadout : null;
+    this.hoverLook = o?.look ?? null;
+    this.hover = o && !o.look ? o.loadout : null;
     // Refresh just the stat sheet and verdict, so the cards (and the pointer over them) stay put.
     const stats = this.root.querySelector('.gs-stats');
     if (stats) stats.innerHTML = this.stats().map((s) => this.statRow(s)).join('') + this.numbers();
@@ -286,7 +350,13 @@ export class LoadoutScreen {
 
   private equip(i: number): void {
     const o = this.options()[i];
-    if (!o) return;
+    if (!o || this.blocked(o.loadout, o.look)) return;
+    if (o.look) {
+      this.hooks.setLook(this.loadout.body, o.look);
+      this.hoverLook = null;
+      this.render();
+      return;
+    }
     const s = this.settings;
     if (this.slot === 'body') s.drone = o.loadout.body as DroneClassId;
     else s.loadouts[s.drone] = cleanLoadout(o.loadout, s.drone);
@@ -318,4 +388,8 @@ export class LoadoutScreen {
       e.preventDefault();
     }
   }
+}
+
+function escapeText(t: string): string {
+  return t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }

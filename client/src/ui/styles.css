@@ -1259,13 +1259,24 @@ body {
 .touch-trigger.special.on { background: rgba(155, 92, 255, 0.8); }
 .touch-trigger.locked { box-shadow: inset 0 0 0 4px #fff; }
 .touch-trigger[hidden], .touch-stick[hidden] { display: none; }
+/* Hamburger menu button, top middle: opens the pause menu (ADR-0044). */
 .touch-pause {
   border: 2px solid rgba(255, 255, 255, 0.8);
   border-radius: 8px;
   background: rgba(20, 21, 22, 0.45);
-  color: #fff;
-  font-size: 14px;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.touch-pause span {
+  display: block;
+  width: 20px;
+  height: 3px;
+  border-radius: 2px;
+  background: #fff;
 }
 .touch-stick {
   border-radius: 50%;
@@ -1317,3 +1328,106 @@ body {
 }
 .touch-settings .field.check { flex-wrap: wrap; row-gap: 0; }
 .touch-settings .field.check .hint { flex-basis: 100%; margin: 0 0 0 30px; font-size: 12px; text-transform: none; letter-spacing: 0; }
+
+
+/* Room settings (ADR-0046). */
+.panel.rules { max-width: 720px; width: 100%; }
+.rules .seg-choice { flex-wrap: wrap; }
+.rules-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 16px; }
+.rule-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rule-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 4px 10px 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 242, 238, 0.45);
+  cursor: pointer;
+}
+.rule-chip.on { color: #f4f2ee; border-color: var(--orange); background: rgba(255, 106, 19, 0.16); }
+.rule-chip:disabled, .rules .seg-choice button:disabled { cursor: default; }
+.rule-chip-icon { width: 30px; display: inline-flex; }
+.rule-chip-icon svg { width: 100%; height: auto; }
+.room-rules { color: rgba(244, 242, 238, 0.75); font-size: 14px; }
+.gs-card.blocked { opacity: 0.35; cursor: not-allowed; }
+
+/* Paint group on the Loadout screen (ADR-0030). */
+.gs-group.paint { --accent: #ff5fb2; }
+.gs-bar.paint { border-top-color: #ff5fb2; }
+.gs-bar.paint .gs-bar-title { color: #ff5fb2; }
+.gs-paints { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.gs-paint {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 5px 7px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-top: 3px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.gs-paint:hover { background: rgba(255, 255, 255, 0.1); }
+.gs-paint.on { border-top-color: #ff5fb2; background: rgba(255, 95, 178, 0.16); }
+.gs-paint small { font-size: 10px; opacity: 0.6; letter-spacing: 0.06em; }
+.gs-paint-icon { width: 42px; }
+.gs-paint-icon svg { width: 100%; height: auto; display: block; }
+
+/* Touch layout editor (ADR-0044). */
+#touch.editing { background: rgba(10, 11, 12, 0.35); }
+#touch.editing .touch-trigger,
+#touch.editing .touch-pause,
+#touch.editing .touch-stick { outline: 2px dashed rgba(255, 255, 255, 0.9); outline-offset: 2px; cursor: move; }
+.touch-handle {
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--orange);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+}
+.touch-handle[hidden], .touch-editbar[hidden] { display: none; }
+#touch > .touch-editbar {
+  top: auto;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 10px;
+  background: rgba(14, 15, 16, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-top: 3px solid var(--orange);
+  color: #f4f2ee;
+  font-family: var(--ui);
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.touch-editbar button {
+  font: inherit;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f2ee;
+}
+.touch-editbar button.on { background: var(--orange); border-color: var(--orange); color: #111; }
+#touch > .touch-editbar[hidden] { display: none; }

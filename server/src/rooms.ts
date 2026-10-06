@@ -8,6 +8,7 @@ import {
   type ServerMessage,
 } from '../../shared/protocol.js';
 import type { MapId } from '../../shared/maps/index.js';
+import type { RoomOptions } from '../../shared/roomOptions.js';
 import { levelForXp } from '../../shared/progression.js';
 import { Match } from './match.js';
 import { Progression, type ProgressEvent } from './progression.js';
@@ -32,7 +33,6 @@ interface Player {
 
 interface Room {
   code: string;
-  map: MapId;
   players: Map<string, Player>;
   match: Match;
 }
@@ -81,7 +81,7 @@ export class RoomManager {
     switch (msg.t) {
       case 'create':
         this.leaveRoom(player);
-        this.joinRoom(player, this.createRoom(msg.map));
+        this.joinRoom(player, this.createRoom(msg.map, undefined, msg.options));
         break;
       case 'join': {
         const valid = isValidRoomCode(msg.room);
@@ -92,7 +92,7 @@ export class RoomManager {
         if (!room) {
           send(conn, { t: 'error', code: 'room-not-found', message: `No room called ${msg.room}` });
         } else if (room === player.room) {
-          send(conn, { t: 'joined', room: room.code, you: player.id, peers: this.peerIds(room, player), map: room.map });
+          send(conn, { t: 'joined', room: room.code, you: player.id, peers: this.peerIds(room, player), map: room.match.mapId });
         } else if (room.players.size >= NET.maxPlayersPerRoom) {
           send(conn, { t: 'error', code: 'room-full', message: `Room ${room.code} is full` });
         } else {
@@ -133,6 +133,12 @@ export class RoomManager {
       case 'detonate':
         if (msg.w === 'grenade') player.room?.match.onDetonateGrenade(player.id, msg.rid, this.now());
         else player.room?.match.onDetonate(player.id, msg.rid, msg.p, this.now());
+        break;
+      case 'looks':
+        player.room?.match.setLooks(player.id, msg.looks);
+        break;
+      case 'options':
+        player.room?.match.setOptions(player.id, msg.options, this.now());
         break;
       case 'auth':
         void this.authenticate(player, msg.token);
@@ -178,7 +184,7 @@ export class RoomManager {
     if (after !== before) room.match.setLevel(player.id, after);
   }
 
-  private createRoom(map: MapId, wanted?: string): Room {
+  private createRoom(map: MapId, wanted?: string, options?: RoomOptions): Room {
     // The code asked for (a rejoin), else a random free one; with only 100 codes, fall back to scanning.
     let code = wanted !== undefined && !this.rooms.has(wanted) ? wanted : generateRoomCode(this.random);
     for (let n = 0; this.rooms.has(code) && n < ROOM_CODE_COUNT; n++) {
@@ -188,7 +194,7 @@ export class RoomManager {
     // Match events are gameplay-critical (unlike snapshots), so they're always sent.
     let room: Room | null = null;
     const match = new Match(
-      map,
+      options ? { ...options, map } : map,
       (msg, opts) => {
         const data = JSON.stringify(msg);
         for (const p of players.values()) {
@@ -202,7 +208,7 @@ export class RoomManager {
         if (room) this.progress(room, pilotId, event);
       },
     );
-    room = { code, map, players, match };
+    room = { code, players, match };
     this.rooms.set(code, room);
     return room;
   }
@@ -210,7 +216,7 @@ export class RoomManager {
   private joinRoom(player: Player, room: Room): void {
     room.players.set(player.id, player);
     player.room = room;
-    send(player.conn, { t: 'joined', room: room.code, you: player.id, peers: this.peerIds(room, player), map: room.map });
+    send(player.conn, { t: 'joined', room: room.code, you: player.id, peers: this.peerIds(room, player), map: room.match.mapId });
     for (const other of room.players.values()) {
       if (other !== player) send(other.conn, { t: 'peer-joined', id: player.id });
     }
