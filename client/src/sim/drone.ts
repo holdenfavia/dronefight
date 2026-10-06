@@ -2,12 +2,12 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { Euler, Quaternion, Vector3 } from 'three';
 import type { DroneClassId } from '../../../shared/drones';
 import type { SpawnPoint } from '../../../shared/maps';
-import { CRASH, INPUT, QUAD, QUAD_3D, RACER, SIM, X8, type QuadParams, type Rates } from '../config';
+import { CRASH, FLIGHT_ASSIST, INPUT, QUAD, QUAD_3D, RACER, SIM, X8, type FlightAssist, type QuadParams, type Rates } from '../config';
 import { defaultLoadout, loadFactor, type Loadout } from '../../../shared/loadout';
 import { AFTERBURNER } from '../../../shared/specials';
 import { PROPELLERS } from '../../../shared/propellers';
 import type { ControlState } from '../input/inputManager';
-import { createFlightOutput, stepFlight, throttleSafeToArm, type FlightState } from './flightModel';
+import { altitudeHoldThrottle, createFlightOutput, stepFlight, throttleSafeToArm, type FlightInput, type FlightState } from './flightModel';
 import type { Physics } from './physics';
 import { stepWing, WING } from './wingModel';
 
@@ -58,11 +58,13 @@ const QUAD_PARAMS: Record<Exclude<DroneClassId, 'wing'>, QuadParams> = { freesty
  * A quad build's flight parameters (ADR-0033, ADR-0035): its body's tuning, loaded by its weight, then
  * changed by its propellers (lift, response, spool, drag, prop wash).
  */
-export function flightParams(loadout: Loadout): QuadParams {
+export function flightParams(loadout: Loadout, assist: FlightAssist = 'acro'): QuadParams {
   const base = loadedParams(QUAD_PARAMS[loadout.body === 'wing' ? 'freestyle' : loadout.body], loadFactor(loadout));
   const p = PROPELLERS[loadout.propeller];
   return {
     ...base,
+    // The pilot's flight assist (ADR-0045); the X8 keeps its own horizon mode whatever is chosen (ADR-0037).
+    horizon: base.horizon ?? (assist === 'acro' ? undefined : FLIGHT_ASSIST[assist]),
     thrustToWeight: base.thrustToWeight * p.thrust,
     rateTau: base.rateTau * p.response,
     motorTau: base.motorTau * p.spool,
@@ -148,6 +150,11 @@ export class Drone {
   private loadoutNow: Loadout = defaultLoadout('freestyle');
   private params: QuadParams = QUAD;
   private boosted: QuadParams = QUAD;
+  /** The pilot's flight assist (ADR-0045). */
+  private assist: FlightAssist = 'acro';
+  /** Altitude hold's throttle this step, for the HUD (null when off). */
+  heldThrottle: number | null = null;
+  private readonly holdInput: FlightInput = { throttle: 0, roll: 0, pitch: 0, yaw: 0 };
 
   constructor(
     private readonly physics: Physics,
@@ -183,7 +190,7 @@ export class Drone {
     this.droneClass = id;
     const k = loadFactor(loadout);
     if (id !== 'wing') {
-      this.params = flightParams(loadout);
+      this.params = flightParams(loadout, this.assist);
       this.boosted = { ...this.params, thrustToWeight: this.params.thrustToWeight * (1 + AFTERBURNER.thrustBoost) };
     }
     const { rapier, world } = this.physics;
@@ -192,6 +199,18 @@ export class Drone {
     const mass = id === 'wing' ? WING.massKg * k : this.params.massKg;
     const desc = rapier.ColliderDesc.cuboid(e.x, e.y, e.z).setMass(mass).setRestitution(0.2).setFriction(0.6);
     this.collider = world.createCollider(desc, this.body);
+  }
+
+  /** Choose a flight assist (ADR-0045). Rebuilds the flight parameters only when it changes. */
+  setAssist(assist: FlightAssist): void {
+    if (assist === this.assist) return;
+    this.assist = assist;
+    this.setLoadout(this.loadoutNow);
+  }
+
+  /** Altitude hold works on normal quads (not the wing, and not a 3D quad's reversible throttle). */
+  get canHoldAltitude(): boolean {
+    return this.droneClass !== 'wing' && this.droneClass !== 'quad3d';
   }
 
   /** The 3D quad's throttle rests at center; everything else at the bottom. */
@@ -305,11 +324,25 @@ export class Drone {
     const out =
       this.droneClass === 'wing'
         ? stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive, this.wingProp.thrust * (burning ? 1 + AFTERBURNER.thrustBoost : 1), this.wingProp)
-        : stepFlight(control, this.state, rates, this.armed, dt, this.out, burning ? this.boosted : this.params);
+        : stepFlight(this.flightInput(control, burning ? this.boosted : this.params), this.state, rates, this.armed, dt, this.out, burning ? this.boosted : this.params);
     this.state.motorOutput = out.motorOutput;
     this.state.time += dt;
     this.body.setAngvel(out.angvel, true);
     this.body.addForce(out.force, true);
+  }
+
+  /** Sticks as the flight model sees them: with altitude hold, the climb command becomes a throttle (ADR-0045). */
+  private flightInput(control: ControlState, params: QuadParams): FlightInput {
+    if (control.climb === null || !this.canHoldAltitude) {
+      this.heldThrottle = null;
+      return control;
+    }
+    const h = this.holdInput;
+    h.roll = control.roll;
+    h.pitch = control.pitch;
+    h.yaw = control.yaw;
+    h.throttle = this.heldThrottle = altitudeHoldThrottle(control.climb, this.state, params);
+    return h;
   }
 
   /**

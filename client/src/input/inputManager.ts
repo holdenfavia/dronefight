@@ -1,7 +1,10 @@
 import { INPUT } from '../config';
 import type { FlightInput } from '../sim/flightModel';
 import { loadJson, saveJson } from '../storage';
+import type { TouchSettings } from '../settings';
+import type { TouchInput } from './touchInput';
 import {
+  applyDeadband,
   applySensitivity,
   guessedGamepadProfile,
   looksLikeGamepad,
@@ -31,9 +34,11 @@ export interface ControlState extends FlightInput {
   specialPressed: boolean;
   /** True for one poll when Switch weapon is pressed (guns / missiles, ADR-0033). */
   switchPressed: boolean;
+  /** Altitude hold (ADR-0045): climb rate -1..1 commanded by the throttle stick, or null when flying on throttle. */
+  climb: number | null;
 }
 
-export type InputSource = 'radio' | 'gamepad' | 'keyboard';
+export type InputSource = 'radio' | 'gamepad' | 'keyboard' | 'touch';
 
 /** Where a controller's profile comes from: set up by you, the browser's standard layout, a guess, or none yet. */
 export type ProfileKind = 'saved' | 'default' | 'guessed' | 'none';
@@ -50,6 +55,8 @@ const PROFILES_KEY = 'controllerProfiles';
 const SELECTED_KEY = 'selectedController';
 /** Keyboard flight is for testing; full-rate digital sticks are unflyable. */
 const KEYBOARD_STICK_SCALE = 0.45;
+/** Touch sticks: a small deadband so a resting thumb doesn't drift the drone (ADR-0044). */
+const TOUCH_DEADBAND = 0.05;
 
 export class InputManager {
   readonly state: ControlState = {
@@ -63,6 +70,7 @@ export class InputManager {
     special: false,
     specialPressed: false,
     switchPressed: false,
+    climb: null,
   };
   source: InputSource = 'keyboard';
   /** Gamepad.id of a connected controller with no profile yet, if that's all we have. */
@@ -77,9 +85,19 @@ export class InputManager {
   private specialWasDown = false;
   private switchWasDown = false;
   private readonly rawScratch: { axes: number[]; buttons: number[] } = { axes: [], buttons: [] };
+  private lastKeyAt = 0;
+  /** Touch controls (ADR-0044), when on a touch device. */
+  touch: TouchInput | null = null;
+  touchSettings: TouchSettings | null = null;
+  /** Set by the game each frame: altitude hold can apply to the drone you fly, and the lead circle is on a target. */
+  altitudeHoldAllowed = false;
+  leadOnTarget = false;
 
   constructor() {
-    window.addEventListener('keydown', (e) => this.keys.add(e.code));
+    window.addEventListener('keydown', (e) => {
+      this.keys.add(e.code);
+      this.lastKeyAt = performance.now();
+    });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
   }
@@ -141,6 +159,7 @@ export class InputManager {
     let resetDown: boolean;
     let specialDown: boolean;
     let switchDown: boolean;
+    this.state.climb = null;
     if (pad && profile) {
       this.readPad(pad, profile);
       this.source = pad.mapping === 'standard' || looksLikeGamepad(pad.id) ? 'gamepad' : 'radio';
@@ -150,6 +169,14 @@ export class InputManager {
       this.state.fire = readSwitch(profile.fire ?? null, this.rawScratch) || this.keys.has('Space');
       specialDown = readSwitch(profile.special ?? null, this.rawScratch) || this.keys.has('KeyE');
       switchDown = readSwitch(profile.weaponSwitch ?? null, this.rawScratch) || this.keys.has('KeyQ');
+    } else if (this.touchActive) {
+      this.readTouch();
+      this.source = 'touch';
+      this.activeId = null;
+      this.uncalibratedId = pad ? pad.id : null;
+      resetDown = false;
+      specialDown = this.touch!.special;
+      switchDown = this.touch!.consumeSwitch();
     } else {
       this.readKeyboard(dt);
       this.source = 'keyboard';
@@ -169,6 +196,36 @@ export class InputManager {
     this.state.switchPressed = switchDown && !this.switchWasDown;
     this.switchWasDown = switchDown;
     return this.state;
+  }
+
+  /**
+   * Touch controls are in use: a touch device with no usable gamepad, unless the keyboard was used since the
+   * last touch (ADR-0044).
+   */
+  get touchActive(): boolean {
+    const t = this.touch;
+    if (!t?.available) return false;
+    const pad = this.pickGamepad();
+    if (pad && this.profileKind(pad) !== 'none') return false;
+    return t.lastTouchAt >= this.lastKeyAt;
+  }
+
+  /** Touch fingers into the same normalized state as any other source (Hard rule 3, ADR-0044). */
+  private readTouch(): void {
+    const t = this.touch!;
+    const ts = this.touchSettings;
+    const sens = ts?.sensitivity ?? 1;
+    const climbMode = !!ts?.altitudeHold && this.altitudeHoldAllowed;
+    t.climbMode = climbMode;
+    const s = this.state;
+    s.throttle = climbMode ? 0 : t.throttle;
+    s.climb = climbMode ? applyDeadband(t.climb, TOUCH_DEADBAND) : null;
+    s.yaw = applySensitivity(applyDeadband(t.yaw, TOUCH_DEADBAND), sens);
+    s.roll = applySensitivity(applyDeadband(t.roll, TOUCH_DEADBAND), sens);
+    s.pitch = applySensitivity(applyDeadband(t.pitch, TOUCH_DEADBAND), sens);
+    s.armSwitch = null;
+    // Auto-fire (optional): guns fire while the lead circle is on a target. The server still decides hits.
+    s.fire = t.fire || (!!ts?.autoFire && this.leadOnTarget);
   }
 
   private pickGamepad(): Gamepad | null {
@@ -236,5 +293,6 @@ export class InputManager {
   /** Keyboard throttle snaps back to its rest position on respawn (center for a 3D quad, ADR-0013). */
   resetKeyboardThrottle(rest = 0): void {
     this.keyboardThrottle = rest;
+    this.touch?.resetThrottle(rest);
   }
 }

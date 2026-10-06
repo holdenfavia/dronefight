@@ -106,3 +106,15 @@ describe('propellers in flight (ADR-0035)', () => {
     expect(agilityScore({ ...base, propeller: 'heavy' })).toBeLessThan(agilityScore(base));
   });
 });
+
+describe('flight assist choice (ADR-0045)', () => {
+  it('quads take the chosen assist; Acro has none', () => {
+    expect(flightParams(DEFAULT_LOADOUTS.freestyle, 'acro').horizon).toBeUndefined();
+    expect(flightParams(DEFAULT_LOADOUTS.freestyle, 'angle').horizon?.transition).toBe(Infinity);
+    expect(flightParams(DEFAULT_LOADOUTS.racer, 'horizon').horizon?.transition).toBe(0.75);
+  });
+
+  it('the X8 is always Horizon, even when the pilot picks Acro or Angle (ADR-0037)', () => {
+    for (const a of ['acro', 'angle'] as const) expect(flightParams(DEFAULT_LOADOUTS.x8, a).horizon).toEqual(X8.horizon);
+  });
+});

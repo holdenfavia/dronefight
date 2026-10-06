@@ -174,6 +174,20 @@ In dev builds, `window.dronefight` exposes `renderer`, `world`, `drone`, `settin
 
 Gamepads the browser reports as "standard" (Xbox, PlayStation, Logitech in XInput "X" mode) work without setup: left stick throttle/yaw, right stick pitch/roll, RT fire, LT special, Y reset. Other gamepads recognized by name (e.g. a Logitech in DirectInput "D" mode) get a **guessed** layout: check the preview, and Calibrate sticks if a stick is wrong. Logitech F310/F710: the X/D switch on the back picks the mode; **X** is the easier one. Radios are never guessed. **Reset to defaults** forgets your saved setup.
 
+### iPad and iPhone (touch, ADR-0044)
+
+- Open https://dronefight.fly.dev in Safari, hold the device sideways. For a near-fullscreen view: Share → **Add to Home Screen**, then launch from the icon.
+- Left thumb anywhere on the left half: climb/sink and turn (with altitude hold, centered = hold height; without it the throttle stays where you leave it). Right thumb anywhere on the right half: aim (pitch and roll). Top-right corner = Fire (index finger), top-left = Special; any second finger on the right half also fires. Double-tap the left half to switch weapons. Pause is top center.
+- **Pause → Touch controls** (or Settings → Touch controls) replaces Controller setup on touch: floating/fixed sticks, size, sensitivity, swap sides, flight assist, altitude hold, corner trigger, second-finger fire, auto-fire on target, trigger lock, opacity, button size. Saved per device.
+- A Bluetooth Xbox/PlayStation controller paired to the iPad takes over from touch automatically.
+- Code: `client/src/input/touchInput.ts` (fingers → sticks, drawing), read only through `InputManager.readTouch` (Hard rule 3). Tuning in `TOUCH`.
+- Testing on a computer: the Browser pane at a width under 768 px emulates touch; a connected gamepad takes priority, so hide it (`navigator.getGamepads = () => []` in the console) when testing touch.
+
+### Flight assist (ADR-0045)
+
+- Settings → **Flight assist**: Auto (Horizon on touch, Acro otherwise), Acro, Horizon (levels near center, flips at full stick), Angle (never flips, 45° max lean). Quads only; the X8 is always Horizon; the wing ignores it.
+- Altitude hold (touch): `ALTITUDE_HOLD` in `client/src/config.ts` (12 m/s max climb). Assist levelling: `FLIGHT_ASSIST`.
+
 ### Other radios (EdgeTX/OpenTX)
 
 Connect via USB and choose **Joystick (HID)** mode when prompted. Then follow steps 3 and 5 above.

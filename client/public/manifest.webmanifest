@@ -1,0 +1,10 @@
+{
+  "name": "dronefight",
+  "short_name": "dronefight",
+  "description": "FPV dogfights with friends",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#141516",
+  "theme_color": "#ff6a13"
+}

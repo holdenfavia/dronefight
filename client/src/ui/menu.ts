@@ -11,9 +11,9 @@ import type { Loadout } from '../../../shared/loadout';
 import { getMap, MAP_ORDER } from '../../../shared/maps';
 import type { NetClient } from '../net/netClient';
 import { maxRate } from '../sim/rates';
-import { defaultSettings, saveSettings, type Settings } from '../settings';
+import { DEFAULT_TOUCH, defaultSettings, saveSettings, type Settings, type TouchSettings } from '../settings';
 
-type Screen = 'main' | 'pause' | 'drone' | 'play' | 'room' | 'settings' | 'controller' | 'buttons' | 'account';
+type Screen = 'main' | 'pause' | 'drone' | 'play' | 'room' | 'settings' | 'controller' | 'buttons' | 'account' | 'touch';
 
 export interface MenuCallbacks {
   onFly(): void;
@@ -35,6 +35,8 @@ export class Menu {
   private flying = false;
   /** Where the Loadout screen's Done goes back to (Play, the room screen, or the pause menu). */
   private droneReturn: Screen = 'main';
+  /** Where the Touch controls screen's Done goes back to (the pause menu or Settings). */
+  private touchReturn: Screen = 'main';
   private readonly calibration: CalibrationScreen;
   private readonly loadoutScreen: LoadoutScreen;
 
@@ -73,6 +75,10 @@ export class Menu {
       this.renderDrone();
     }
     else if (screen === 'settings') this.renderSettings();
+    else if (screen === 'touch') {
+      if (this.lastScreen !== 'touch') this.touchReturn = this.lastScreen;
+      this.renderTouch();
+    }
     else if (screen === 'play') this.renderPlay();
     else if (screen === 'room') this.renderRoom();
     else if (screen === 'account') this.renderAccount();
@@ -109,6 +115,7 @@ export class Menu {
   back(): void {
     if (!this.visible) this.show(this.home);
     else if (this.screen === 'controller' || this.screen === 'buttons') this.show('settings');
+    else if (this.screen === 'touch') this.show(this.touchReturn);
     else if (this.screen === 'pause') this.fly();
     else if (this.screen === 'drone') this.show(this.droneReturn);
     else if (this.screen !== this.home) this.show(this.home);
@@ -158,7 +165,11 @@ export class Menu {
         ${this.accountButton()}
         <div class="controller-status" data-status></div>
       </div>
-      <div class="keys">ESC menu · F fullscreen · R reset · C camera · M mute · keyboard: W/S throttle, A/D yaw, arrows pitch/roll, Space fire, E special</div>`;
+      <div class="keys">${
+        this.input.touchActive
+          ? 'Touch: left thumb climbs and turns · right thumb aims · index fingers fire and special · second finger on the right fires · double-tap left switches weapons'
+          : 'ESC menu · F fullscreen · R reset · C camera · M mute · keyboard: W/S throttle, A/D yaw, arrows pitch/roll, Space fire, E special'
+      }</div>`;
     this.root.querySelector('[data-play]')?.addEventListener('click', () => this.show('play'));
     this.root.querySelector('[data-settings]')?.addEventListener('click', () => this.show('settings'));
     this.root.querySelector('[data-account]')?.addEventListener('click', () => this.show('account'));
@@ -175,6 +186,7 @@ export class Menu {
         <button class="btn big" data-resume>Resume</button>
         <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
         ${inRoom ? `<button class="btn ghost" data-room>Room ${this.net.room}: invite ▸</button>` : ''}
+        ${this.input.touchActive ? '<button class="btn ghost" data-touch>Touch controls ▸</button>' : ''}
         <button class="btn ghost" data-settings>Settings</button>
         <button class="btn ghost leave" data-leave>Leave game</button>
         ${this.accountButton()}
@@ -183,6 +195,7 @@ export class Menu {
     this.root.querySelector('[data-resume]')?.addEventListener('click', () => this.fly());
     this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
     this.root.querySelector('[data-room]')?.addEventListener('click', () => this.show('room'));
+    this.root.querySelector('[data-touch]')?.addEventListener('click', () => this.show('touch'));
     this.root.querySelector('[data-settings]')?.addEventListener('click', () => this.show('settings'));
     this.root.querySelector('[data-account]')?.addEventListener('click', () => this.show('account'));
     this.root.querySelector('[data-leave]')?.addEventListener('click', () => {
@@ -377,10 +390,12 @@ export class Menu {
       ? `✓ ${ready.id}${ready.kind === 'guessed' ? ' (guessed layout: check it in Controller setup)' : ''}`
       : pads[0]
         ? `New controller found: set it up in Settings → Controller setup (${pads[0].id})`
-        : 'No controller: keyboard mode. Plug in your radio and move a stick.';
+        : this.input.touchActive
+          ? '✓ Touch controls. A Bluetooth gamepad works too.'
+          : 'No controller: keyboard mode. Plug in your radio and move a stick.';
     if (el.textContent !== text) {
       el.textContent = text;
-      el.classList.toggle('warn', !ready);
+      el.classList.toggle('warn', !ready && !this.input.touchActive);
     }
   }
 
@@ -440,10 +455,17 @@ export class Menu {
     this.root.innerHTML = `
       <div class="panel settings">
         <div class="panel-head"><span class="kicker">Settings</span><h2>Settings</h2></div>
-        <div class="settings-controller">
-          <button class="btn" data-controller>Controller setup</button>
-          <button class="btn ghost" data-buttons>Map buttons</button>
-        </div>
+        <div class="settings-controller">${
+          this.input.touchActive
+            ? '<button class="btn" data-touch>Touch controls</button>'
+            : '<button class="btn" data-controller>Controller setup</button><button class="btn ghost" data-buttons>Map buttons</button>'
+        }</div>
+        <label class="field">Flight assist
+          <select data-assist>
+            ${(['auto', 'acro', 'horizon', 'angle'] as const).map((a) => `<option value="${a}" ${s.flightAssist === a ? 'selected' : ''}>${ASSIST_LABELS[a]}</option>`).join('')}
+          </select>
+        </label>
+        <p class="hint">Quads only. The X8 always flies Horizon.</p>
         <div class="calib-sub">Rates &amp; camera</div>
         <table class="rates">
           <thead><tr><th></th><th>RC rate</th><th>Super</th><th>Expo</th><th>Max °/s</th></tr></thead>
@@ -525,6 +547,90 @@ export class Menu {
     this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show(this.home));
     this.root.querySelector('[data-controller]')?.addEventListener('click', () => this.show('controller'));
     this.root.querySelector('[data-buttons]')?.addEventListener('click', () => this.show('buttons'));
+    this.root.querySelector('[data-touch]')?.addEventListener('click', () => this.show('touch'));
+    this.root.querySelector<HTMLSelectElement>('[data-assist]')?.addEventListener('change', (e) => {
+      s.flightAssist = (e.target as HTMLSelectElement).value as Settings['flightAssist'];
+      this.commit();
+    });
+  }
+
+  /**
+   * Touch controls (ADR-0044): on a touch device it replaces Controller setup. Sticks, flight assist, the four
+   * ways to fire, and how the controls look. Saved per device.
+   */
+  private renderTouch(): void {
+    const s = this.settings;
+    const t = s.touch;
+    const check = (key: keyof TouchSettings, label: string, hint = '') =>
+      `<label class="field check"><input type="checkbox" data-tcheck="${key}" ${t[key] ? 'checked' : ''}> ${label}${hint ? ` <span class="hint">${hint}</span>` : ''}</label>`;
+    const slider = (key: 'stickSize' | 'sensitivity' | 'opacity' | 'buttonSize', label: string, min: number, max: number) =>
+      `<label class="field">${label} <input type="range" min="${min}" max="${max}" step="0.05" value="${t[key]}" data-tslider="${key}"><span>${Math.round(t[key] * 100)}%</span></label>`;
+    const seg = (name: string, options: readonly [string, string][], current: string) =>
+      `<div class="seg-choice" data-seg="${name}">${options.map(([v, l]) => `<button type="button" data-value="${v}" class="${v === current ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    this.root.innerHTML = `
+      <div class="panel touch-settings">
+        <div class="panel-head"><span class="kicker">Settings</span><h2>Touch controls</h2></div>
+        <div class="touch-grid">
+          <div>
+            <div class="calib-sub">Sticks</div>
+            ${seg('sticks', [['floating', 'Floating'], ['fixed', 'Fixed']], t.sticks)}
+            ${slider('stickSize', 'Stick size', 0.6, 1.6)}
+            ${slider('sensitivity', 'Sensitivity', 0.6, 1.6)}
+            ${check('swap', 'Swap sides (aim with your left thumb)')}
+            <div class="calib-sub">Flight</div>
+            ${seg('assist', [['acro', 'Acro'], ['horizon', 'Horizon'], ['angle', 'Angle']], s.flightAssist === 'auto' ? 'horizon' : s.flightAssist)}
+            ${check('altitudeHold', 'Altitude hold', 'left stick sets climb rate')}
+          </div>
+          <div>
+            <div class="calib-sub">Firing</div>
+            ${check('cornerTriggers', 'Corner Fire trigger', 'top right, for your index finger')}
+            ${check('secondFingerFire', 'Second finger fires', 'anywhere on the aiming side')}
+            ${check('autoFire', 'Auto-fire on target', 'guns fire while the lead circle is on someone')}
+            ${check('triggerLock', 'Trigger lock', 'tap Fire to keep firing')}
+            <div class="calib-sub">Look</div>
+            ${slider('opacity', 'Control opacity', 0.2, 1)}
+            ${slider('buttonSize', 'Button size', 0.6, 1.6)}
+          </div>
+        </div>
+        <p class="hint">Double-tap the left side to switch weapons. Saved on this device.</p>
+        <div class="actions">
+          <button class="btn ghost" data-treset>Reset</button>
+          <button class="btn" data-done>Done</button>
+        </div>
+      </div>`;
+    this.root.querySelectorAll<HTMLInputElement>('[data-tcheck]').forEach((el) =>
+      el.addEventListener('change', () => {
+        const key = el.dataset.tcheck as 'swap' | 'altitudeHold' | 'cornerTriggers' | 'secondFingerFire' | 'autoFire' | 'triggerLock';
+        t[key] = el.checked;
+        this.commit();
+      }),
+    );
+    this.root.querySelectorAll<HTMLInputElement>('[data-tslider]').forEach((el) =>
+      el.addEventListener('input', () => {
+        const key = el.dataset.tslider as 'stickSize' | 'sensitivity' | 'opacity' | 'buttonSize';
+        t[key] = Number(el.value);
+        const label = el.nextElementSibling;
+        if (label) label.textContent = `${Math.round(t[key] * 100)}%`;
+        this.commit();
+      }),
+    );
+    this.root.querySelectorAll<HTMLElement>('[data-seg]').forEach((group) =>
+      group.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
+        b.addEventListener('click', () => {
+          const v = b.dataset.value ?? '';
+          if (group.dataset.seg === 'sticks') t.sticks = v === 'fixed' ? 'fixed' : 'floating';
+          else s.flightAssist = v as Settings['flightAssist'];
+          group.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+          this.commit();
+        }),
+      ),
+    );
+    this.root.querySelector('[data-treset]')?.addEventListener('click', () => {
+      s.touch = { ...DEFAULT_TOUCH };
+      this.commit();
+      this.renderTouch();
+    });
+    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show(this.touchReturn));
   }
 
   private commit(): void {
@@ -532,6 +638,8 @@ export class Menu {
     this.callbacks.onSettingsChanged();
   }
 }
+
+const ASSIST_LABELS = { auto: 'Auto (Horizon on touch, else Acro)', acro: 'Acro', horizon: 'Horizon', angle: 'Angle' } as const;
 
 /** Google's "G" mark, as their sign-in branding guidelines specify for a "Sign in with Google" button. */
 const GOOGLE_G = `<svg class="signin-logo" viewBox="0 0 48 48" aria-hidden="true">

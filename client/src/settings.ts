@@ -1,4 +1,4 @@
-import { CAMERA_DEFAULTS, DEFAULT_RATES, type Rates } from './config';
+import { CAMERA_DEFAULTS, DEFAULT_RATES, type FlightAssist, type Rates } from './config';
 import { DEFAULT_DRONE, DRONE_ORDER, isDroneClassId, type DroneClassId } from '../../shared/drones';
 import { cleanLoadout, defaultLoadout, type Loadout } from '../../shared/loadout';
 import { DEFAULT_MAP, isMapId, type MapId } from '../../shared/maps';
@@ -17,7 +17,54 @@ export interface Settings {
   /** Drone body to fly (ADR-0013), and the loadout you built for each body (ADR-0033). */
   drone: DroneClassId;
   loadouts: Record<DroneClassId, Loadout>;
+  /** Flight assist for quads (ADR-0045); 'auto' = Horizon on touch, Acro otherwise. */
+  flightAssist: FlightAssist | 'auto';
+  /** Touch controls (ADR-0044). */
+  touch: TouchSettings;
 }
+
+/** Touch controls (ADR-0044): saved per device. */
+export interface TouchSettings {
+  /** Floating sticks appear under your thumbs; fixed sticks sit in the bottom corners. */
+  sticks: 'floating' | 'fixed';
+  /** Stick size and sensitivity, as multipliers (0.6..1.6). */
+  stickSize: number;
+  sensitivity: number;
+  /** Left-handed: aim with the left thumb. */
+  swap: boolean;
+  /** Throttle stick commands climb rate; centered holds height (ADR-0045). */
+  altitudeHold: boolean;
+  cornerTriggers: boolean;
+  secondFingerFire: boolean;
+  /** Guns fire while the lead circle is on a target. */
+  autoFire: boolean;
+  /** Tap Fire to keep firing, tap again to stop. */
+  triggerLock: boolean;
+  /** Control opacity (0.2..1) and trigger size multiplier (0.6..1.6). */
+  opacity: number;
+  buttonSize: number;
+}
+
+export const DEFAULT_TOUCH: TouchSettings = {
+  sticks: 'floating',
+  stickSize: 1,
+  sensitivity: 1,
+  swap: false,
+  altitudeHold: true,
+  cornerTriggers: true,
+  secondFingerFire: true,
+  autoFire: false,
+  triggerLock: false,
+  opacity: 0.6,
+  buttonSize: 1,
+};
+
+/** The assist to fly with: the pilot's choice, or for 'auto' Horizon on touch and Acro otherwise (ADR-0045). */
+export function resolveAssist(s: Settings, touch: boolean): FlightAssist {
+  return s.flightAssist === 'auto' ? (touch ? 'horizon' : 'acro') : s.flightAssist;
+}
+
+const ASSISTS = ['auto', 'acro', 'horizon', 'angle'] as const;
 
 /** The loadout you fly now: your build for the selected body. */
 export function currentLoadout(s: Settings): Loadout {
@@ -43,6 +90,8 @@ export function defaultSettings(): Settings {
     map: DEFAULT_MAP,
     drone: DEFAULT_DRONE,
     loadouts: allDefaults(),
+    flightAssist: 'auto',
+    touch: { ...DEFAULT_TOUCH },
   };
 }
 
@@ -65,6 +114,8 @@ export function loadSettings(): Settings {
     loadouts: Object.fromEntries(
       DRONE_ORDER.map((id) => [id, saved.loadouts?.[id] ? cleanLoadout({ ...saved.loadouts[id], body: id }, id) : d.loadouts[id]]),
     ) as Record<DroneClassId, Loadout>,
+    flightAssist: ASSISTS.includes(saved.flightAssist as (typeof ASSISTS)[number]) ? (saved.flightAssist as Settings['flightAssist']) : d.flightAssist,
+    touch: { ...d.touch, ...saved.touch },
   };
 }
 

@@ -16,6 +16,7 @@ import { MovingProps } from './world/movers';
 import { interceptTime } from '../../shared/lead';
 import type { DroneState } from '../../shared/protocol';
 import { InputManager } from './input/inputManager';
+import { TouchInput } from './input/touchInput';
 import { defaultServerUrl, NetClient } from './net/netClient';
 import { CameraRig } from './render/cameraRig';
 import { createClassModel, setDronePropColor } from './render/droneModel';
@@ -27,7 +28,7 @@ import { COMBAT, pilotColor, pilotName } from '../../shared/combat';
 import { droneClass } from '../../shared/drones';
 import { BoundaryGrid } from './world/boundaryGrid';
 import { WING } from './sim/wingModel';
-import { currentLoadout, loadSettings, saveSettings } from './settings';
+import { currentLoadout, loadSettings, resolveAssist, saveSettings } from './settings';
 import type { Loadout } from '../../shared/loadout';
 import { Drone } from './sim/drone';
 import { addGround, ArenaColliders, createPhysics } from './sim/physics';
@@ -45,6 +46,8 @@ import { splashDamage } from '../../shared/missile';
 import type { V3 } from '../../shared/maps/movers';
 
 const STEP = 1 / SIM.hz;
+/** Auto-fire (ADR-0044): fires while the lead circle is within this fraction of the screen's short side of center. */
+const AUTO_FIRE_RADIUS = 0.04;
 
 export async function startGame(container: HTMLElement, hudRoot: HTMLElement, menuRoot: HTMLElement): Promise<void> {
   const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -80,9 +83,19 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   boundaryGrid.setHalfSize(currentMap.halfSize);
 
   const input = new InputManager();
+  // Touch controls on iPad and iPhone (ADR-0044): an overlay between the HUD and the menu.
+  const touchRoot = document.createElement('div');
+  touchRoot.id = 'touch';
+  menuRoot.before(touchRoot);
+  const touch = new TouchInput(touchRoot, () => settings.touch);
+  input.touch = touch;
+  touch.onPause = () => {
+    menu.back();
+    paused = menu.visible;
+  };
   if (import.meta.env.DEV) {
     // Handy for poking at the game from the browser console while developing.
-    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get training() { return training; }, get combatEffects() { return combatEffects; }, get props() { return props; }, get combat() { return combat; }, get hud() { return hud; }, get account() { return account; } } });
+    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get training() { return training; }, get combatEffects() { return combatEffects; }, get props() { return props; }, get combat() { return combat; }, get hud() { return hud; }, get account() { return account; }, input, get touch() { return input.touch; } } });
   }
   const rig = new CameraRig(settings);
   rig.uptiltOverride = drone.classId === 'wing' ? WING.cameraUptiltDeg : null;
@@ -545,7 +558,13 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     last = now;
     fps += (1 / Math.max(frameDt, 1e-3) - fps) * 0.05;
 
+    // Touch and flight assist (ADR-0044, ADR-0045): set before reading the sticks.
+    input.touchSettings = settings.touch;
+    input.altitudeHoldAllowed = drone.canHoldAltitude;
     const control = input.poll(frameDt);
+    drone.setAssist(resolveAssist(settings, input.source === 'touch'));
+    touch.setVisible(!menu.visible && input.touchActive);
+    touch.render();
     // Rooms decide the map; follow it when joining one.
     if (net.map && net.map !== currentMap.id) switchMap(net.map);
     menu.tick();
@@ -653,9 +672,13 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     wasArmed = drone.armed;
     wasCrashed = drone.crashed;
 
+    const leadNow = training.active ? practiceLead() : pilotLead();
+    // Auto-fire (ADR-0044) reads this next frame: the lead circle is on the crosshair.
+    input.leadOnTarget = !!leadNow && Math.hypot(leadNow.x - container.clientWidth / 2, leadNow.y - container.clientHeight / 2) < Math.min(container.clientWidth, container.clientHeight) * AUTO_FIRE_RADIUS;
     hud.update({
       drone,
-      throttle: control.throttle,
+      // Altitude hold shows the throttle it's using (ADR-0045).
+      throttle: drone.heldThrottle ?? control.throttle,
       source: input.source,
       uncalibratedId: input.uncalibratedId,
       fps,
@@ -667,7 +690,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       // Edge arrows only for pilots off screen; on screen, trails and glow show them.
       // Smoking pilots get no arrow and no lead circle (ADR-0024).
       markers: pilotMarkers(),
-      lead: training.active ? practiceLead() : pilotLead(),
+      lead: leadNow,
       training: training.active ? training.statsText() : null,
       missile: combat.missileHud(missileTargetList()),
       special:

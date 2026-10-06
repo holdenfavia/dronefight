@@ -9,11 +9,11 @@ A browser FPV dogfighting game that **feels like real acro flying**. Friends ope
 ## Players and platform
 
 - A group of friends: free-for-all rooms of up to 10 pilots, two-digit room codes, no public matchmaking (ADR-0005, ADR-0026).
-- Desktop browsers. Chrome/Edge are the primary targets (best Gamepad API support); Safari/Firefox best-effort. Mobile/touch is out of scope.
+- Desktop browsers (Chrome/Edge primary; Safari/Firefox best-effort), plus **iPad and iPhone** in landscape with touch controls (ADR-0044).
 
 ## Flight
 
-- Acro (rate) mode: sticks command rotation rates, no self-levelling. **Exception:** the X8 always flies in horizon mode (ADR-0037).
+- Acro (rate) mode by default: sticks command rotation rates, no self-levelling. Pilots can pick a **flight assist** for quads: Horizon or Angle, plus altitude hold on touch (ADR-0045). The X8 is always Horizon (ADR-0037).
 - Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable. Adjustable FPV uptilt and FOV (default 105°, ADR-0040/0041).
 - A custom flight model computes thrust, drag (from each quad's real-size shape, ADR-0042), prop wash and rate commands; Rapier applies the forces with real gravity and handles motion and collisions (ADR-0008). Physics and drawing are real size (a 5" is ~0.3 m) so tight gaps stay flyable; only hit spheres are enlarged (ADR-0041, ADR-0043).
 - Crash = an impact over a speed-change threshold. Ducted props raise it (ADR-0035).
@@ -38,7 +38,7 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 
 ## Controls
 
-- Real radios through the browser Gamepad API, always behind mapping and calibration (ADR-0006). Primary test device: **DJI FPV Remote Controller 2** over USB-C. Fallbacks: Xbox/PlayStation/Logitech gamepads (guessed layouts) and keyboard (testing only).
+- Real radios through the browser Gamepad API, always behind mapping and calibration (ADR-0006). Primary test device: **DJI FPV Remote Controller 2** over USB-C. Also Xbox/PlayStation/Logitech gamepads (guessed layouts), touch on iPad/iPhone (floating sticks, corner triggers, second-finger fire, ADR-0044), and keyboard (testing only).
 - Inputs: sticks, arm, Fire, Special, Switch weapon. Settings persist per browser. F fullscreen, M mute, Esc pause menu.
 - Near the map edge an orange grid fades in on the invisible boundary wall.
 
@@ -91,4 +91,4 @@ These must never be broken without a superseding decision:
 
 ## Out of scope (for now)
 
-Public matchmaking, mandatory accounts, pay-to-win or straight-upgrade unlocks, mobile, VR, more than 10 pilots per room, teams, angle mode, pilot-selectable flight modes.
+Public matchmaking, mandatory accounts, pay-to-win or straight-upgrade unlocks, Android/phones in portrait, VR, more than 10 pilots per room, teams.

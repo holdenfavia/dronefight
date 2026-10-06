@@ -1,7 +1,8 @@
 import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RATES, QUAD, QUAD_3D, SIM, X8, type QuadParams } from '../config';
+import { ALTITUDE_HOLD, DEFAULT_RATES, FLIGHT_ASSIST, QUAD, QUAD_3D, SIM, X8, type QuadParams } from '../config';
 import {
+  altitudeHoldThrottle,
   createFlightOutput,
   hoverThrottle,
   MAX_THRUST_N,
@@ -185,5 +186,62 @@ describe('horizon mode (ADR-0037)', () => {
 
   it('other quads stay acro: no self-levelling', () => {
     expect(tilt(fly(centered, 1, rolled(40), QUAD))).toBeGreaterThan(35);
+  });
+});
+
+describe('flight assist and altitude hold (ADR-0045)', () => {
+  const tiltOf = (r: Quaternion) => new Vector3(0, 1, 0).applyQuaternion(r).angleTo(new Vector3(0, 1, 0)) / (Math.PI / 180);
+  /** Fly rotation only for `seconds` and return the attitude. */
+  function attitude(input: FlightInput, seconds: number, p: QuadParams): Quaternion {
+    const state = level();
+    const out = createFlightOutput();
+    const q = new Quaternion();
+    for (let i = 0; i < seconds * SIM.hz; i++) {
+      stepFlight(input, state, DEFAULT_RATES, true, dt, out, p);
+      state.angvel.copy(out.angvel);
+      const a = out.angvel.length() * dt;
+      if (a > 0) state.rotation.premultiply(q.setFromAxisAngle(out.angvel.clone().normalize(), a)).normalize();
+    }
+    return state.rotation;
+  }
+
+  it('Angle never flips: full stick holds a 45 degree lean', () => {
+    const angle = { ...QUAD, horizon: FLIGHT_ASSIST.angle };
+    const t = tiltOf(attitude({ ...centered, roll: 1 }, 2, angle));
+    expect(t).toBeGreaterThan(40);
+    expect(t).toBeLessThan(50);
+  });
+
+  it('Horizon still flips at full stick; Acro keeps rolling', () => {
+    expect(tiltOf(attitude({ ...centered, roll: 1 }, 0.4, { ...QUAD, horizon: FLIGHT_ASSIST.horizon }))).toBeGreaterThan(90);
+    expect(tiltOf(attitude({ ...centered, roll: 1 }, 0.4, QUAD))).toBeGreaterThan(90);
+  });
+
+  /** Fly with altitude hold for `seconds`; returns final height and vertical speed. */
+  function hold(climb: number, seconds: number) {
+    const state = level();
+    state.motorOutput = 1 / QUAD.thrustToWeight;
+    const out = createFlightOutput();
+    let y = 0;
+    for (let i = 0; i < seconds * SIM.hz; i++) {
+      const throttle = altitudeHoldThrottle(climb, state, QUAD);
+      stepFlight({ ...centered, throttle }, state, DEFAULT_RATES, true, dt, out, QUAD);
+      state.motorOutput = out.motorOutput;
+      state.linvel.addScaledVector(out.force, dt / QUAD.massKg);
+      state.linvel.y -= SIM.gravity * dt;
+      y += state.linvel.y * dt;
+    }
+    return { y, vy: state.linvel.y };
+  }
+
+  it('altitude hold: centered stick holds height', () => {
+    const h = hold(0, 4);
+    expect(Math.abs(h.y)).toBeLessThan(0.5);
+    expect(Math.abs(h.vy)).toBeLessThan(0.3);
+  });
+
+  it('altitude hold: full stick climbs at the max climb rate, down sinks', () => {
+    expect(hold(1, 4).vy).toBeCloseTo(ALTITUDE_HOLD.maxClimb, 0);
+    expect(hold(-0.5, 4).vy).toBeLessThan(-4);
   });
 });

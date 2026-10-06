@@ -1,5 +1,5 @@
 import { Quaternion, Vector3 } from 'three';
-import { QUAD, SIM, type QuadParams, type Rates } from '../config';
+import { ALTITUDE_HOLD, QUAD, SIM, type QuadParams, type Rates } from '../config';
 import { betaflightRate } from './rates';
 
 /**
@@ -123,6 +123,22 @@ export function horizonBlend(input: FlightInput, rotation: Quaternion, h: NonNul
   target.x = level * levelX + (1 - level) * target.x;
   target.z = level * levelZ + (1 - level) * target.z;
   return target;
+}
+
+/**
+ * Altitude hold (ADR-0045): the throttle that makes a quad climb at `climb` (-1..1 of ALTITUDE_HOLD.maxClimb)
+ * given its current vertical speed and tilt. Inverts the throttle curve so it lands on the needed thrust.
+ */
+export function altitudeHoldThrottle(climb: number, state: FlightState, p: QuadParams = QUAD): number {
+  up.set(0, 1, 0).applyQuaternion(state.rotation);
+  const target = Math.max(-1, Math.min(1, climb)) * ALTITUDE_HOLD.maxClimb;
+  const vy = state.linvel.y;
+  // Gravity, a correction toward the target climb rate, and the air drag the climb itself causes.
+  const drag = ((p.dragQuadratic.y * state.linvel.length() + p.dragLinear) * vy) / p.massKg;
+  const accel = SIM.gravity + (target - vy) * ALTITUDE_HOLD.gain + drag;
+  const thrust = (p.massKg * Math.max(0, accel)) / Math.max(ALTITUDE_HOLD.minCos, up.y);
+  const motor = Math.max(0, Math.min(1, thrust / maxThrust(p)));
+  return Math.pow(motor, 1 / p.throttleExponent);
 }
 
 export function stepFlight(
