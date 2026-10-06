@@ -119,6 +119,12 @@ A switch works as Special: in **Map buttons**, flip the switch on when asked for
 - **Create room** opens Room settings: map, kills to win, time limit, flight assist (Any / Acro only), allowed drones, weapons, specials. In a room, the host changes them from **Pause → Room settings** or the room screen; Apply restarts the match. Others see them read-only.
 - Rules and the "nearest allowed build" swap: `shared/roomOptions.ts`; server side `Match.setOptions`.
 
+### Teams and the pre-match menu (ADR-0047)
+
+- Room settings → **Mode**: Free-for-all or Teams (Orange vs Lime). Teams: new pilots join the smaller team; switch with **Join Orange/Lime** in the pre-match menu; no friendly fire (your own grenade still hurts you); team kill totals win.
+- The **pre-match menu** (the room screen) shows everyone, their drone, level and Ready. **Fly around** while waiting (no damage). The **host** presses **Start match** (2+ pilots; Teams: one per team); everyone's menu closes. After the results everyone returns to it.
+- Server: `Match` with `lobby = true` (rooms); bare `Match` (tests) still auto-starts at 2 pilots. Messages `side`, `ready`, `start`; callsigns ride on `looks`.
+
 ### Paint (ADR-0030)
 
 - Loadout screen → **Paint**: body color, finish (solid, racing stripes, checker, camo, carbon weave, chrome) and accent (battery and camera), per body. Saved to your profile (and account when signed in) and sent to the room (`looks` message) so others see it. Your pilot color stays on props, glow and trail.

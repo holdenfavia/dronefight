@@ -94,6 +94,7 @@ describe('RoomManager', () => {
     expect(b.last('progress')).toBeUndefined();
     rooms.handle(a, { t: 'create', map: 'yard' });
     rooms.handle(b, { t: 'join', room: a.last('joined')!.room });
+    rooms.handle(a, { t: 'start' });
     expect(a.last('match')?.m.players.find((p) => p.level !== undefined)?.level).toBe(1);
     // B (a guest) crashes right after A shot them: A gets the kill.
     time = 3000;

@@ -1431,3 +1431,30 @@ body {
 }
 .touch-editbar button.on { background: var(--orange); border-color: var(--orange); color: #111; }
 #touch > .touch-editbar[hidden] { display: none; }
+
+/* Pre-match menu (ADR-0047). */
+.panel.prematch { max-width: 760px; width: 100%; }
+.pm-top { display: flex; align-items: center; gap: 18px; }
+.pm-top .room-code { font-size: 64px; line-height: 1; }
+.pm-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.pm-team { border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; padding: 8px; }
+.pm-team.side-0 { border-top: 3px solid #ff6a13; }
+.pm-team.side-1 { border-top: 3px solid #b6f000; }
+.pm-team-head { display: flex; justify-content: space-between; align-items: center; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.btn.small { padding: 4px 10px; font-size: 13px; }
+.pm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.pm-row { display: grid; grid-template-columns: 12px 1fr auto auto 64px; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.04); font-size: 14px; }
+.pm-row.me { background: rgba(255, 106, 19, 0.12); }
+.pm-dot { width: 12px; height: 12px; border-radius: 50%; }
+.pm-name { font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-name em { font-style: normal; font-size: 11px; opacity: 0.6; margin-left: 4px; }
+.pm-name em.host { color: var(--orange); opacity: 1; }
+.pm-drone { display: flex; align-items: center; gap: 5px; opacity: 0.8; font-size: 13px; white-space: nowrap; }
+.pm-icon { width: 26px; display: inline-flex; }
+.pm-icon svg { width: 100%; height: auto; }
+.pm-level { font-size: 12px; opacity: 0.7; }
+.pm-ready { font-size: 12px; font-weight: 800; text-transform: uppercase; opacity: 0.5; text-align: right; }
+.pm-ready.on { color: #7ee07e; opacity: 1; }
+.pm-empty { opacity: 0.5; font-size: 13px; padding: 5px 8px; }
+.pm-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.pm-wait { align-self: center; font-size: 14px; opacity: 0.75; }

@@ -135,7 +135,16 @@ export class RoomManager {
         else player.room?.match.onDetonate(player.id, msg.rid, msg.p, this.now());
         break;
       case 'looks':
-        player.room?.match.setLooks(player.id, msg.looks);
+        player.room?.match.setLooks(player.id, msg.looks, msg.name);
+        break;
+      case 'side':
+        player.room?.match.onSide(player.id, msg.side);
+        break;
+      case 'ready':
+        player.room?.match.onReady(player.id, msg.ready);
+        break;
+      case 'start':
+        player.room?.match.onStart(player.id, this.now());
         break;
       case 'options':
         player.room?.match.setOptions(player.id, msg.options, this.now());
@@ -207,6 +216,8 @@ export class RoomManager {
       (pilotId, event) => {
         if (room) this.progress(room, pilotId, event);
       },
+      // Rooms have a pre-match menu: the host starts each match (ADR-0047).
+      true,
     );
     room = { code, players, match };
     this.rooms.set(code, room);

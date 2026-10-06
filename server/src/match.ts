@@ -6,7 +6,7 @@ import { DEFAULT_DRONE, droneClass, type DroneClassId } from '../../shared/drone
 import { cleanLoadout, count, defaultLoadout, launchers, missilePods, type Loadout } from '../../shared/loadout.js';
 import { SHIELD } from '../../shared/specials.js';
 import { WEAPONS, type WeaponId } from '../../shared/weapons.js';
-import { cleanRoomOptions, restrictLoadout, type RoomOptions } from '../../shared/roomOptions.js';
+import { cleanRoomOptions, restrictLoadout, type RoomOptions, type Side } from '../../shared/roomOptions.js';
 import type { DroneLook } from '../../shared/cosmetics.js';
 import {
   NET,
@@ -66,8 +66,12 @@ interface Pilot {
   damagedBy: Map<string, number>;
   /** Level, for signed-in pilots (ADR-0032); set by the room. */
   level: number | null;
-  /** Paint per body (ADR-0030), if the pilot sent it. */
+  /** Paint per body (ADR-0030), if the pilot sent it, and their callsign (ADR-0047). */
   looks: Record<DroneClassId, DroneLook> | null;
+  name: string;
+  /** Teams mode (ADR-0047): their team; and whether they're ready in the pre-match menu. */
+  side: Side;
+  ready: boolean;
   lastCrashed: boolean;
   /** Token bucket for fire-rate checks (ADR-0014): rounds available, and when it was last refilled. */
   ammo: Map<WeaponId, { ammo: number; at: number }>;
@@ -146,6 +150,8 @@ export class Match {
   private host: string | null = null;
   /** Server time the running match ends by its time limit (null: no limit). */
   private endsAt: number | null = null;
+  /** Teams mode: the team that won the last match (ADR-0047). */
+  private winnerSide: Side | null = null;
 
   constructor(
     mapOrOptions: MapId | RoomOptions,
@@ -153,6 +159,11 @@ export class Match {
     private readonly random: () => number = Math.random,
     /** Progress events for XP (ADR-0032), only while a match is running. */
     private readonly onProgress: (pilotId: string, event: ProgressEvent) => void = () => {},
+    /**
+     * Pre-match menu (ADR-0047): matches start when the host says so, and return to the menu after the
+     * results. Off (start at two pilots, restart after results) for a bare match, as in the tests.
+     */
+    private readonly lobby = false,
   ) {
     this.options = typeof mapOrOptions === 'string' ? cleanRoomOptions(null, mapOrOptions) : mapOrOptions;
     this.map = getMap(this.options.map);
@@ -181,12 +192,15 @@ export class Match {
       this.missiles = [];
       this.grenades = [];
     }
+    const modeChanged = options.mode !== this.options.mode;
     this.options = options;
+    if (modeChanged) this.reassignColors();
     for (const p of this.pilots.values()) {
       p.pendingLoadout = restrictLoadout(p.pendingLoadout ?? p.loadout, options);
       p.lastSpawn = null;
     }
-    if (this.pilots.size >= MIN_PILOTS) this.startMatch(now);
+    // A running match restarts under the new rules; in the pre-match menu they just apply.
+    if (this.pilots.size >= MIN_PILOTS && (!this.lobby || this.phase === 'playing')) this.startMatch(now);
     else {
       for (const p of this.pilots.values()) {
         applyPending(p);
@@ -201,10 +215,9 @@ export class Match {
     // The first pilot in (the room's creator) sets the rules (ADR-0046).
     if (this.host === null || !this.pilots.has(this.host)) this.host = id;
     this.now = now;
-    // Each pilot gets the lowest free color slot (ADR-0026).
-    const used = new Set([...this.pilots.values()].map((p) => p.team));
-    let team = 0;
-    while (used.has(team)) team++;
+    // Each pilot gets the lowest free color slot (ADR-0026); in Teams, the smaller team and its color (ADR-0047).
+    const side = this.smallerSide();
+    const team = this.options.mode === 'teams' ? side : this.freeSlot();
     this.pilots.set(id, {
       id,
       team,
@@ -221,6 +234,9 @@ export class Match {
       damagedBy: new Map(),
       level: null,
       looks: null,
+      name: '',
+      side,
+      ready: false,
       lastCrashed: false,
       ammo: new Map(),
       shieldUntil: 0,
@@ -233,7 +249,7 @@ export class Match {
       history: [],
     });
     const pilot = this.pilots.get(id)!;
-    if (this.pilots.size >= MIN_PILOTS && this.phase === 'waiting') this.startMatch(now);
+    if (!this.lobby && this.pilots.size >= MIN_PILOTS && this.phase === 'waiting') this.startMatch(now);
     else if (this.phase !== 'waiting') this.respawn(pilot, now); // joining a running match
     else this.broadcastState();
   }
@@ -263,12 +279,89 @@ export class Match {
     this.broadcastState();
   }
 
-  /** A pilot's paint (ADR-0030), shown to everyone on the body they fly. */
-  setLooks(id: string, looks: Record<DroneClassId, DroneLook>): void {
+  /** A pilot's paint (ADR-0030), shown to everyone on the body they fly, and their callsign (ADR-0047). */
+  setLooks(id: string, looks: Record<DroneClassId, DroneLook>, name = ''): void {
     const pilot = this.pilots.get(id);
     if (!pilot) return;
     pilot.looks = looks;
+    pilot.name = name;
     this.broadcastState();
+  }
+
+  // --- Teams and the pre-match menu (ADR-0047)
+
+  private get teams(): boolean {
+    return this.options.mode === 'teams';
+  }
+
+  /** The lowest color slot nobody has (free-for-all, ADR-0026). */
+  private freeSlot(): number {
+    const used = new Set([...this.pilots.values()].map((p) => p.team));
+    let team = 0;
+    while (used.has(team)) team++;
+    return team;
+  }
+
+  private smallerSide(): Side {
+    let a = 0;
+    let b = 0;
+    for (const p of this.pilots.values()) p.side === 0 ? a++ : b++;
+    return b < a ? 1 : 0;
+  }
+
+  /** Two pilots on the same team (never friendly fire). */
+  private teammates(a: Pilot, b: Pilot): boolean {
+    return this.teams && a !== b && a.side === b.side;
+  }
+
+  /** Switch team in the pre-match menu (not mid-match). */
+  onSide(id: string, side: Side): void {
+    const pilot = this.pilots.get(id);
+    if (!pilot || !this.teams || this.phase === 'playing' || pilot.side === side) return;
+    pilot.side = side;
+    pilot.team = side;
+    pilot.ready = false;
+    this.broadcastState();
+  }
+
+  onReady(id: string, ready: boolean): void {
+    const pilot = this.pilots.get(id);
+    if (!pilot || pilot.ready === ready) return;
+    pilot.ready = ready;
+    this.broadcastState();
+  }
+
+  /** Whether the host can start now: two pilots, and in Teams someone on each team. */
+  get canStart(): boolean {
+    if (this.phase === 'playing' || this.pilots.size < MIN_PILOTS) return false;
+    if (!this.teams) return true;
+    const sides = new Set([...this.pilots.values()].map((p) => p.side));
+    return sides.size === 2;
+  }
+
+  /** The host starts the match from the pre-match menu. */
+  onStart(id: string, now: number): void {
+    if (id !== this.host || !this.canStart) return;
+    this.startMatch(now);
+  }
+
+  /** Color slots and teams after the mode changes: Teams splits everyone evenly; free-for-all gives each their own color. */
+  private reassignColors(): void {
+    let i = 0;
+    for (const p of this.pilots.values()) {
+      if (this.teams) {
+        p.side = (i++ % 2) as Side;
+        p.team = p.side;
+      } else p.team = -1;
+    }
+    if (!this.teams) for (const p of this.pilots.values()) p.team = this.freeSlot();
+  }
+
+  /** A team's kills (Teams mode). */
+  private sideScore(side: Side): number {
+    let n = 0;
+    for (const p of this.pilots.values()) if (p.side === side) n += p.score;
+    return n;
   }
 
   /** A signed-in pilot's level (ADR-0032), shown to everyone in the match state. */
@@ -553,7 +646,8 @@ export class Match {
   tick(now: number): void {
     this.now = now;
     if (this.phase === 'ended' && now >= this.resultsUntil) {
-      this.startMatch(now);
+      if (this.lobby) this.backToLobby(now);
+      else this.startMatch(now);
       return;
     }
     if (this.phase === 'playing' && this.endsAt !== null && now >= this.endsAt) {
@@ -603,6 +697,7 @@ export class Match {
       killsToWin: this.options.killsToWin,
       options: this.options,
       host: this.host,
+      ...(this.winnerSide !== null ? { winnerSide: this.winnerSide } : {}),
       ...(this.endsAt !== null && this.phase === 'playing' ? { endsAt: this.endsAt } : {}),
       players: [...this.pilots.values()].map((p) => ({
         id: p.id,
@@ -616,6 +711,9 @@ export class Match {
         protected: p.protectedUntil > this.now,
         ...(p.level !== null ? { level: p.level } : {}),
         ...(p.looks ? { look: p.looks[p.drone] } : {}),
+        ...(p.name ? { name: p.name } : {}),
+        ...(this.teams ? { side: p.side } : {}),
+        ...(p.ready ? { ready: true } : {}),
       })),
     };
   }
@@ -682,6 +780,9 @@ export class Match {
    * credit: a recent attacker keeps theirs (ADR-0023).
    */
   private hit(shooterId: string | null, rawDamage: number, target: Pilot, now: number): void {
+    // No friendly fire in Teams (ADR-0047); your own blast still hurts you.
+    const shooter = shooterId ? this.pilots.get(shooterId) : undefined;
+    if (shooter && this.teammates(shooter, target)) return;
     // A shield soaks damage first (ADR-0033).
     let damage = rawDamage;
     if (target.shieldUntil > now && target.shieldHp > 0) {
@@ -720,17 +821,22 @@ export class Match {
     }
 
     const killer = killerId ? this.pilots.get(killerId) : undefined;
-    if (killer) {
+    if (killer && !this.teammates(killer, pilot)) {
       killer.score++;
-      if (killer.score >= this.options.killsToWin) this.endMatch(killer.id, now);
+      if (this.teams ? this.sideScore(killer.side) >= this.options.killsToWin : killer.score >= this.options.killsToWin) this.endMatch(killer.id, now);
     }
     this.broadcastState();
   }
 
   /** Match over (kill limit, or time, ADR-0046): everyone still here finished it; the winner (if any) won it. */
-  private endMatch(winnerId: string | null, now: number): void {
+  private endMatch(winnerId: string | null, now: number, side: Side | null = null): void {
     for (const p of this.pilots.values()) this.onProgress(p.id, 'finish');
-    if (winnerId) this.onProgress(winnerId, 'win');
+    // Teams: the whole winning team wins (ADR-0047).
+    const winSide = this.teams ? (side ?? (winnerId ? (this.pilots.get(winnerId)?.side ?? null) : null)) : null;
+    if (this.teams) {
+      for (const p of this.pilots.values()) if (winSide !== null && p.side === winSide) this.onProgress(p.id, 'win');
+    } else if (winnerId) this.onProgress(winnerId, 'win');
+    this.winnerSide = winSide;
     this.phase = 'ended';
     this.winner = winnerId;
     this.endsAt = null;
@@ -743,6 +849,13 @@ export class Match {
 
   /** Time's up (ADR-0046): the most kills wins; a tie at the top is a draw. */
   private endByTime(now: number): void {
+    if (this.teams) {
+      const a = this.sideScore(0);
+      const b = this.sideScore(1);
+      this.endMatch(null, now, a === b ? null : a > b ? 0 : 1);
+      this.broadcastState();
+      return;
+    }
     const ranked = [...this.pilots.values()].sort((a, b) => b.score - a.score);
     const top = ranked[0];
     const tie = top && ranked[1] && ranked[1].score === top.score;
@@ -753,7 +866,7 @@ export class Match {
   private respawn(pilot: Pilot, now: number): void {
     // Anti spawn-camping (ADR-0012): random spawn away from every living opponent.
     const opponents = [...this.pilots.values()]
-      .filter((p) => p !== pilot && p.alive)
+      .filter((p) => p !== pilot && p.alive && !this.teammates(p, pilot))
       .map((p) => p.history[p.history.length - 1]?.p ?? this.map.spawns[p.lastSpawn ?? 0]?.pos)
       .filter((p): p is Vec3 => !!p);
     const spawn = pickSpawn(this.map.spawns, opponents, pilot.lastSpawn, this.random);
@@ -798,9 +911,28 @@ export class Match {
     return [0, 0];
   }
 
+  /** After the results, everyone's back in the pre-match menu (ADR-0047): flying free, nobody ready. */
+  private backToLobby(now: number): void {
+    this.phase = 'waiting';
+    this.winner = null;
+    this.winnerSide = null;
+    this.endsAt = null;
+    for (const p of this.pilots.values()) {
+      p.score = 0;
+      p.ready = false;
+      applyPending(p);
+      p.hp = droneClass(p.drone).maxHp;
+      p.alive = true;
+      p.respawnAt = null;
+      p.protectedUntil = now;
+    }
+    this.broadcastState();
+  }
+
   private startMatch(now: number): void {
     this.phase = 'playing';
     this.winner = null;
+    this.winnerSide = null;
     this.endsAt = this.options.timeLimitMin > 0 ? now + this.options.timeLimitMin * 60_000 : null;
     this.bullets = [];
     this.missiles = [];

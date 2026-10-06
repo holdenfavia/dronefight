@@ -27,6 +27,7 @@ import { Tracers } from './render/tracers';
 import { LoadoutPreview } from './render/loadoutPreview';
 import { Trails } from './render/trails';
 import { COMBAT, pilotColor, pilotName } from '../../shared/combat';
+import { pilotLabel } from '../../shared/roomOptions';
 import { droneClass } from '../../shared/drones';
 import { BoundaryGrid } from './world/boundaryGrid';
 import { WING } from './sim/wingModel';
@@ -485,6 +486,14 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   function nextMarker(): MarkerInfo {
     return markerPool[markers.length] ?? (markerPool[markers.length] = { x: 0, y: 0, onScreen: true, distance: 0, color: '', name: '', hp: null });
   }
+  /** Teams mode (ADR-0047): this pilot is on your team. */
+  function isTeammate(id: string): boolean {
+    const m = net.match;
+    if (!m || m.options.mode !== 'teams') return false;
+    const mine = net.me?.side;
+    return mine !== undefined && m.players.find((p) => p.id === id)?.side === mine;
+  }
+
   function pilotMarkers(): readonly MarkerInfo[] {
     markers.length = 0;
     for (const v of remotes.views) {
@@ -494,7 +503,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       const m = nextMarker();
       markerFor(v.position, m);
       m.color = pilotColor(v.team ?? 1);
-      m.name = player?.level ? `${pilotName(v.team)} · ${player.level}` : pilotName(v.team);
+      // Callsign or color (ADR-0047); teammates are marked as friendly.
+      const label = player ? pilotLabel(player) : pilotName(v.team);
+      const friendly = isTeammate(v.id);
+      m.name = `${friendly ? '▲ ' : ''}${label}${player?.level ? ` · ${player.level}` : ''}`;
       m.hp = player ? player.hp / droneClass(player.drone).maxHp : null;
       markers.push(m);
     }
@@ -520,7 +532,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     let best: (typeof remotes.views)[number] | null = null;
     let bestDot = -Infinity;
     for (const v of remotes.views) {
-      if (v.concealed || v.mode === 'hold' || v.crashed) continue;
+      // Never lead a teammate (ADR-0047): the circle and auto-fire are for enemies.
+      if (v.concealed || v.mode === 'hold' || v.crashed || isTeammate(v.id)) continue;
       const dot = toPilot.subVectors(v.position, rig.camera.position).normalize().dot(camForward);
       if (dot > bestDot) {
         bestDot = dot;
@@ -675,7 +688,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     // Your paint (ADR-0030): repaint when it changes, and keep the room up to date.
     const myLook = account.profile.looks[drone.classId];
     if (droneModel.userData.lookKey !== lookKey(myLook)) applyLook(droneModel, myLook);
-    net.setLooks(account.profile.looks);
+    net.setLooks(account.profile.looks, account.profile.name);
 
     // Audio: ears at the camera, motors follow the quad (ADR-0010).
     const cam = rig.camera;

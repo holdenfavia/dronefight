@@ -4,7 +4,7 @@ import { isWeaponId, type WeaponId } from './weapons.js';
 import type { XpReason } from './progression.js';
 import { isMapId, type MapId } from './maps/index.js';
 import { cleanRoomOptions, type RoomOptions } from './roomOptions.js';
-import { completeLooks, type DroneLook } from './cosmetics.js';
+import { cleanPilotName, completeLooks, type DroneLook } from './cosmetics.js';
 
 // Network protocol shared by client and server (ADR-0002, ADR-0004, ADR-0005).
 // JSON over WebSocket. Times are milliseconds on the server's clock unless noted.
@@ -102,6 +102,12 @@ export interface MatchPlayer {
   level?: number;
   /** Paint for the body they fly (ADR-0030), if they sent one. */
   look?: DroneLook;
+  /** Callsign from their profile (ADR-0047), if they have one. */
+  name?: string;
+  /** Teams mode (ADR-0047): which team (0 Orange, 1 Lime). */
+  side?: 0 | 1;
+  /** Ready in the pre-match menu (ADR-0047). */
+  ready?: boolean;
 }
 
 export interface MatchState {
@@ -116,6 +122,8 @@ export interface MatchState {
   /** The room's match settings (ADR-0046), and who may change them (the creator, or the next pilot if they leave). */
   options: RoomOptions;
   host: string | null;
+  /** Teams mode, once a team has won (ADR-0047). */
+  winnerSide?: 0 | 1;
   /** Server time the match ends by time limit, if it has one. */
   endsAt?: number;
 }
@@ -125,8 +133,12 @@ export interface MatchState {
 export type ClientMessage =
   /** Create a room with these match settings (ADR-0046). */
   | { t: 'create'; map: MapId; options?: RoomOptions }
-  /** Your paint for every body (ADR-0030), so others see it on whichever you fly. */
-  | { t: 'looks'; looks: Record<DroneClassId, DroneLook> }
+  /** Your paint for every body (ADR-0030), so others see it on whichever you fly; and your callsign (ADR-0047). */
+  | { t: 'looks'; looks: Record<DroneClassId, DroneLook>; name?: string }
+  /** Pre-match menu (ADR-0047): join a team, mark yourself ready, or (host) start the match. */
+  | { t: 'side'; side: 0 | 1 }
+  | { t: 'ready'; ready: boolean }
+  | { t: 'start' }
   /** The host changes the room's match settings (ADR-0046): the match restarts with them. */
   | { t: 'options'; options: RoomOptions }
   /** `map` only when rejoining after a dropped connection: recreate the room with this code if it's gone (e.g. a server restart). */
@@ -219,8 +231,17 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       const map = isMapId(m.map) ? m.map : 'downtown';
       return m.options !== undefined ? { t: 'create', map, options: cleanRoomOptions(m.options, map) } : { t: 'create', map };
     }
-    case 'looks':
-      return typeof m.looks === 'object' && m.looks !== null ? { t: 'looks', looks: completeLooks(m.looks) } : null;
+    case 'looks': {
+      if (typeof m.looks !== 'object' || m.looks === null) return null;
+      const name = cleanPilotName(m.name);
+      return name ? { t: 'looks', looks: completeLooks(m.looks), name } : { t: 'looks', looks: completeLooks(m.looks) };
+    }
+    case 'side':
+      return m.side === 0 || m.side === 1 ? { t: 'side', side: m.side } : null;
+    case 'ready':
+      return typeof m.ready === 'boolean' ? { t: 'ready', ready: m.ready } : null;
+    case 'start':
+      return { t: 'start' };
     case 'options':
       return typeof m.options === 'object' && m.options !== null ? { t: 'options', options: cleanRoomOptions(m.options) } : null;
     case 'leave':

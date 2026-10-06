@@ -7,10 +7,10 @@ import { LoadoutScreen } from './loadoutScreen';
 import { NET } from '../../../shared/protocol';
 import type { InputManager } from '../input/inputManager';
 import { DRONE_ORDER, droneClass, type DroneClassId } from '../../../shared/drones';
-import { cleanRoomOptions, defaultRoomOptions, KILL_LIMITS, TIME_LIMITS, type RoomOptions } from '../../../shared/roomOptions';
+import { cleanRoomOptions, defaultRoomOptions, KILL_LIMITS, pilotLabel, TEAM_NAMES, TIME_LIMITS, type RoomOptions } from '../../../shared/roomOptions';
 import { WEAPON_ORDER, WEAPONS, type WeaponId } from '../../../shared/weapons';
 import { SPECIAL_ORDER, SPECIALS, type SpecialId } from '../../../shared/specials';
-import { pilotName } from '../../../shared/combat';
+import { pilotColor } from '../../../shared/combat';
 import { BODY_ICONS, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
 import type { Loadout } from '../../../shared/loadout';
 import { getMap, MAP_ORDER, type MapId } from '../../../shared/maps';
@@ -47,6 +47,8 @@ export class Menu {
   /** Room settings (ADR-0046): the draft being edited, and where Back goes. */
   private rulesDraft: RoomOptions | null = null;
   private rulesReturn: Screen = 'play';
+  /** The room's match phase last time we looked (ADR-0047). */
+  private lastPhase: string | null = null;
   private readonly calibration: CalibrationScreen;
   private readonly loadoutScreen: LoadoutScreen;
 
@@ -166,6 +168,19 @@ export class Menu {
 
   /** Network status changed: refresh whatever shows it. */
   onNetChange(): void {
+    // Match phase changes (ADR-0047): the host started, so everyone's menu closes and the match begins; the
+    // match ended and the results are over, so everyone comes back to the pre-match menu.
+    const phase = this.net.inRoom ? (this.net.match?.phase ?? null) : null;
+    const was = this.lastPhase;
+    this.lastPhase = phase;
+    if (was === 'waiting' && phase === 'playing' && this.visible && this.screen !== 'drone') {
+      this.fly();
+      return;
+    }
+    if (was === 'ended' && phase === 'waiting') {
+      this.show('room');
+      return;
+    }
     if (!this.visible) return;
     // Typed a code (or created a room) and got in: show the room.
     if (this.screen === 'play' && this.net.inRoom) this.show('room');
@@ -214,7 +229,7 @@ export class Menu {
         <div class="panel-head"><span class="kicker">Paused</span><h2>${escapeHtml(where)}</h2></div>
         <button class="btn big" data-resume>Resume</button>
         <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
-        ${inRoom ? `<button class="btn ghost" data-room>Room ${this.net.room}: invite ▸</button>` : ''}
+        ${inRoom ? `<button class="btn ghost" data-room>${this.net.match?.phase === 'playing' ? `Room ${this.net.room}: pilots` : 'Pre-match'} ▸</button>` : ''}
         ${inRoom ? `<button class="btn ghost" data-rules>Room settings ▸</button>` : ''}
         ${this.input.touchActive ? '<button class="btn ghost" data-touch>Touch controls ▸</button>' : ''}
         <button class="btn ghost" data-settings>Settings</button>
@@ -428,33 +443,83 @@ export class Menu {
   }
 
   /** The room you're in: its code to share, map and pilots, and Start. */
+  /**
+   * The pre-match menu (ADR-0047): the room code, the rules, everyone in the room (by team in Teams) with
+   * their drone, level and Ready; pick a team, ready up, change your loadout; the host starts the match.
+   * You can fly around (no damage) while you wait.
+   */
   private renderRoom(): void {
     const net = this.net;
     if (!net.inRoom || !net.room) {
       this.show('play');
       return;
     }
-    const pilots = net.peers.size + 1;
+    const m = net.match;
+    const teams = m?.options.mode === 'teams';
+    const me = net.me;
+    const playing = m?.phase === 'playing';
+    const players = m?.players ?? [];
+    const row = (p: (typeof players)[number]) => `
+      <li class="pm-row ${p.id === net.you ? 'me' : ''}">
+        <span class="pm-dot" style="background:${pilotColor(p.team)}"></span>
+        <span class="pm-name">${escapeHtml(pilotLabel(p))}${p.id === net.you ? ' <em>you</em>' : ''}${p.id === m?.host ? ' <em class="host">host</em>' : ''}</span>
+        <span class="pm-drone"><span class="pm-icon">${BODY_ICONS[p.drone]}</span>${escapeHtml(droneClass(p.drone).name)}</span>
+        <span class="pm-level">${p.level ? `Lv ${p.level}` : ''}</span>
+        <span class="pm-ready ${p.ready ? 'on' : ''}">${p.ready ? '✓ Ready' : '…'}</span>
+      </li>`;
+    const list = teams
+      ? `<div class="pm-teams">${([0, 1] as const)
+          .map((side) => {
+            const mine = players.filter((p) => p.side === side);
+            return `<div class="pm-team side-${side}">
+              <div class="pm-team-head"><span>${TEAM_NAMES[side]} team · ${mine.length}</span>${me?.side !== side && !playing ? `<button class="btn ghost small" data-side="${side}">Join ${TEAM_NAMES[side]}</button>` : ''}</div>
+              <ul class="pm-list">${mine.map(row).join('') || '<li class="pm-empty">Nobody yet</li>'}</ul>
+            </div>`;
+          })
+          .join('')}</div>`
+      : `<ul class="pm-list">${players.map(row).join('')}</ul>`;
+    const sides = new Set(players.map((p) => p.side));
+    const canStart = !playing && players.length >= 2 && (!teams || sides.size === 2);
+    const why = players.length < 2 ? 'Waiting for another pilot' : teams && sides.size < 2 ? 'Both teams need a pilot' : '';
+    const host = players.find((p) => p.id === m?.host);
     const found = this.joining === net.room;
     this.root.innerHTML = `
-      <div class="panel online">
-        <div class="panel-head"><span class="kicker">${found ? 'Room found' : 'Your room'}</span><h2>Room ${net.room}</h2></div>
-        <div class="room-code">${net.room}</div>
-        <div class="room-map">${net.map ? getMap(net.map).name : ''}</div>
-        <div class="room-hint">${found ? 'you\'re in' : 'read this code to your friends'} · up to ${NET.maxPlayersPerRoom} pilots</div>
-        <div class="peer-status ${pilots > 1 ? 'ok' : ''}">${pilots > 1 ? `✓ ${pilots} pilots in the room` : 'Waiting for pilots…'}</div>
-        <div class="room-rules">${this.rulesSummary(net.match?.options)}</div>
-        <button class="btn ghost" data-drone>Drone: ${droneClass(this.settings.drone).name} ▸</button>
-        <button class="btn ghost" data-rules>Room settings ▸</button>
-        <div class="actions">
-          <button class="btn ghost" data-copy>Copy invite link</button>
-          <button class="btn ghost" data-leave>Leave room</button>
-          <button class="btn big" data-fly>${this.flying ? 'Resume' : 'Start'}</button>
+      <div class="panel online prematch">
+        <div class="panel-head"><span class="kicker">${playing ? 'Match in progress' : 'Pre-match'}</span><h2>Room ${net.room} · ${net.map ? getMap(net.map).name : ''}</h2></div>
+        <div class="pm-top">
+          <div class="room-code">${net.room}</div>
+          <div>
+            <div class="room-hint">${found ? 'you\'re in' : 'read this code to your friends'} · up to ${NET.maxPlayersPerRoom} pilots</div>
+            <div class="room-rules">${teams ? 'Teams' : 'Free-for-all'} · ${this.rulesSummary(m?.options)}</div>
+          </div>
         </div>
+        ${list}
+        <div class="pm-buttons">
+          ${playing ? '' : `<button class="btn ${me?.ready ? '' : 'ghost'}" data-ready>${me?.ready ? '✓ Ready' : 'Ready'}</button>`}
+          <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
+          <button class="btn ghost" data-rules>Room settings ▸</button>
+        </div>
+        <div class="actions">
+          <button class="btn ghost" data-copy>Copy invite</button>
+          <button class="btn ghost" data-leave>Leave room</button>
+          ${
+            playing
+              ? '<button class="btn big" data-fly>Join the match</button>'
+              : `<button class="btn ghost" data-fly>Fly around</button>${
+                  net.isHost
+                    ? `<button class="btn big" data-start ${canStart ? '' : 'disabled'} title="${why}">Start match</button>`
+                    : `<span class="pm-wait">Waiting for ${escapeHtml(host ? pilotLabel(host) : 'the host')} to start</span>`
+                }`
+          }
+        </div>
+        ${!playing && net.isHost && !canStart ? `<div class="join-status">${why}</div>` : ''}
       </div>`;
     this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.fly());
     this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
     this.root.querySelector('[data-rules]')?.addEventListener('click', () => this.show('rules'));
+    this.root.querySelector('[data-ready]')?.addEventListener('click', () => net.sendReady(!me?.ready));
+    this.root.querySelector('[data-start]')?.addEventListener('click', () => net.sendStart());
+    this.root.querySelectorAll<HTMLButtonElement>('[data-side]').forEach((b) => b.addEventListener('click', () => net.sendSide(b.dataset.side === '1' ? 1 : 0)));
     this.root.querySelector('[data-leave]')?.addEventListener('click', () => {
       this.flying = false;
       this.joining = null;
@@ -498,7 +563,9 @@ export class Menu {
     this.root.innerHTML = `
       <div class="panel rules">
         <div class="panel-head"><span class="kicker">${creating ? 'Create room' : `Room ${this.net.room}`}</span><h2>Room settings</h2></div>
-        ${canEdit ? '' : `<p class="hint">Only the room's host${hostName ? ` (${escapeHtml(pilotName(hostName.team))})` : ''} can change these.</p>`}
+        ${canEdit ? '' : `<p class="hint">Only the room's host${hostName ? ` (${escapeHtml(pilotLabel(hostName))})` : ''} can change these.</p>`}
+        <div class="calib-sub">Mode</div>
+        ${seg('mode', [['ffa', 'Free-for-all'], ['teams', 'Teams (Orange vs Lime)']], d.mode)}
         <div class="calib-sub">Map</div>
         ${seg('map', MAP_ORDER.filter((m) => m !== 'training').map((m) => [m, getMap(m).name] as const), d.map)}
         <div class="rules-row">
@@ -525,7 +592,8 @@ export class Menu {
         b.addEventListener('click', () => {
           const key = group.dataset.rseg!;
           const v = b.dataset.value ?? '';
-          if (key === 'map') d.map = v as MapId;
+          if (key === 'mode') d.mode = v === 'teams' ? 'teams' : 'ffa';
+          else if (key === 'map') d.map = v as MapId;
           else if (key === 'killsToWin') d.killsToWin = Number(v);
           else if (key === 'timeLimitMin') d.timeLimitMin = Number(v);
           else if (key === 'assist') d.assist = v === 'acro' ? 'acro' : 'any';

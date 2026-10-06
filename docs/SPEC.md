@@ -53,7 +53,7 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 - Each hardpoint fires from its own screen corner (1 upper-left, 2 upper-right, 3 lower-left, 4 lower-right), converging ~40 m ahead along the FPV view. Each weapon has its own projectile look (ADR-0033). Rounds stop at walls.
 - Drones are drawn at real size; hit spheres are much bigger on purpose (ADR-0043). Other pilots get a War Thunder-style name tag (name, level, distance, health) while on screen, edge arrows when off screen, plus a glow, a fading trail and a lead indicator (ADR-0011, ADR-0043); smoke hides all but the frame (ADR-0024).
 - Crash = death; the kill goes to whoever damaged you in the last 5 s. Respawn after 3 s at one of 8 spawns away from other pilots (ADR-0012).
-- Free-for-all, first to 10 kills by default, then a new match (ADR-0026). The room's host sets kills to win, a time limit, the map, flight assist and the allowed drones, weapons and specials (Room settings, ADR-0046). Solo has no combat except Training bots (ADR-0017).
+- **Free-for-all** or **Teams** (Orange vs Lime, no friendly fire, team kill totals; ADR-0047), first to 10 kills by default. A **pre-match menu** gathers everyone (pick team, ready up); the host starts each match, and everyone returns to it after the results (ADR-0047). The room's host sets kills to win, a time limit, the map, flight assist and the allowed drones, weapons and specials (Room settings, ADR-0046). Solo has no combat except Training bots (ADR-0017).
 - Rounds that miss splash where they land, matched to the surface: dirt only on dirt, dust and chips on concrete, sparks on steel.
 
 ## Maps (ADR-0012)
@@ -92,4 +92,4 @@ These must never be broken without a superseding decision:
 
 ## Out of scope (for now)
 
-Public matchmaking, mandatory accounts, pay-to-win or straight-upgrade unlocks, Android/phones in portrait, VR, more than 10 pilots per room, teams.
+Public matchmaking, mandatory accounts, pay-to-win or straight-upgrade unlocks, Android/phones in portrait, VR, more than 10 pilots per room, more than two teams.

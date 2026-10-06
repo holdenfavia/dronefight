@@ -50,6 +50,8 @@ export interface CombatHudInfo {
   toast: string | null;
   /** Seconds left under the room's time limit (ADR-0046), or null for none. */
   timeLeft: number | null;
+  /** Teams mode (ADR-0047): your team (0 Orange, 1 Lime) and both teams' kills. */
+  teams: { mine: 0 | 1; scores: [number, number] } | null;
 }
 
 export interface HudInfo {
@@ -274,10 +276,13 @@ export class Hud {
     const place = c.rank === 1 ? 'leading' : `${ordinal(c.rank)} of ${c.pilots}`;
     const leader = c.leader ? ` · leader ${c.leader.name} ${c.leader.score}` : '';
     const clock = c.timeLeft !== null ? ` · ${Math.floor(c.timeLeft / 60)}:${String(Math.floor(c.timeLeft % 60)).padStart(2, '0')}` : '';
-    this.set(this.el.score, `You ${c.myScore} · ${place}${leader} · first to ${c.killsToWin}${clock}`);
+    if (c.teams) {
+      const [o, l] = c.teams.scores;
+      this.set(this.el.score, `Orange ${o} · Lime ${l} · you're ${c.teams.mine ? 'Lime' : 'Orange'} · first to ${c.killsToWin}${clock}`);
+    } else this.set(this.el.score, `You ${c.myScore} · ${place}${leader} · first to ${c.killsToWin}${clock}`);
 
     let banner = c.toast ?? '';
-    if (c.phase === 'ended') banner = c.won ? 'VICTORY' : `${(c.winnerName ?? 'Someone').toUpperCase()} WINS`;
+    if (c.phase === 'ended') banner = c.won ? 'VICTORY' : c.winnerName ? `${c.winnerName.toUpperCase()} WINS` : 'DRAW';
     this.set(this.el.banner, banner);
     this.el.banner.classList.toggle('big', c.phase === 'ended');
   }

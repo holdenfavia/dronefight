@@ -54,6 +54,8 @@ describe('server pressure tests', () => {
     const joined = (await a.waitFor((m) => m.t === 'joined')) as Extract<ServerMessage, { t: 'joined' }>;
     b.send({ t: 'join', room: joined.room });
     await b.waitFor((m) => m.t === 'joined');
+    // The host starts the match from the pre-match menu (ADR-0047).
+    a.send({ t: 'start' });
     return { a, b, port };
   }
 

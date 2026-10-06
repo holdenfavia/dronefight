@@ -1,6 +1,7 @@
+import { pilotLabel, TEAM_NAMES } from '../../../shared/roomOptions';
 import * as THREE from 'three/webgpu';
 import { DEFAULT_MAP, getMap, type MapDef, type SpawnPoint } from '../../../shared/maps';
-import { COMBAT, pilotColor, pilotName } from '../../../shared/combat';
+import { COMBAT, pilotColor } from '../../../shared/combat';
 import { droneClass } from '../../../shared/drones';
 import { guns, launchers, missilePods, type Loadout } from '../../../shared/loadout';
 import { SHIELD } from '../../../shared/specials';
@@ -99,6 +100,7 @@ export class CombatClient {
   private smokeReadyAt = 0;
   private readonly hudInfo: CombatHudInfo = {
     timeLeft: null,
+    teams: null,
     phase: 'waiting',
     myScore: 0,
     rank: 1,
@@ -388,8 +390,14 @@ export class CombatClient {
     h.pilots = m.players.length;
     h.rank = 1 + m.players.filter((p) => p.score > myScore).length;
     const top = m.players.filter((p) => p.id !== this.net.you).sort((a, b) => b.score - a.score)[0];
-    h.leader = top && top.score >= myScore ? { name: pilotName(top.team), score: top.score, color: pilotColor(top.team) } : null;
+    h.leader = top && top.score >= myScore ? { name: pilotLabel(top), score: top.score, color: pilotColor(top.team) } : null;
     h.winnerName = m.winner ? this.teamName(m.winner) : null;
+    // Teams (ADR-0047): team totals, and the winning team.
+    if (m.options.mode === 'teams' && me?.side !== undefined) {
+      const total = (side: 0 | 1) => m.players.reduce((n, p) => n + (p.side === side ? p.score : 0), 0);
+      h.teams = { mine: me.side, scores: [total(0), total(1)] };
+      h.winnerName = m.winnerSide !== undefined ? `${TEAM_NAMES[m.winnerSide]} team` : null;
+    } else h.teams = null;
     h.killsToWin = m.killsToWin;
     const cls = droneClass(me?.drone ?? this.drone.classId);
     h.maxHp = cls.maxHp;
@@ -397,7 +405,7 @@ export class CombatClient {
     h.alive = me?.alive ?? true;
     h.protected = me?.protected ?? false;
     h.respawnIn = this.respawnDeadline !== null ? Math.max(0, (this.respawnDeadline - performance.now()) / 1000) : null;
-    h.won = m.phase === 'ended' ? m.winner === this.net.you : null;
+    h.won = m.phase === 'ended' ? (h.teams ? m.winnerSide === h.teams.mine : m.winner === this.net.you) : null;
     h.toast = this.toast?.text ?? null;
     h.timeLeft = m.endsAt !== undefined && m.phase === 'playing' ? Math.max(0, (m.endsAt - this.net.serverNow()) / 1000) : null;
     return h;
@@ -409,8 +417,8 @@ export class CombatClient {
 
   /** A pilot's color name ("Cyan"), which is how pilots are named in a room (ADR-0026). */
   private teamName(id: string | null): string {
-    const slot = this.net.match?.players.find((p) => p.id === id)?.team;
-    return slot === undefined ? 'Pilot' : pilotName(slot);
+    const p = this.net.match?.players.find((x) => x.id === id);
+    return p ? pilotLabel(p) : 'Pilot';
   }
 
   /** Lob a grenade (ADR-0034) from each launcher's corner (they take turns), carrying the drone's velocity. */

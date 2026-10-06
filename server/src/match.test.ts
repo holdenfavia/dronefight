@@ -928,3 +928,56 @@ describe('room settings (ADR-0046)', () => {
     expect(latest(log).winner).toBeNull(); // 0-0 is a draw
   });
 });
+
+describe('teams and the pre-match menu (ADR-0047)', () => {
+  const latest = (log: ServerMessage[]) => [...log].reverse().find((m): m is Extract<ServerMessage, { t: 'match' }> => m.t === 'match')!.m;
+  const teamOpts = (o: Partial<RoomOptions> = {}): RoomOptions => ({ ...defaultRoomOptions('yard'), mode: 'teams', ...o });
+
+  it('with a pre-match menu, the match waits for the host to start it', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match('yard', (m) => log.push(m), Math.random, () => {}, true);
+    match.addPlayer('A', 0);
+    match.addPlayer('B', 0);
+    expect(latest(log).phase).toBe('waiting');
+    match.onStart('B', 10); // not the host
+    expect(latest(log).phase).toBe('waiting');
+    match.onStart('A', 10);
+    expect(latest(log).phase).toBe('playing');
+  });
+
+  it('new pilots join the smaller team and wear its color', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match(teamOpts(), (m) => log.push(m), Math.random, () => {}, true);
+    for (const id of ['A', 'B', 'C']) match.addPlayer(id, 0);
+    const p = latest(log).players;
+    expect(p.map((x) => x.side)).toEqual([0, 1, 0]);
+    expect(p.map((x) => x.team)).toEqual([0, 1, 0]);
+  });
+
+  it('a team needs someone on each side to start; switching team works before the match', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match(teamOpts(), (m) => log.push(m), Math.random, () => {}, true);
+    match.addPlayer('A', 0);
+    match.addPlayer('B', 0);
+    match.onSide('B', 0);
+    match.onStart('A', 5);
+    expect(latest(log).phase).toBe('waiting');
+    match.onSide('B', 1);
+    match.onStart('A', 6);
+    expect(latest(log).phase).toBe('playing');
+  });
+
+  it('after the results, everyone goes back to the pre-match menu', () => {
+    const log: ServerMessage[] = [];
+    const match = new Match({ ...defaultRoomOptions('yard'), timeLimitMin: 5 }, (m) => log.push(m), Math.random, () => {}, true);
+    match.addPlayer('A', 0);
+    match.addPlayer('B', 0);
+    match.onReady('A', true);
+    match.onStart('A', 0);
+    match.tick(5 * 60_000 + 1);
+    expect(latest(log).phase).toBe('ended');
+    match.tick(5 * 60_000 + COMBAT.resultsMs + 10);
+    expect(latest(log).phase).toBe('waiting');
+    expect(latest(log).players.every((p) => !p.ready)).toBe(true);
+  });
+});

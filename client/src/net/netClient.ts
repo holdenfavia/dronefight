@@ -122,10 +122,33 @@ export class NetClient {
 
   /** Your paint for every body (ADR-0030); sent on join and whenever it changes. */
   private looks: Record<DroneClassId, DroneLook> | null = null;
-  setLooks(looks: Record<DroneClassId, DroneLook>): void {
-    if (this.looks === looks || (this.looks && JSON.stringify(this.looks) === JSON.stringify(looks))) return;
+  private callsign = '';
+  /** Your paint (ADR-0030) and callsign (ADR-0047); sent on join and whenever they change. */
+  setLooks(looks: Record<DroneClassId, DroneLook>, name = ''): void {
+    if (name === this.callsign && (this.looks === looks || (this.looks && JSON.stringify(this.looks) === JSON.stringify(looks)))) return;
     this.looks = looks;
-    if (this.inRoom) this.send({ t: 'looks', looks });
+    this.callsign = name;
+    if (this.inRoom) this.send(this.looksMessage());
+  }
+
+  private looksMessage(): ClientMessage {
+    return this.callsign ? { t: 'looks', looks: this.looks!, name: this.callsign } : { t: 'looks', looks: this.looks! };
+  }
+
+  /** Pre-match menu (ADR-0047): join a team, mark ready, or (host) start. */
+  sendSide(side: 0 | 1): void {
+    if (this.inRoom) this.send({ t: 'side', side });
+  }
+  sendReady(ready: boolean): void {
+    if (this.inRoom) this.send({ t: 'ready', ready });
+  }
+  sendStart(): void {
+    if (this.inRoom) this.send({ t: 'start' });
+  }
+
+  /** You in the room's match state. */
+  get me(): MatchState['players'][number] | undefined {
+    return this.match?.players.find((p) => p.id === this.you);
   }
 
   /** Tell the room we used a special here: smoke (ADR-0024) or shield (ADR-0033). */
@@ -284,7 +307,7 @@ export class NetClient {
         for (const id of msg.peers) this.addPeer(id);
         this.setStatus('in-room');
         if (this.loadout) this.send({ t: 'loadout', loadout: this.loadout });
-        if (this.looks) this.send({ t: 'looks', looks: this.looks });
+        if (this.looks) this.send(this.looksMessage());
         break;
       case 'peer-joined':
         this.addPeer(msg.id);
