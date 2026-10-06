@@ -153,7 +153,7 @@ export const X8: QuadParams = {
   horizon: { maxAngleDeg: 55, levelGain: 7, transition: 0.75, maxLevelDegPerSec: 300 },
 };
 
-/** Flight assist a pilot can choose for quads (ADR-0045). 'auto' = Horizon on touch, Acro otherwise. */
+/** Flight assist a pilot can choose for quads (ADR-0045); Acro (none) unless they turn one on (ADR-0050). */
 export type FlightAssist = 'acro' | 'horizon' | 'angle';
 
 /**
@@ -164,16 +164,6 @@ export const FLIGHT_ASSIST: Record<Exclude<FlightAssist, 'acro'>, NonNullable<Qu
   horizon: { maxAngleDeg: 55, levelGain: 7, transition: 0.75, maxLevelDegPerSec: 300 },
   angle: { maxAngleDeg: 45, levelGain: 7, transition: Infinity, maxLevelDegPerSec: 300 },
 };
-
-/** Altitude hold (ADR-0045): the throttle stick commands a climb rate; centered holds height. */
-export const ALTITUDE_HOLD = {
-  /** Climb or sink rate at full stick (m/s). */
-  maxClimb: 12,
-  /** How hard it corrects vertical-speed error (1/s). */
-  gain: 4,
-  /** Tilt compensation stops growing past this tilt (cosine), so a steep bank doesn't demand full power. */
-  minCos: 0.35,
-} as const;
 
 export const CRASH = {
   /** Instant change in velocity (m/s) within one physics step that counts as a crash. */

@@ -31,7 +31,7 @@ import { pilotLabel } from '../../shared/roomOptions';
 import { droneClass } from '../../shared/drones';
 import { BoundaryGrid } from './world/boundaryGrid';
 import { WING } from './sim/wingModel';
-import { currentLoadout, loadSettings, resolveAssist, saveSettings } from './settings';
+import { currentLoadout, loadSettings, saveSettings } from './settings';
 import type { Loadout } from '../../shared/loadout';
 import { Drone } from './sim/drone';
 import { addGround, ArenaColliders, createPhysics } from './sim/physics';
@@ -588,10 +588,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
     // Touch and flight assist (ADR-0044, ADR-0045): set before reading the sticks.
     input.touchSettings = settings.touch;
-    input.altitudeHoldAllowed = drone.canHoldAltitude;
     const control = input.poll(frameDt);
     // A room set to Acro only overrides your choice (ADR-0046); the X8 stays Horizon regardless.
-    drone.setAssist(net.inRoom && net.match?.options.assist === 'acro' ? 'acro' : resolveAssist(settings, input.source === 'touch'));
+    drone.setAssist(net.inRoom && net.match?.options.assist === 'acro' ? 'acro' : settings.flightAssist);
     touch.setVisible(!menu.visible && input.touchActive);
     touch.render();
     // Rooms decide the map; follow it when joining one.
@@ -710,8 +709,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     input.leadOnTarget = !!leadNow && Math.hypot(leadNow.x - container.clientWidth / 2, leadNow.y - container.clientHeight / 2) < Math.min(container.clientWidth, container.clientHeight) * AUTO_FIRE_RADIUS;
     hud.update({
       drone,
-      // Altitude hold shows the throttle it's using (ADR-0045).
-      throttle: drone.heldThrottle ?? control.throttle,
+      throttle: control.throttle,
       source: input.source,
       uncalibratedId: input.uncalibratedId,
       fps,

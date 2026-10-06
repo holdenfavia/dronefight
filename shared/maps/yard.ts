@@ -1,10 +1,12 @@
-import { boundary, cubeFrame, gate, mulberry32, pads, spawnFacingCenter, strut, tower } from './builders.js';
+import { beam, boundary, cubeFrame, gate, mulberry32, pads, spawnFacingCenter, strut, tower, water } from './builders.js';
 import { routeFromPoints, roundedRect } from './movers.js';
 import type { ArenaBox, ArenaMaterial, ExplosiveDef, MapDef, SpawnPoint } from './types.js';
 
 // The Yard: the original industrial arena (ADR-0007). Open space, scaffolding, an overpass, gates.
+// Around it (ADR-0049, 3x the area): a harbor with a container ship and ship-to-shore cranes, hollow
+// cooling towers and a smokestack, a freight rail yard, and a wind farm with a raised pipeline.
 
-const HALF = 120;
+const HALF = 210;
 
 /** 8 open ground spots, all facing the middle (ADR-0012). */
 const SPAWNS: readonly SpawnPoint[] = [
@@ -12,10 +14,11 @@ const SPAWNS: readonly SpawnPoint[] = [
   spawnFacingCenter(0, -95),
   spawnFacingCenter(-100, -25),
   spawnFacingCenter(105, 20),
-  spawnFacingCenter(-45, -105),
-  spawnFacingCenter(40, 95),
-  spawnFacingCenter(95, -100),
-  spawnFacingCenter(-100, 30),
+  // The outskirts (ADR-0049).
+  spawnFacingCenter(-60, 132),
+  spawnFacingCenter(150, -20),
+  spawnFacingCenter(0, -128),
+  spawnFacingCenter(-150, -60),
 ];
 
 /**
@@ -142,6 +145,8 @@ function build(): ArenaBox[] {
   // A cable from the tall central tower's deck to the top of the west stack.
   strut(out, [6, 28.3, -6], [-60, 44.5, -60], 0.25, 'steel');
 
+  outskirts(out, rand);
+
   // Slalom poles east of the gates.
   for (const [i, x] of [45, 55, 65, 75].entries()) {
     const z = i % 2 === 0 ? -26 : -32;
@@ -150,6 +155,123 @@ function build(): ArenaBox[] {
   }
 
   return out;
+}
+
+// --- The outskirts (ADR-0049)
+
+function outskirts(out: ArenaBox[], rand: () => number): void {
+  harbor(out, rand);
+  coolingTower(out, 168, 62);
+  coolingTower(out, 170, -58);
+  // A tall smokestack with orange bands.
+  out.push({ pos: [186, 42, 2], size: [6, 84, 6], mat: 'concrete' });
+  for (const y of [70, 78]) out.push({ pos: [186, y, 2], size: [6.4, 2, 6.4], mat: 'orange' });
+  railYard(out, rand);
+  for (const [x, z] of [[-165, 82], [-175, -12], [-160, -108]] as const) windTurbine(out, x, z);
+  // A raised pipeline down the west edge: over or under.
+  for (let z = -195; z <= 195; z += 20) out.push({ pos: [-192, 2, z], size: [0.6, 4, 3], mat: 'steel' });
+  out.push({ pos: [-192, 4.6, 0], size: [1.8, 1.8, 392], mat: 'white' });
+}
+
+/** The harbor: water along the north, a quay with stacks, a moored container ship and two cranes over it. */
+function harbor(out: ArenaBox[], rand: () => number): void {
+  const quayZ = 162;
+  water(out, 0, (quayZ + HALF) / 2, HALF * 2, HALF - quayZ);
+  out.push({ pos: [0, 0.8, quayZ - 1], size: [HALF * 2, 1.6, 2], mat: 'concrete' });
+  for (let x = -195; x <= 195; x += 15) out.push({ pos: [x, 2, quayZ - 2.4], size: [0.8, 0.8, 0.8], mat: 'steel' });
+  // The ship: hull, a pointed bow, the bridge tower and funnel, and container stacks on deck.
+  const sz = 188;
+  const x0 = -45;
+  const x1 = 75;
+  out.push({ pos: [(x0 + x1) / 2, 4.5, sz], size: [x1 - x0, 9, 18], mat: 'steel' });
+  out.push({ pos: [(x0 + x1) / 2, 7.6, sz], size: [x1 - x0 + 0.2, 1, 18.2], mat: 'orange' });
+  for (const s of [-1, 1]) out.push({ pos: [x1 + 6, 4.5, sz + s * 4.2], size: [14, 9, 2], rot: [0, s * 34, 0], mat: 'steel' });
+  out.push({ pos: [x0 + 8, 15, sz], size: [12, 12, 15], mat: 'white' });
+  out.push({ pos: [x0 + 8, 18, sz], size: [12.2, 2, 15.2], mat: 'glass' });
+  out.push({ pos: [x0 + 2, 24, sz], size: [4, 6, 4], mat: 'orange' });
+  const boxMats: ArenaMaterial[] = ['orange', 'white', 'steel', 'brick'];
+  for (let bx = x0 + 20; bx <= x1 - 6; bx += 6.6) {
+    for (let k = 0; k < 6; k++) {
+      const stack = 1 + Math.floor(rand() * 3);
+      for (let l = 0; l < stack; l++) out.push({ pos: [bx, 10.3 + l * 2.6, sz - 6.5 + k * 2.6], size: [6, 2.6, 2.4], mat: boxMats[Math.floor(rand() * boxMats.length)]! });
+    }
+  }
+  // Two ship-to-shore cranes on the quay, booms out over the ship.
+  for (const cx of [5, 50]) {
+    for (const lx of [-8, 8]) for (const lz of [quayZ - 24, quayZ - 4]) out.push({ pos: [cx + lx, 20, lz], size: [1.6, 40, 1.6], mat: 'orange' });
+    for (const lz of [quayZ - 24, quayZ - 4]) out.push({ pos: [cx, 40.8, lz], size: [17.6, 1.6, 1.6], mat: 'orange' });
+    for (const lx of [-8, 8]) out.push({ pos: [cx + lx, 40.8, quayZ - 14], size: [1.6, 1.6, 21.6], mat: 'orange' });
+    // The boom runs from behind the legs out over the water.
+    out.push({ pos: [cx, 44, quayZ + 8], size: [4, 2.4, 74], mat: 'orange' });
+    out.push({ pos: [cx, 47, quayZ - 24], size: [6, 4, 6], mat: 'white' });
+    strut(out, [cx, 43, quayZ + 26], [cx, 24, quayZ + 26], 0.2, 'steel');
+    out.push({ pos: [cx, 23, quayZ + 26], size: [6.4, 1, 2.6], mat: 'steel' });
+  }
+  // Container stacks on the quay, east of the spawn.
+  for (let x = -30; x <= 120; x += 7) {
+    if (Math.abs(x - 5) < 12 || Math.abs(x - 50) < 12) continue;
+    for (const z of [136, 140, 144]) {
+      const stack = rand() < 0.3 ? 0 : 1 + Math.floor(rand() * 3);
+      for (let l = 0; l < stack; l++) out.push({ pos: [x, 1.3 + l * 2.6, z], size: [6, 2.6, 2.4], mat: boxMats[Math.floor(rand() * boxMats.length)]! });
+    }
+  }
+}
+
+/** A hollow hyperbolic cooling tower: rings of slabs, wide at the base, a waist, open top; doorways at the bottom. */
+function coolingTower(out: ArenaBox[], cx: number, cz: number): void {
+  const n = 16;
+  const levels = 10;
+  const levelH = 6;
+  for (let l = 0; l < levels; l++) {
+    const y = l * levelH + levelH / 2;
+    const r = 13 + 9 * ((y - 33) / 33) ** 2;
+    for (let k = 0; k < n; k++) {
+      // Two doorways at ground level.
+      if (l === 0 && (k === 0 || k === n / 2)) continue;
+      const a = ((k + 0.5) / n) * Math.PI * 2;
+      const w = ((2 * Math.PI * r) / n) * 1.08;
+      out.push({ pos: [cx + Math.cos(a) * r, y, cz + Math.sin(a) * r], size: [1.5, levelH + 0.1, w], rot: [0, (-a * 180) / Math.PI, 0], mat: 'concrete' });
+    }
+  }
+}
+
+/** Freight rail yard: four tracks of boxcars and tank cars with gaps, a signal gantry and a footbridge. */
+function railYard(out: ArenaBox[], rand: () => number): void {
+  const tracks = [-142, -157, -172, -187];
+  const carMats: ArenaMaterial[] = ['orange', 'steel', 'brick', 'white'];
+  for (const z of tracks) {
+    let x = -185 + rand() * 20;
+    while (x < 185) {
+      if (rand() < 0.3) {
+        x += 18 + rand() * 25;
+        continue;
+      }
+      const tank = rand() < 0.3;
+      out.push({ pos: [x, tank ? 2.2 : 2.6, z], size: [14, tank ? 3 : 3.8, 3], mat: tank ? 'white' : carMats[Math.floor(rand() * carMats.length)]! });
+      out.push({ pos: [x, 0.5, z], size: [13, 1, 2.6], mat: 'steel' });
+      x += 15.5;
+    }
+  }
+  // Signal gantry across the tracks.
+  for (const z of [-134, -195]) out.push({ pos: [-60, 5, z], size: [0.8, 10, 0.8], mat: 'steel' });
+  out.push({ pos: [-60, 10.4, -164.5], size: [0.8, 0.8, 61.8], mat: 'steel' });
+  for (const z of tracks) out.push({ pos: [-60, 9, z], size: [0.6, 1.8, 0.6], mat: 'orange' });
+  // Footbridge over the yard on two stair towers.
+  tower(out, 100, -132, 4, 9, 3);
+  tower(out, 100, -197, 4, 9, 3);
+  out.push({ pos: [100, 9.4, -164.5], size: [3, 0.4, 61], mat: 'orange' });
+}
+
+/** A wind turbine: tower, nacelle, hub and three (still) blades in a vertical plane facing east. */
+function windTurbine(out: ArenaBox[], x: number, z: number): void {
+  const hubY = 56;
+  out.push({ pos: [x, hubY / 2, z], size: [2.6, hubY, 2.6], mat: 'white' });
+  out.push({ pos: [x, hubY, z], size: [8, 3, 3], mat: 'white' });
+  out.push({ pos: [x + 4.5, hubY, z], size: [1.6, 2, 2], mat: 'orange' });
+  for (const deg of [90, 210, 330]) {
+    const a = (deg * Math.PI) / 180;
+    beam(out, [x + 5, hubY, z], [x + 5, hubY + Math.sin(a) * 24, z + Math.cos(a) * 24], 1.2, 'white', 0.4);
+  }
 }
 
 /** Things that blow up when shot (ADR-0023). */

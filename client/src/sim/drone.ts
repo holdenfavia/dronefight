@@ -7,7 +7,7 @@ import { defaultLoadout, loadFactor, type Loadout } from '../../../shared/loadou
 import { AFTERBURNER } from '../../../shared/specials';
 import { PROPELLERS } from '../../../shared/propellers';
 import type { ControlState } from '../input/inputManager';
-import { altitudeHoldThrottle, createFlightOutput, stepFlight, throttleSafeToArm, type FlightInput, type FlightState } from './flightModel';
+import { createFlightOutput, stepFlight, throttleSafeToArm, type FlightState } from './flightModel';
 import type { Physics } from './physics';
 import { stepWing, WING } from './wingModel';
 
@@ -152,9 +152,7 @@ export class Drone {
   private boosted: QuadParams = QUAD;
   /** The pilot's flight assist (ADR-0045). */
   private assist: FlightAssist = 'acro';
-  /** Altitude hold's throttle this step, for the HUD (null when off). */
-  heldThrottle: number | null = null;
-  private readonly holdInput: FlightInput = { throttle: 0, roll: 0, pitch: 0, yaw: 0 };
+
 
   constructor(
     private readonly physics: Physics,
@@ -206,11 +204,6 @@ export class Drone {
     if (assist === this.assist) return;
     this.assist = assist;
     this.setLoadout(this.loadoutNow);
-  }
-
-  /** Altitude hold works on normal quads (not the wing, and not a 3D quad's reversible throttle). */
-  get canHoldAltitude(): boolean {
-    return this.droneClass !== 'wing' && this.droneClass !== 'quad3d';
   }
 
   /** The 3D quad's throttle rests at center; everything else at the bottom. */
@@ -324,25 +317,11 @@ export class Drone {
     const out =
       this.droneClass === 'wing'
         ? stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive, this.wingProp.thrust * (burning ? 1 + AFTERBURNER.thrustBoost : 1), this.wingProp)
-        : stepFlight(this.flightInput(control, burning ? this.boosted : this.params), this.state, rates, this.armed, dt, this.out, burning ? this.boosted : this.params);
+        : stepFlight(control, this.state, rates, this.armed, dt, this.out, burning ? this.boosted : this.params);
     this.state.motorOutput = out.motorOutput;
     this.state.time += dt;
     this.body.setAngvel(out.angvel, true);
     this.body.addForce(out.force, true);
-  }
-
-  /** Sticks as the flight model sees them: with altitude hold, the climb command becomes a throttle (ADR-0045). */
-  private flightInput(control: ControlState, params: QuadParams): FlightInput {
-    if (control.climb === null || !this.canHoldAltitude) {
-      this.heldThrottle = null;
-      return control;
-    }
-    const h = this.holdInput;
-    h.roll = control.roll;
-    h.pitch = control.pitch;
-    h.yaw = control.yaw;
-    h.throttle = this.heldThrottle = altitudeHoldThrottle(control.climb, this.state, params);
-    return h;
   }
 
   /**

@@ -1,4 +1,4 @@
-import { BEAM, boundary, cubeFrame, gate, mulberry32, pads, spawnFacingCenter, tower } from './builders.js';
+import { BEAM, beam, boundary, cubeFrame, gate, hoop, mulberry32, pads, polyBeam, spawnFacingCenter, tower, water } from './builders.js';
 import { routeFromPoints, roundedRect, type MoverDef, type V3 } from './movers.js';
 import type { ArenaBox, ArenaMaterial, ExplosiveDef, MapDef, SpawnPoint } from './types.js';
 
@@ -11,9 +11,16 @@ const PARKED_COLORS: Record<string, string> = { white: '#e9e9e6', steel: '#8d949
  * Downtown (ADR-0012): a 5x5 grid of city blocks with 16 m streets between them.
  * Towers of mixed heights with alleys to thread, an open parking garage, a skybridge,
  * a construction site with a crane, and a plaza in the middle for open dogfighting.
+ * Around it (ADR-0049, 3x the area): a river with a suspension bridge and an arch bridge, a stadium, a
+ * sculpture park of giant hoops, an elevated highway with ramps, a radio mast, and a rail viaduct with a train.
  */
 
-const HALF = 150;
+const HALF = 260;
+/** The old city's edge: the outskirts (ADR-0049) start beyond it. */
+const CITY = 150;
+/** The river runs east-west across the north (z from 175 to 225). */
+const RIVER_Z = 200;
+const RIVER_W = 50;
 /** Block centers along each axis. Streets run between them at ±30 and ±90. */
 const BLOCKS = [-120, -60, 0, 60, 120];
 const STREETS = [-90, -30, 30, 90];
@@ -22,14 +29,15 @@ const LOT = 20;
 const FLOOR = 4;
 
 const SPAWNS: readonly SpawnPoint[] = [
-  spawnFacingCenter(-90, -90),
-  spawnFacingCenter(90, 90),
-  spawnFacingCenter(-90, 90),
-  spawnFacingCenter(90, -90),
+  // Four in the city, four in the outskirts (ADR-0049) so fights spread over the bigger map.
   spawnFacingCenter(-30, 90),
   spawnFacingCenter(30, -90),
   spawnFacingCenter(90, -30),
   spawnFacingCenter(-90, 30),
+  spawnFacingCenter(20, 160),
+  spawnFacingCenter(168, 30),
+  spawnFacingCenter(-165, 100),
+  spawnFacingCenter(60, -170),
 ];
 
 type Rand = () => number;
@@ -261,7 +269,202 @@ function build(): ArenaBox[] {
   skybridgePair(out, rand);
   streetLamps(out);
   parkedCars(rand);
+  outskirts(out, rand);
   return out;
+}
+
+// --- The outskirts (ADR-0049): one-of-a-kind landmarks instead of more blocks.
+
+function outskirts(out: ArenaBox[], rand: Rand): void {
+  river(out);
+  suspensionBridge(out, -60);
+  archBridge(out, 110);
+  stadium(out, 205, -60);
+  sculpturePark(out);
+  highway(out);
+  radioMast(out, -222, -215);
+  viaduct(out, rand);
+}
+
+/** The river: water between two embankment walls, with a little pier and moored boats. */
+function river(out: ArenaBox[]): void {
+  const z0 = RIVER_Z - RIVER_W / 2;
+  const z1 = RIVER_Z + RIVER_W / 2;
+  water(out, 0, RIVER_Z, HALF * 2, RIVER_W);
+  for (const z of [z0 - 0.75, z1 + 0.75]) out.push({ pos: [0, 0.6, z], size: [HALF * 2, 1.2, 1.5], mat: 'concrete' });
+  // Promenade lamps on the city bank.
+  for (let x = -240; x <= 240; x += 24) {
+    if (Math.abs(x + 60) < 14 || Math.abs(x - 110) < 14) continue;
+    out.push({ pos: [x, 3.5, z0 - 4], size: [0.25, 7, 0.25], mat: 'steel' });
+    out.push({ pos: [x, 7, z0 - 3.2], size: [0.25, 0.2, 1.8], mat: 'steel' });
+  }
+  // A pier with two moored boats.
+  out.push({ pos: [10, 0.9, z0 + 9], size: [5, 0.6, 18], mat: 'concrete' });
+  for (const [x, z, m] of [[2, z0 + 10, 'white'], [18, z0 + 13, 'orange']] as const) {
+    out.push({ pos: [x, 0.8, z], size: [3.2, 1.4, 9], mat: m });
+    out.push({ pos: [x, 2.2, z + 1], size: [2.2, 1.6, 3], mat: 'glass' });
+  }
+}
+
+/** A suspension bridge across the river at x: two towers, sagging main cables, hangers and a deck. */
+function suspensionBridge(out: ArenaBox[], x: number): void {
+  const deckY = 10;
+  const half = 7;
+  out.push({ pos: [x, deckY, RIVER_Z], size: [half * 2, 0.8, 70], mat: 'concrete' });
+  // Approach ramps down to the ground at both ends (clear of the city blocks, inside the boundary).
+  for (const s of [-1, 1]) {
+    const end = RIVER_Z + s * 35;
+    beam(out, [x, deckY, end], [x, 0.2, end + s * 20], 0.8, 'concrete', half * 2);
+  }
+  const towerZ = [RIVER_Z - 22, RIVER_Z + 22];
+  for (const tz of towerZ) {
+    for (const lx of [-half - 1, half + 1]) out.push({ pos: [x + lx, 26, tz], size: [2, 52, 2.4], mat: 'orange' });
+    for (const y of [24, 50]) out.push({ pos: [x, y, tz], size: [half * 2 + 4, 1.6, 2], mat: 'orange' });
+  }
+  // Main cables: deck end up to a tower top, a sag between the towers, down to the other end.
+  for (const lx of [-half - 1, half + 1]) {
+    const cx = x + lx;
+    const pts: [number, number, number][] = [[cx, deckY + 0.5, RIVER_Z - 35], [cx, 51, towerZ[0]!]];
+    for (let i = 1; i < 6; i++) {
+      const t = i / 6;
+      const z = towerZ[0]! + (towerZ[1]! - towerZ[0]!) * t;
+      pts.push([cx, 51 - 30 * Math.sin(Math.PI * t) * 0.8, z]);
+    }
+    pts.push([cx, 51, towerZ[1]!], [cx, deckY + 0.5, RIVER_Z + 35]);
+    polyBeam(out, pts, 0.45, 'steel');
+    // Hangers from the cable between the towers down to the deck.
+    for (let i = 1; i < 6; i++) {
+      const p = pts[i + 1]!;
+      out.push({ pos: [cx, (p[1] + deckY) / 2, p[2]], size: [0.15, p[1] - deckY, 0.15], mat: 'steel' });
+    }
+  }
+}
+
+/** An orange through-arch bridge: two arch ribs over the deck, joined at the top, with hangers. */
+function archBridge(out: ArenaBox[], x: number): void {
+  const deckY = 8;
+  const half = 6;
+  out.push({ pos: [x, deckY, RIVER_Z], size: [half * 2, 0.8, 70], mat: 'concrete' });
+  for (const s of [-1, 1]) beam(out, [x, deckY, RIVER_Z + s * 35], [x, 0.2, RIVER_Z + s * 55], 0.8, 'concrete', half * 2);
+  const ribs: [number, number, number][][] = [[], []];
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10;
+    const z = RIVER_Z - 34 + 68 * t;
+    const y = deckY + 30 * Math.sin(Math.PI * t);
+    ribs[0]!.push([x - half - 0.8, y, z]);
+    ribs[1]!.push([x + half + 0.8, y, z]);
+  }
+  for (const rib of ribs) polyBeam(out, rib, 1.4, 'orange');
+  for (let i = 2; i <= 8; i++) {
+    const [, y, z] = ribs[0]![i]!;
+    if (y > deckY + 18) out.push({ pos: [x, y, z], size: [half * 2 + 3, 0.8, 0.8], mat: 'orange' });
+    for (const lx of [-half - 0.8, half + 0.8]) out.push({ pos: [x + lx, (y + deckY) / 2, z], size: [0.2, y - deckY, 0.2], mat: 'steel' });
+  }
+}
+
+/** A stadium: tiered stands around an oval field, two big entrances, light towers, goals. */
+function stadium(out: ArenaBox[], cx: number, cz: number): void {
+  const RXo = 52;
+  const RZo = 42;
+  const n = 28;
+  const tiers = [
+    { inset: 0, depth: 6, h: 14 },
+    { inset: 6, depth: 6, h: 9 },
+    { inset: 12, depth: 6, h: 4 },
+  ];
+  for (let k = 0; k < n; k++) {
+    // Two entrances, at the ends of the long axis.
+    if (k === 0 || k === n / 2) continue;
+    const a1 = (k / n) * Math.PI * 2;
+    const a2 = ((k + 1) / n) * Math.PI * 2;
+    for (const t of tiers) {
+      const s = 1 - (t.inset + t.depth / 2) / RXo;
+      const p1: [number, number, number] = [cx + Math.cos(a1) * RXo * s, t.h / 2, cz + Math.sin(a1) * RZo * s];
+      const p2: [number, number, number] = [cx + Math.cos(a2) * RXo * s, t.h / 2, cz + Math.sin(a2) * RZo * s];
+      beam(out, p1, p2, t.h, t.inset === 0 ? 'concrete' : t.inset === 6 ? 'white' : 'orange', t.depth);
+    }
+  }
+  // Light towers on the diagonals.
+  for (const a of [0.6, 2.5, 3.8, 5.6]) {
+    const x = cx + Math.cos(a) * (RXo + 4);
+    const z = cz + Math.sin(a) * (RZo + 4);
+    out.push({ pos: [x, 18, z], size: [1.2, 36, 1.2], mat: 'steel' });
+    out.push({ pos: [x, 37, z], size: [6, 3, 1], mat: 'white' });
+  }
+  // Goals at each end of the field.
+  for (const s of [-1, 1]) {
+    const gx = cx + s * 30;
+    for (const dz of [-3.6, 3.6]) out.push({ pos: [gx, 1.2, cz + dz], size: [0.2, 2.4, 0.2], mat: 'white' });
+    out.push({ pos: [gx, 2.4, cz], size: [0.2, 0.2, 7.4], mat: 'white' });
+  }
+}
+
+/** Giant hoops at odd angles, to string together. */
+function sculpturePark(out: ArenaBox[]): void {
+  hoop(out, [180, 22, 70], 18, 0, 1.4, 'orange');
+  hoop(out, [215, 30, 110], 14, 50, 1.2, 'white');
+  hoop(out, [185, 40, 140], 10, -30, 1, 'orange');
+  // A leaning steel spike sculpture.
+  beam(out, [235, 0, 60], [222, 46, 70], 2, 'steel');
+}
+
+/** An elevated highway on piers along the west side, crossing the river, with two on-ramps from the city. */
+function highway(out: ArenaBox[]): void {
+  const x = -205;
+  const y = 12;
+  const w = 18;
+  const z0 = -250;
+  const z1 = 250;
+  out.push({ pos: [x, y, (z0 + z1) / 2], size: [w, 1, z1 - z0], mat: 'concrete' });
+  for (const s of [-1, 1]) out.push({ pos: [x + s * (w / 2 - 0.2), y + 1, (z0 + z1) / 2], size: [0.4, 1.2, z1 - z0], mat: 'white' });
+  for (let z = z0 + 10; z <= z1 - 10; z += 26) {
+    // No pier in the river.
+    if (Math.abs(z - RIVER_Z) < RIVER_W / 2 + 2) continue;
+    for (const s of [-1, 1]) out.push({ pos: [x + s * 6, y / 2, z], size: [2, y, 2], mat: 'concrete' });
+    out.push({ pos: [x, y - 1, z], size: [w, 1.2, 2.4], mat: 'concrete' });
+  }
+  // On-ramps sloping down into the city's edge.
+  for (const rz of [-40, 60]) beam(out, [x + w / 2 - 1, y, rz], [-CITY, 0.2, rz], 0.8, 'concrete', 12);
+}
+
+/** A tall lattice radio mast with a blinking-light top (orange, white bands). */
+function radioMast(out: ArenaBox[], x: number, z: number): void {
+  tower(out, x, z, 3, 110, 5, 0, false);
+  out.push({ pos: [x, 112, z], size: [1.4, 4, 1.4], mat: 'white' });
+  // Three dishes on the way up.
+  for (const [y, dx] of [[40, 2.4], [62, -2.4], [80, 2.4]] as const) out.push({ pos: [x + dx, y, z], size: [0.6, 3, 3], mat: 'white' });
+}
+
+/** A rail viaduct across the south on arched piers, with a stopped train and a station canopy. */
+function viaduct(out: ArenaBox[], rand: Rand): void {
+  const z = -200;
+  const y = 9;
+  const x0 = -185;
+  const x1 = 255;
+  out.push({ pos: [(x0 + x1) / 2, y, z], size: [x1 - x0, 1.2, 10], mat: 'concrete' });
+  for (let x = x0 + 8; x <= x1 - 8; x += 22) {
+    out.push({ pos: [x, y / 2, z], size: [3, y, 10], mat: 'brick' });
+  }
+  // A train of six cars, nose east.
+  for (let i = 0; i < 6; i++) {
+    const cx = 40 + i * 17;
+    out.push({ pos: [cx, y + 2.4, z], size: [16, 3.6, 3.2], mat: i === 0 ? 'orange' : 'steel' });
+    out.push({ pos: [cx, y + 2.8, z], size: [15, 1, 3.3], mat: 'glass' });
+  }
+  // Station canopy over the platform.
+  for (const x of [-20, -5, 10]) out.push({ pos: [x, y + 3.5, z + 6], size: [0.4, 7, 0.4], mat: 'steel' });
+  out.push({ pos: [-5, y + 7.2, z + 4], size: [36, 0.4, 8], mat: 'white' });
+  out.push({ pos: [-5, y + 0.6, z + 6.5], size: [36, 1.2, 3], mat: 'concrete' });
+  // A tall water tower beside the line (its tank bursts, ADR-0023).
+  const tx = 150;
+  const tz = -232;
+  for (const [lx, lz] of [[-2.5, -2.5], [2.5, -2.5], [-2.5, 2.5], [2.5, 2.5]] as const) out.push({ pos: [tx + lx, 12, tz + lz], size: [0.5, 24, 0.5], mat: 'steel' });
+  EXPLOSIVES.push({ kind: 'water', pos: [tx, 27, tz], size: [7, 6, 7], color: '#d9d4c8' });
+  // Cars parked under the highway.
+  for (let i = 0; i < 8; i++) {
+    if (rand() < 0.3) continue;
+    EXPLOSIVES.push({ kind: 'car', pos: [-212 + (i % 2) * 14, 0.75, -120 + Math.floor(i / 2) * 14], size: [2, 1.5, 4.4], color: CAR_COLORS[i % CAR_COLORS.length] });
+  }
 }
 
 /** Lane dashes and a distant skyline: drawn, never collided with. */
@@ -276,12 +479,13 @@ function buildDecor(): ArenaBox[] {
     }
   }
   // Skyline beyond the boundary. Fog fades it into the haze.
-  for (let x = -520; x <= 520; x += 40) {
-    for (let z = -520; z <= 520; z += 40) {
-      if (Math.max(Math.abs(x), Math.abs(z)) < 190 || rand() < 0.45) continue;
+  // Beyond the outskirts (ADR-0049): starts past the bigger boundary.
+  for (let x = -620; x <= 620; x += 40) {
+    for (let z = -620; z <= 620; z += 40) {
+      if (Math.max(Math.abs(x), Math.abs(z)) < HALF + 40 || rand() < 0.45) continue;
       const w = 16 + rand() * 18;
       const d = 16 + rand() * 18;
-      const nearness = 1 - (Math.max(Math.abs(x), Math.abs(z)) - 190) / 330;
+      const nearness = 1 - (Math.max(Math.abs(x), Math.abs(z)) - (HALF + 40)) / 320;
       const h = 20 + rand() * (40 + 100 * nearness);
       const mat: ArenaMaterial = rand() < 0.4 ? 'glass' : rand() < 0.5 ? 'brick' : 'facade';
       out.push({ pos: [x + (rand() - 0.5) * 8, h / 2, z + (rand() - 0.5) * 8], size: [w, h, d], mat });

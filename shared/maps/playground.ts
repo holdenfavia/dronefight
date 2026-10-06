@@ -1,15 +1,18 @@
-import { boundary, pads, spawnFacingCenter, strut } from './builders.js';
-import { coasterTiming, routeFromPoints, type MoverDef, type V3 } from './movers.js';
+import { beam, boundary, hoop, mulberry32, pads, polyBeam, spawnFacingCenter, strut, water as waterSheet } from './builders.js';
+import { coasterTiming, dropTowerTiming, routeFromPoints, type MoverDef, type V3 } from './movers.js';
 import type { ArenaBox, ArenaMaterial, ExplosiveDef, MapDef, SpawnPoint } from './types.js';
 
 /**
  * Playground (ADR-0019): a giant playground park, scaled for drones, built only from solid-color
  * grid materials. Center: a playhouse tower on stilts with two big slides. Around it: swings, monkey
  * bars, a climbing lattice, seesaw, merry-go-round, sandbox, crawl tunnel and a climbing wall.
+ * Around it (ADR-0049, 3x the area), a fairground: a drop tower with a riding gondola, a Ferris wheel,
+ * a carousel, a hedge maze, a pond with an arched bridge, a spiral slide tower, a bouncy castle and two
+ * tethered hot-air balloons.
  */
 
-const HALF = 160;
-const FENCE = 150;
+const HALF = 280;
+const FENCE = 270;
 const DEG = 180 / Math.PI;
 
 type Mat = Extract<ArenaMaterial, `grid${string}`>;
@@ -19,11 +22,16 @@ const SPAWNS: readonly SpawnPoint[] = [
   spawnFacingCenter(0, -132),
   spawnFacingCenter(132, 0),
   spawnFacingCenter(-132, 0),
-  spawnFacingCenter(-120, 120),
-  spawnFacingCenter(120, 120),
-  spawnFacingCenter(-120, -120),
-  spawnFacingCenter(120, -120),
+  // The fairground (ADR-0049).
+  spawnFacingCenter(60, 232),
+  spawnFacingCenter(236, -40),
+  spawnFacingCenter(-236, 0),
+  spawnFacingCenter(-40, -238),
 ];
+
+/** Drop tower (ADR-0049): where it stands, how high the gondola rides, and the ride's timing. */
+const DROP = { x: 0, z: 205, base: 2, height: 58 } as const;
+const DROP_TIMING = dropTowerTiming(DROP.height);
 
 const box = (out: ArenaBox[], pos: [number, number, number], size: [number, number, number], mat: Mat, rot?: [number, number, number]) =>
   out.push(rot ? { pos, size, mat, rot } : { pos, size, mat });
@@ -141,6 +149,24 @@ function coaster(out: ArenaBox[]): void {
       if (!nearSpawn) box(out, [a[0], (a[1] - 0.25) / 2, a[2]], [0.9, a[1] - 0.25, 0.9], 'gridWhite');
     }
   }
+}
+
+/** The drop tower's gondola: four seats around the tower riding up together and dropping. */
+function dropTowerSeats(): MoverDef[] {
+  const colors = ['#e5483e', '#f5c63a', '#2f7fe0', '#45b865'];
+  return ([[0, 3.6, 0], [3.6, 0, 270], [0, -3.6, 180], [-3.6, 0, 90]] as const).map(([dx, dz, heading], i) => ({
+    kind: 'coasterCar' as const,
+    route: routeFromPoints([
+      [DROP.x + dx, DROP.base, DROP.z + dz],
+      [DROP.x + dx, DROP.base + DROP.height, DROP.z + dz],
+    ]),
+    offset: 0,
+    timing: DROP_TIMING,
+    heading,
+    color: colors[i]!,
+    size: [2.6, 1.6, 2.2] as V3,
+    lift: 0,
+  }));
 }
 
 function coasterTrain(): MoverDef[] {
@@ -327,6 +353,7 @@ function build(): ArenaBox[] {
   }
 
   coaster(out);
+  fairground(out);
 
   // --- Trees, benches and hopscotch around the paths.
   for (const [x, z, th] of [
@@ -351,6 +378,163 @@ function build(): ArenaBox[] {
     box(out, [x, 0.55, z], [6, 1.1, 1.2], 'gridWhite', [0, yaw, 0]);
   }
   return out;
+}
+
+// --- The fairground (ADR-0049)
+
+function fairground(out: ArenaBox[]): void {
+  dropTower(out);
+  ferrisWheel(out, 210, 90);
+  carousel(out, -205, 70);
+  hedgeMaze(out, -200, -160);
+  pond(out, 195, -165);
+  spiralSlide(out, 110, -215);
+  bouncyCastle(out, -75, 215);
+  balloon(out, 150, 200, 58, 'gridRed', 'gridYellow');
+  balloon(out, -150, 205, 66, 'gridBlue', 'gridWhite');
+}
+
+/** The drop tower: a striped column with a crown; the gondola is a mover. */
+function dropTower(out: ArenaBox[]): void {
+  const { x, z, base, height } = DROP;
+  const top = base + height + 8;
+  box(out, [x, 0.5, z], [14, 1, 14], 'gridWhite');
+  for (let y = 0; y < top; y += 8) box(out, [x, y + 4, z], [3, 8.05, 3], y % 16 === 0 ? 'gridRed' : 'gridWhite');
+  box(out, [x, top + 1, z], [9, 2, 9], 'gridYellow');
+  box(out, [x, top + 3, z], [5, 2, 5], 'gridRed');
+  box(out, [x, top + 6, z], [0.6, 4, 0.6], 'gridWhite');
+}
+
+/** A Ferris wheel facing east: rim, spokes, hanging gondolas, on two A-frame legs. */
+function ferrisWheel(out: ArenaBox[], x: number, z: number): void {
+  const hubY = 34;
+  const r = 28;
+  for (const dx of [-2, 2]) hoop(out, [x + dx, hubY, z], r, 90, 0.9, 'gridPurple', 24);
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    const py = hubY + Math.sin(a) * r;
+    const pz = z + Math.cos(a) * r;
+    beam(out, [x, hubY, z], [x, py, pz], 0.5, 'gridWhite');
+    box(out, [x, py - 2.2, pz], [3.4, 2.4, 2.4], (['gridRed', 'gridYellow', 'gridBlue', 'gridGreen'] as const)[k % 4]);
+  }
+  box(out, [x, hubY, z], [6, 2, 2], 'gridYellow');
+  for (const dx of [-3.5, 3.5]) {
+    beam(out, [x + dx, 0, z - 14], [x + dx, hubY, z], 1.2, 'gridWhite');
+    beam(out, [x + dx, 0, z + 14], [x + dx, hubY, z], 1.2, 'gridWhite');
+  }
+}
+
+/** A carousel: platform, center pole, canopy and horses on poles. */
+function carousel(out: ArenaBox[], x: number, z: number): void {
+  octagon(out, x, 0.6, z, 26, 1.2, 'gridYellow');
+  box(out, [x, 6, z], [2.4, 12, 2.4], 'gridRed');
+  octagon(out, x, 11.5, z, 30, 1, 'gridRed');
+  box(out, [x, 13.2, z], [10, 2.4, 10], 'gridWhite', [0, 45, 0]);
+  for (let k = 0; k < 10; k++) {
+    const a = (k / 10) * Math.PI * 2;
+    const hx = x + Math.cos(a) * 10;
+    const hz = z + Math.sin(a) * 10;
+    box(out, [hx, 6.5, hz], [0.25, 10, 0.25], 'gridWhite');
+    box(out, [hx, 3 + (k % 2), hz], [1, 1.4, 2.8], (['gridWhite', 'gridBlue', 'gridPurple'] as const)[k % 3], [0, (-a * 180) / Math.PI, 0]);
+  }
+}
+
+/** A hedge maze (8x8 cells of 8 m, walls 6 m high): fly it low, or skim over the top. */
+function hedgeMaze(out: ArenaBox[], cx: number, cz: number): void {
+  const n = 8;
+  const cell = 8;
+  const rand = mulberry32(19);
+  const x0 = cx - (n * cell) / 2;
+  const z0 = cz - (n * cell) / 2;
+  // Carve a perfect maze (depth-first), then knock out a few extra walls so it has loops.
+  const east = Array.from({ length: n }, () => Array(n).fill(true) as boolean[]);
+  const south = Array.from({ length: n }, () => Array(n).fill(true) as boolean[]);
+  const seen = Array.from({ length: n }, () => Array(n).fill(false) as boolean[]);
+  const stack: [number, number][] = [[0, 0]];
+  seen[0]![0] = true;
+  while (stack.length) {
+    const [i, j] = stack[stack.length - 1]!;
+    const next = ([[1, 0], [-1, 0], [0, 1], [0, -1]] as const).map(([di, dj]) => [i + di, j + dj] as const).filter(([a, b]) => a >= 0 && b >= 0 && a < n && b < n && !seen[a]![b]);
+    if (!next.length) {
+      stack.pop();
+      continue;
+    }
+    const [a, b] = next[Math.floor(rand() * next.length)]!;
+    if (a > i) east[i]![j] = false;
+    else if (a < i) east[a]![b] = false;
+    else if (b > j) south[i]![j] = false;
+    else south[a]![b] = false;
+    seen[a]![b] = true;
+    stack.push([a, b]);
+  }
+  for (let k = 0; k < 8; k++) east[Math.floor(rand() * (n - 1))]![Math.floor(rand() * n)] = false;
+  const h = 6;
+  const wall = (x: number, z: number, w: number, d: number) => box(out, [x, h / 2, z], [w, h, d], 'gridGreen');
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const x = x0 + i * cell;
+      const z = z0 + j * cell;
+      if (i < n - 1 && east[i]![j]) wall(x + cell, z + cell / 2, 1, cell + 1);
+      if (j < n - 1 && south[i]![j]) wall(x + cell / 2, z + cell, cell + 1, 1);
+    }
+  }
+  // Outer walls with an entrance and an exit.
+  for (let k = 0; k < n; k++) {
+    if (k !== 0) wall(x0 + k * cell + cell / 2, z0, cell + 1, 1);
+    if (k !== n - 1) wall(x0 + k * cell + cell / 2, z0 + n * cell, cell + 1, 1);
+    wall(x0, z0 + k * cell + cell / 2, 1, cell + 1);
+    wall(x0 + n * cell, z0 + k * cell + cell / 2, 1, cell + 1);
+  }
+}
+
+/** A pond with an arched wooden bridge, lily pads and a little fountain. */
+function pond(out: ArenaBox[], x: number, z: number): void {
+  waterSheet(out, x, z, 60, 44);
+  waterSheet(out, x, z, 44, 56);
+  const pts: [number, number, number][] = [];
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    pts.push([x - 36 + 72 * t, 0.4 + 7 * Math.sin(Math.PI * t), z]);
+  }
+  for (const dz of [-2.5, 2.5]) polyBeam(out, pts.map(([px, py, pz]) => [px, py + 1.2, pz + dz] as [number, number, number]), 0.4, 'gridWhite');
+  for (let i = 0; i < 8; i++) beam(out, pts[i]!, pts[i + 1]!, 0.5, 'gridOrange', 5);
+  for (const [dx, dz] of [[-15, 12], [12, -14], [18, 10], [-20, -12]] as const) box(out, [x + dx, 0.18, z + dz], [3, 0.12, 3], 'gridGreen');
+  box(out, [x + 12, 2, z + 14], [1.2, 4, 1.2], 'gridBlue');
+}
+
+/** A spiral slide winding down around a tall tower. */
+function spiralSlide(out: ArenaBox[], x: number, z: number): void {
+  const height = 34;
+  box(out, [x, height / 2, z], [4, height, 4], 'gridYellow');
+  box(out, [x, height + 0.5, z], [9, 1, 9], 'gridBlue');
+  const pts: [number, number, number][] = [];
+  for (let i = 0; i <= 40; i++) {
+    const t = i / 40;
+    const a = t * Math.PI * 2 * 2.5;
+    pts.push([x + Math.cos(a) * 9, height - t * (height - 1), z + Math.sin(a) * 9]);
+  }
+  for (let i = 0; i < 40; i++) beam(out, pts[i]!, pts[i + 1]!, 0.5, 'gridRed', 3.2);
+}
+
+/** A bouncy castle: a blocky castle with four turrets and battlements. */
+function bouncyCastle(out: ArenaBox[], x: number, z: number): void {
+  box(out, [x, 4, z], [24, 8, 18], 'gridPurple');
+  for (const [dx, dz] of [[-12, -9], [12, -9], [-12, 9], [12, 9]] as const) {
+    box(out, [x + dx, 7, z + dz], [5, 14, 5], 'gridYellow');
+    box(out, [x + dx, 15, z + dz], [6, 2, 6], 'gridRed');
+  }
+  for (let k = -10; k <= 10; k += 4) box(out, [x + k, 9, z - 9], [2, 2, 1], 'gridYellow');
+  // A doorway arch on the front to fly into.
+  box(out, [x, 3, z - 9.2], [8, 6, 0.6], 'gridBlue');
+}
+
+/** A tethered hot-air balloon: an envelope of stacked boxes, a basket, and a tether to the ground. */
+function balloon(out: ArenaBox[], x: number, z: number, y: number, a: Mat, b: Mat): void {
+  [[10, 0], [14, 4], [15, 9], [13, 14], [8, 18]].forEach(([w, dy], i) => box(out, [x, y + dy!, z], [w!, 5, w!], i % 2 ? b : a, [0, i * 22, 0]));
+  box(out, [x, y - 7, z], [3, 2.4, 3], 'gridOrange');
+  for (const [dx, dz] of [[-1.2, -1.2], [1.2, 1.2]] as const) strut(out, [x + dx, y - 5.8, z + dz], [x + dx * 3, y - 1.5, z + dz * 3], 0.15, 'gridWhite');
+  strut(out, [x, y - 8.2, z], [x + 6, 0, z + 6], 0.15, 'gridWhite');
+  box(out, [x + 6, 0.5, z + 6], [2, 1, 2], 'gridWhite');
 }
 
 /** Things that burst or blow up when shot (ADR-0023): mostly water barrels, a few fuel drums. */
@@ -388,5 +572,5 @@ export const PLAYGROUND: MapDef = {
   spawns: SPAWNS,
   explosives: EXPLOSIVES,
   ground: 'grid',
-  movers: coasterTrain(),
+  movers: [...coasterTrain(), ...dropTowerSeats()],
 };

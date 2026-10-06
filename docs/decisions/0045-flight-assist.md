@@ -1,6 +1,6 @@
 # ADR-0045: Pilot-selectable flight assist (Acro, Horizon, Angle) and altitude hold
 
-- **Status:** Accepted
+- **Status:** Accepted for Acro/Horizon/Angle; altitude hold and the Horizon-on-touch default superseded by ADR-0050
 - **Date:** 2026-10-05
 - **Amends:** ADR-0037 (the X8 stays locked to horizon); SPEC Flight and out-of-scope ("angle mode or pilot-selectable flight modes")
 

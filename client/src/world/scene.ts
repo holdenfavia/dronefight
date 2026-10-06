@@ -305,6 +305,11 @@ function arenaMaterials(aniso: number): Record<VisibleMaterial, MaterialDef> {
       material: new THREE.MeshStandardMaterial({ color: '#7fe8ff', emissive: '#3ad0ff', emissiveIntensity: 1.6, roughness: 0.2, metalness: 0.1 }),
       tileM: 0,
     },
+    // Rivers, ponds, the harbor (ADR-0049): deep blue and glossy, catching the sky.
+    water: {
+      material: new THREE.MeshStandardMaterial({ color: '#2d6f9e', roughness: 0.12, metalness: 0.35 }),
+      tileM: 0,
+    },
   };
 
   function grid(color: string): MaterialDef {
@@ -326,6 +331,7 @@ const GRID_EQUIVALENT: Record<Exclude<VisibleMaterial, `grid${string}` | 'pad'>,
   foliage: '#45b865',
   rock: '#8a7f74',
   crystal: '#7fe8ff',
+  water: '#3a86c8',
   paint: '#f2f1ec',
 };
 

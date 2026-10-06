@@ -27,6 +27,8 @@ export type ArenaMaterial =
   /** Cavern (ADR-0048): cave rock, and glowing crystal. */
   | 'rock'
   | 'crystal'
+  /** Rivers, ponds, harbors (ADR-0049). */
+  | 'water'
   | 'invisible';
 
 export interface ArenaBox {

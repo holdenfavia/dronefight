@@ -47,8 +47,10 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0041](0041-revert-drawn-size-physics.md) | Back to real-size flight physics and colliders (gaps flyable again); keep the 105° default FOV | Accepted |
 | [0042](0042-drag-from-shape.md) | Quad air resistance calculated from each body's real-size projected areas (½ρCdA); flight only, no size/weight/thrust change | Accepted |
 | [0043](0043-real-size-drones-name-tags.md) | Drones drawn at real size (5" ~0.31 m); hitboxes stay big; War Thunder-style name tags (name, level, distance, health) | Accepted |
-| [0044](0044-touch-controls.md) | Touch controls on iPad and iPhone: floating sticks, corner triggers, second-finger fire, optional auto-fire and trigger lock; Touch controls screen replaces Controller setup on touch | Accepted |
-| [0045](0045-flight-assist.md) | Pilot-selectable flight assist (Acro / Horizon / Angle) and altitude hold; X8 always Horizon; Acro default except on touch | Accepted |
+| [0044](0044-touch-controls.md) | Touch controls on iPad and iPhone: floating sticks, corner triggers, second-finger fire, optional auto-fire and trigger lock; Touch controls screen replaces Controller setup on touch | Accepted (defaults: 0050) |
+| [0045](0045-flight-assist.md) | Pilot-selectable flight assist (Acro / Horizon / Angle) and altitude hold; X8 always Horizon; Acro default except on touch | Accepted (altitude hold and touch default superseded by 0050) |
 | [0046](0046-room-settings.md) | Room settings at create (map, kills, time limit, assist, allowed drones/weapons/specials), changeable by the host from the pause menu (restarts the match); server-enforced | Accepted |
 | [0047](0047-teams-and-prematch.md) | Teams mode (Orange vs Lime, no friendly fire, team kill totals) and a pre-match menu: pick team, ready up, host starts; back to it after results | Accepted |
 | [0048](0048-cavern-map.md) | Cavern map: one huge chamber, loop tunnels and a crystal grotto, stalactites, stalagmites and columns; light shafts and crystals; per-map atmosphere | Accepted |
+| [0049](0049-bigger-maps-landmarks.md) | Maps 3x the area with one-of-a-kind landmarks: Downtown river, bridges, stadium, highway; Yard harbor, cooling towers, rail yard, wind farm; Playground drop tower and fairground; Cavern lake and mine; water material | Accepted |
+| [0050](0050-touch-like-a-radio.md) | Touch flies like a radio: no altitude hold, fixed sticks, Acro by default everywhere, no aiming help unless turned on | Accepted |

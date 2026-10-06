@@ -1,6 +1,6 @@
 # ADR-0044: Touch controls on iPad and iPhone
 
-- **Status:** Accepted
+- **Status:** Accepted (floating-sticks default superseded by ADR-0050: fixed sticks)
 - **Date:** 2026-10-05
 - **Changes:** SPEC platform ("Mobile/touch is out of scope") and the out-of-scope list
 

@@ -148,6 +148,10 @@ Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, s
 - Pick the map with **Map: … ▸** on the Play screen. It applies to solo flying and to rooms you create; people joining get the room's map.
 - Mountains, clouds and the sun glow are in `client/src/world/scenery.ts`; building textures in `textures.ts`.
 
+### Bigger maps (ADR-0049)
+
+- Downtown, Yard, Playground and Cavern are 3x their original area. Landmarks live in their own functions per map (`outskirts`, `harbor`, `fairground`, `lake`, `mine`…). Shapes: `beam`/`polyBeam`/`hoop`/`water` in `shared/maps/builders.ts`. The drop tower is a mover with a fixed `heading` and `dropTowerTiming` (`shared/maps/movers.ts`).
+
 ### Cavern (ADR-0048)
 
 - One huge chamber with loop tunnels (north, south, east) and a west tunnel to a crystal grotto; stalactites, stalagmites, columns, floor mounds; sunlight through three roof holes (invisible lids), glowing crystals. Built from boxes in `shared/maps/cavern.ts` (deterministic seed; `ceilingAt` gives the roof height).
@@ -202,7 +206,7 @@ Gamepads the browser reports as "standard" (Xbox, PlayStation, Logitech in XInpu
 ### iPad and iPhone (touch, ADR-0044)
 
 - Open https://dronefight.fly.dev in Safari, hold the device sideways. For a near-fullscreen view: Share → **Add to Home Screen**, then launch from the icon.
-- Left thumb anywhere on the left half: climb/sink and turn (with altitude hold, centered = hold height; without it the throttle stays where you leave it). Right thumb anywhere on the right half: aim (pitch and roll). Top-right corner = Fire (index finger), top-left = Special; any second finger on the right half also fires. Double-tap the left half to switch weapons. Pause is top center.
+- Left stick: throttle (stays where you leave it, like a radio) and yaw. Fixed sticks by default; floating is an option (ADR-0050). Right thumb anywhere on the right half: aim (pitch and roll). Top-right corner = Fire (index finger), top-left = Special; any second finger on the right half also fires. Double-tap the left half to switch weapons. Pause is top center.
 - The hamburger button (top middle) opens the pause menu. **Edit layout** (in Touch controls) lets you drag the triggers, menu button and fixed sticks and resize the triggers from their corner handle; saved per device as screen fractions (`TouchLayout` in `settings.ts`).
 - **Pause → Touch controls** (or Settings → Touch controls) replaces Controller setup on touch: floating/fixed sticks, size, sensitivity, swap sides, flight assist, altitude hold, corner trigger, second-finger fire, auto-fire on target, trigger lock, opacity, button size. Saved per device.
 - A Bluetooth Xbox/PlayStation controller paired to the iPad takes over from touch automatically.
@@ -212,7 +216,6 @@ Gamepads the browser reports as "standard" (Xbox, PlayStation, Logitech in XInpu
 ### Flight assist (ADR-0045)
 
 - Settings → **Flight assist**: Auto (Horizon on touch, Acro otherwise), Acro, Horizon (levels near center, flips at full stick), Angle (never flips, 45° max lean). Quads only; the X8 is always Horizon; the wing ignores it.
-- Altitude hold (touch): `ALTITUDE_HOLD` in `client/src/config.ts` (12 m/s max climb). Assist levelling: `FLIGHT_ASSIST`.
 
 ### Other radios (EdgeTX/OpenTX)
 

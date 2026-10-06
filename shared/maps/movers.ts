@@ -27,6 +27,8 @@ export interface MoverDef {
   offset: number;
   /** Constant speed (m/s), unless `timing` is given. */
   speed?: number;
+  /** Always face this way (degrees, like a spawn's yaw) instead of along the route: a drop-tower seat (ADR-0049). */
+  heading?: number;
   timing?: Timing;
   /** Body color. */
   color: string;
@@ -138,4 +140,42 @@ export function moverDistance(m: MoverDef, t: number): number {
 export function moverPose(m: MoverDef, t: number, pos: V3, dir: V3): void {
   sampleRoute(m.route, moverDistance(m, t), pos, dir);
   pos[1] += m.lift;
+  if (m.heading !== undefined) {
+    const h = (m.heading * Math.PI) / 180;
+    dir[0] = -Math.sin(h);
+    dir[1] = 0;
+    dir[2] = -Math.cos(h);
+  }
+}
+
+/**
+ * A drop tower ride (ADR-0049) on a two-point route (bottom, top): a slow lift, a pause at the top, a
+ * free-fall drop, a hard brake, and a pause at the bottom, tabulated like coasterTiming.
+ */
+export function dropTowerTiming(height: number, dt = 1 / 30): Timing {
+  const lift = 12;
+  const top = 3;
+  const g = 9.81;
+  // Free fall for most of the height, then braking over the last 25%.
+  const fallH = height * 0.75;
+  const fall = Math.sqrt((2 * fallH) / g);
+  const v = g * fall;
+  const brake = (2 * (height - fallH)) / v;
+  const bottom = 5;
+  const lapSeconds = lift + top + fall + brake + bottom;
+  const distances: number[] = [];
+  for (let t = 0; t <= lapSeconds + dt; t += dt) {
+    let d: number;
+    if (t < lift) d = (height * (1 - Math.cos((Math.PI * t) / lift))) / 2;
+    else if (t < lift + top) d = height;
+    else if (t < lift + top + fall) {
+      const u = t - lift - top;
+      d = height + 0.5 * g * u * u;
+    } else if (t < lift + top + fall + brake) {
+      const u = t - lift - top - fall;
+      d = height + fallH + v * u - (0.5 * v * u * u) / brake;
+    } else d = height * 2;
+    distances.push(Math.min(height * 2, d));
+  }
+  return { lapSeconds, dt, distances };
 }

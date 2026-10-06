@@ -140,6 +140,9 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Teams mode and a pre-match menu (ADR-0047)
 - [x] Cavern map: one huge cave with tunnels, stalactites and stalagmites (ADR-0048)
 - [ ] Fly the Cavern together and tune light, formations and tunnel sizes
+- [x] Maps 3x the area with landmarks (ADR-0049)
+- [ ] Fly the bigger maps together; fill any empty stretches; tune spawns
+- [x] Touch flies like a radio: no altitude hold, Acro default (ADR-0050)
 - [ ] Paint and pilot name shown to others
 - [ ] Unlock track: levels unlock bodies, modules and paints
 - [ ] More content: flak, laser, rocket pod, flares, mines, cinewhoop, 7" long range, X8 gunship

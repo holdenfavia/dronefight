@@ -8,7 +8,7 @@ import type { Particles } from './particles';
  * the ground kicks up dirt only where there is dirt (a sidewalk chips and dusts, steel sparks, glass glints).
  * Visual only; the server decides hits.
  */
-export type Surface = 'dirt' | 'asphalt' | 'concrete' | 'brick' | 'metal' | 'glass' | 'foliage' | 'painted' | 'stone' | 'none';
+export type Surface = 'dirt' | 'asphalt' | 'concrete' | 'brick' | 'metal' | 'glass' | 'foliage' | 'painted' | 'stone' | 'water' | 'none';
 
 const SURFACE_OF: Record<ArenaMaterial, Surface> = {
   orange: 'metal',
@@ -33,6 +33,7 @@ const SURFACE_OF: Record<ArenaMaterial, Surface> = {
   gridSand: 'dirt',
   rock: 'stone',
   crystal: 'glass',
+  water: 'water',
   invisible: 'none',
 };
 
@@ -135,6 +136,8 @@ const LOOKS: Record<Exclude<Surface, 'none' | 'painted'>, Look> = {
   brick: { bits: 3, bitColors: ['#9c4a32', '#b0614a'], bitSize: 0.05, bitSpeed: 3, bitMs: 300, dust: { color: '#b07a62', size: 0.5, ms: 500, alpha: 0.45 } },
   metal: { bits: 4, bitColors: ['#ffd27a', '#fff1c4'], bitSize: 0.04, bitSpeed: 6, bitMs: 160, dust: null },
   glass: { bits: 3, bitColors: ['#eaf6ff', '#ffffff'], bitSize: 0.04, bitSpeed: 3, bitMs: 220, dust: null },
+  // A white splash and a little spray mist (ADR-0049).
+  water: { bits: 7, bitColors: ['#ffffff', '#d8ecf7', '#a9d2ea'], bitSize: 0.09, bitSpeed: 4, bitMs: 450, dust: { color: '#e8f4fb', size: 0.9, ms: 600, alpha: 0.55 } },
   stone: { bits: 4, bitColors: ['#7a6e63', '#5c5249', '#9a8e80'], bitSize: 0.07, bitSpeed: 3.5, bitMs: 380, dust: { color: '#8c8075', size: 0.6, ms: 600, alpha: 0.5 } },
   foliage: { bits: 4, bitColors: ['#4f8a3a', '#6aa84f'], bitSize: 0.07, bitSpeed: 2.5, bitMs: 500, dust: null },
 };

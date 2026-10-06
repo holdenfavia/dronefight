@@ -657,7 +657,7 @@ export class Menu {
         }</div>
         <label class="field">Flight assist
           <select data-assist>
-            ${(['auto', 'acro', 'horizon', 'angle'] as const).map((a) => `<option value="${a}" ${s.flightAssist === a ? 'selected' : ''}>${ASSIST_LABELS[a]}</option>`).join('')}
+            ${(['acro', 'horizon', 'angle'] as const).map((a) => `<option value="${a}" ${s.flightAssist === a ? 'selected' : ''}>${ASSIST_LABELS[a]}</option>`).join('')}
           </select>
         </label>
         <p class="hint">Quads only. The X8 always flies Horizon.</p>
@@ -773,8 +773,7 @@ export class Menu {
             ${slider('sensitivity', 'Sensitivity', 0.6, 1.6)}
             ${check('swap', 'Swap sides (aim with your left thumb)')}
             <div class="calib-sub">Flight</div>
-            ${seg('assist', [['acro', 'Acro'], ['horizon', 'Horizon'], ['angle', 'Angle']], s.flightAssist === 'auto' ? 'horizon' : s.flightAssist)}
-            ${check('altitudeHold', 'Altitude hold', 'left stick sets climb rate')}
+            ${seg('assist', [['acro', 'Acro'], ['horizon', 'Horizon'], ['angle', 'Angle']], s.flightAssist)}
           </div>
           <div>
             <div class="calib-sub">Firing</div>
@@ -796,7 +795,7 @@ export class Menu {
       </div>`;
     this.root.querySelectorAll<HTMLInputElement>('[data-tcheck]').forEach((el) =>
       el.addEventListener('change', () => {
-        const key = el.dataset.tcheck as 'swap' | 'altitudeHold' | 'cornerTriggers' | 'secondFingerFire' | 'autoFire' | 'triggerLock';
+        const key = el.dataset.tcheck as 'swap' | 'cornerTriggers' | 'secondFingerFire' | 'autoFire' | 'triggerLock';
         t[key] = el.checked;
         this.commit();
       }),
@@ -839,7 +838,7 @@ export class Menu {
   }
 }
 
-const ASSIST_LABELS = { auto: 'Auto (Horizon on touch, else Acro)', acro: 'Acro', horizon: 'Horizon', angle: 'Angle' } as const;
+const ASSIST_LABELS = { acro: 'Acro (no assist)', horizon: 'Horizon', angle: 'Angle' } as const;
 
 /** Google's "G" mark, as their sign-in branding guidelines specify for a "Sign in with Google" button. */
 const GOOGLE_G = `<svg class="signin-logo" viewBox="0 0 48 48" aria-hidden="true">

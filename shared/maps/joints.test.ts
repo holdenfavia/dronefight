@@ -64,7 +64,8 @@ describe('structure joints', () => {
     const boxes = MAPS.downtown.boxes;
     // The jib is the long orange 48 m beam.
     const jib = boxes.find((b) => b.mat === 'orange' && b.size[0] === 48)!;
-    const mastPosts = boxes.filter((b) => b.mat === 'orange' && b.size[0] === BEAM && b.size[1] > 60);
+    // The crane's own mast (not the radio mast, ADR-0049): the tall posts within 40 m of the jib.
+    const mastPosts = boxes.filter((b) => b.mat === 'orange' && b.size[0] === BEAM && b.size[1] > 60 && Math.hypot(b.pos[0] - jib.pos[0], b.pos[2] - jib.pos[2]) < 40);
     const mastTop = Math.max(...mastPosts.map((b) => b.pos[1] + b.size[1] / 2));
     expect(jib.pos[1] - jib.size[1] / 2).toBeCloseTo(mastTop, 6);
   });

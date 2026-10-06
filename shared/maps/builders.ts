@@ -128,3 +128,46 @@ export function strut(out: ArenaBox[], a: readonly [number, number, number], b: 
     mat,
   });
 }
+
+type P3 = readonly [number, number, number];
+
+/**
+ * A straight beam from `a` to `b` (any direction), `t` thick (square section, or `t` by `depth`). Turned with
+ * yaw then roll so its length runs along the line: the same Euler XYZ convention as every collider.
+ */
+export function beam(out: ArenaBox[], a: P3, b: P3, t: number, mat: ArenaMaterial, depth = t): void {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const dz = b[2] - a[2];
+  const len = Math.hypot(dx, dy, dz);
+  if (len < 1e-6) return;
+  const yaw = (Math.atan2(-dz, dx) * 180) / Math.PI;
+  const pitch = (Math.asin(dy / len) * 180) / Math.PI;
+  // A little extra length so joints between beams close (at most 1 m).
+  const ext = Math.min(0.5 * Math.min(t, depth), 1);
+  out.push({ pos: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], size: [len + ext, t, depth], rot: [0, yaw, pitch], mat });
+}
+
+/** A beam through a list of points (a cable, an arch, a rail), joints overlapping so it reads as one piece. */
+export function polyBeam(out: ArenaBox[], points: readonly P3[], t: number, mat: ArenaMaterial): void {
+  for (let i = 0; i + 1 < points.length; i++) beam(out, points[i]!, points[i + 1]!, t, mat);
+}
+
+/** A ring standing upright (a hoop to fly through): center, radius, facing `yawDeg`, made of `n` beams. */
+export function hoop(out: ArenaBox[], c: P3, r: number, yawDeg: number, t: number, mat: ArenaMaterial, n = 16): void {
+  const yaw = (yawDeg * Math.PI) / 180;
+  // The ring lies in the plane spanned by world up and the horizontal direction (cos yaw, -sin yaw).
+  const hx = Math.cos(yaw);
+  const hz = -Math.sin(yaw);
+  const pts: [number, number, number][] = [];
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    pts.push([c[0] + hx * Math.cos(a) * r, c[1] + Math.sin(a) * r, c[2] + hz * Math.cos(a) * r]);
+  }
+  polyBeam(out, pts, t, mat);
+}
+
+/** Water (ADR-0049): a thin sheet just above the ground. Flying into it is a crash, like the ground. */
+export function water(out: ArenaBox[], x: number, z: number, w: number, d: number, yawDeg = 0): void {
+  out.push({ pos: [x, 0.06, z], size: [w, 0.12, d], ...(yawDeg ? { rot: [0, yawDeg, 0] as [number, number, number] } : {}), mat: 'water' });
+}

@@ -53,13 +53,10 @@ export class TouchInput {
   readonly available = isTouchDevice();
   /** Latest values, read by InputManager. */
   throttle = 0;
-  climb = 0;
   yaw = 0;
   roll = 0;
   pitch = 0;
   special = false;
-  /** Left stick commands climb rate (altitude hold) instead of a throttle that stays put. Set by the input layer. */
-  climbMode = false;
   /** Last time a finger touched the controls (performance.now()), 0 if never. */
   lastTouchAt = 0;
   /** The hamburger menu button (top middle): opens the pause menu, same as Escape. */
@@ -241,9 +238,9 @@ export class TouchInput {
     st.baseY = p.y * h;
   }
 
-  /** Where the throttle stick's nub rests: at the current throttle (it stays put), or centered for altitude hold. */
+  /** Where the throttle stick's nub rests: at the current throttle (it stays put, like a radio's). */
   private restNubY(side: Side, r: number): number {
-    return side === this.throttleSide && !this.climbMode ? (0.5 - this.throttle) * 2 * r : 0;
+    return side === this.throttleSide ? (0.5 - this.throttle) * 2 * r : 0;
   }
 
   private place(el: HTMLElement, x: number, y: number, w: number, h: number): void {
@@ -297,7 +294,7 @@ export class TouchInput {
       else {
         // Floating: the stick appears under your thumb. The throttle stick keeps your throttle where it was.
         st.baseX = x;
-        st.baseY = side === this.throttleSide && !this.climbMode ? y - (0.5 - this.throttle) * 2 * r : y;
+        st.baseY = side === this.throttleSide ? y - (0.5 - this.throttle) * 2 * r : y;
       }
       st.x = x;
       st.y = y;
@@ -339,10 +336,9 @@ export class TouchInput {
       const st = this.sticks[side];
       if (st.pointer !== id) continue;
       st.pointer = null;
-      // Aim and yaw spring back; throttle stays where you left it; altitude hold centers (hold height).
+      // Aim and yaw spring back; throttle stays where you left it, like a radio.
       if (side === this.throttleSide) {
         this.yaw = 0;
-        this.climb = 0;
         this.detectDoubleTap(e);
       } else {
         this.roll = 0;
@@ -374,8 +370,7 @@ export class TouchInput {
     }
     if (side === this.throttleSide) {
       this.yaw = dx;
-      if (this.climbMode) this.climb = -dy;
-      else this.throttle = Math.max(0, Math.min(1, 0.5 - ((st.y - st.baseY) / r) * 0.5));
+      this.throttle = Math.max(0, Math.min(1, 0.5 - ((st.y - st.baseY) / r) * 0.5));
     } else {
       this.roll = dx;
       this.pitch = -dy;
@@ -453,6 +448,6 @@ export class TouchInput {
     this.specialPointer = null;
     this.special = false;
     this.locked = false;
-    this.roll = this.pitch = this.yaw = this.climb = 0;
+    this.roll = this.pitch = this.yaw = 0;
   }
 }

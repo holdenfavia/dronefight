@@ -13,7 +13,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Friends ope
 
 ## Flight
 
-- Acro (rate) mode by default: sticks command rotation rates, no self-levelling. Pilots can pick a **flight assist** for quads: Horizon or Angle, plus altitude hold on touch (ADR-0045). The X8 is always Horizon (ADR-0037).
+- Acro (rate) mode by default: sticks command rotation rates, no self-levelling. Pilots can turn on a **flight assist** for quads in Settings: Horizon or Angle (ADR-0045); everyone, touch included, starts in Acro (ADR-0050). The X8 is always Horizon (ADR-0037).
 - Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable. Adjustable FPV uptilt and FOV (default 105°, ADR-0040/0041).
 - A custom flight model computes thrust, drag (from each quad's real-size shape, ADR-0042), prop wash and rate commands; Rapier applies the forces with real gravity and handles motion and collisions (ADR-0008). Physics and drawing are real size (a 5" is ~0.3 m) so tight gaps stay flyable; only hit spheres are enlarged (ADR-0041, ADR-0043).
 - Crash = an impact over a speed-change threshold. Ducted props raise it (ADR-0035).
@@ -38,7 +38,7 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 
 ## Controls
 
-- Real radios through the browser Gamepad API, always behind mapping and calibration (ADR-0006). Primary test device: **DJI FPV Remote Controller 2** over USB-C. Also Xbox/PlayStation/Logitech gamepads (guessed layouts), touch on iPad/iPhone (floating sticks, corner triggers, second-finger fire, ADR-0044), and keyboard (testing only).
+- Real radios through the browser Gamepad API, always behind mapping and calibration (ADR-0006). Primary test device: **DJI FPV Remote Controller 2** over USB-C. Also Xbox/PlayStation/Logitech gamepads (guessed layouts), touch on iPad/iPhone that flies like a radio (fixed sticks, throttle stays put, corner triggers, second-finger fire; no help unless turned on, ADR-0044, ADR-0050), and keyboard (testing only).
 - Inputs: sticks, arm, Fire, Special, Switch weapon. Settings persist per browser. F fullscreen, M mute, Esc pause menu (on touch, the hamburger button top middle).
 - Near the map edge an orange grid fades in on the invisible boundary wall.
 
@@ -58,7 +58,7 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 
 ## Maps (ADR-0012)
 
-- **Downtown** (default), **Yard** (industrial), **Playground** (giant solid-color park, ADR-0019), **Cavern** (one huge cave with tunnels, stalactites and stalagmites, ADR-0048), **Training** (solo, with bots, ADR-0017). The room creator picks.
+- **Downtown** (default; with a river, bridges, stadium, elevated highway, rail viaduct), **Yard** (industrial; harbor with a container ship, cooling towers, rail yard, wind farm), **Playground** (giant solid-color park with a fairground: drop tower, Ferris wheel, hedge maze; ADR-0019), **Cavern** (one huge cave with tunnels, an underground lake and an old mine; ADR-0048), **Training** (solo, with bots, ADR-0017). Each is 3x its original area, filled with one-of-a-kind landmarks (ADR-0049). The room creator picks.
 - Moving props from a shared clock: Downtown traffic, Playground coaster, Yard tractor (ADR-0020). Destructible props explode when shot, chain, hurt pilots in matches, and return after 30 s (ADR-0023).
 - Settings can switch every map to grid textures. Distant mountains, clouds and sun glow everywhere (in the Cavern, through the roof holes).
 

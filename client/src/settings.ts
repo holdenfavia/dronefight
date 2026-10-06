@@ -18,8 +18,8 @@ export interface Settings {
   /** Drone body to fly (ADR-0013), and the loadout you built for each body (ADR-0033). */
   drone: DroneClassId;
   loadouts: Record<DroneClassId, Loadout>;
-  /** Flight assist for quads (ADR-0045); 'auto' = Horizon on touch, Acro otherwise. */
-  flightAssist: FlightAssist | 'auto';
+  /** Flight assist for quads (ADR-0045): Acro unless you turn one on, on every input (ADR-0050). */
+  flightAssist: FlightAssist;
   /** Touch controls (ADR-0044). */
   touch: TouchSettings;
   /** The match settings you last created a room with (ADR-0046). */
@@ -35,8 +35,6 @@ export interface TouchSettings {
   sensitivity: number;
   /** Left-handed: aim with the left thumb. */
   swap: boolean;
-  /** Throttle stick commands climb rate; centered holds height (ADR-0045). */
-  altitudeHold: boolean;
   cornerTriggers: boolean;
   secondFingerFire: boolean;
   /** Guns fire while the lead circle is on a target. */
@@ -79,11 +77,10 @@ export function cleanTouchLayout(raw: unknown): TouchLayout | null {
 }
 
 export const DEFAULT_TOUCH: TouchSettings = {
-  sticks: 'floating',
+  sticks: 'fixed',
   stickSize: 1,
   sensitivity: 1,
   swap: false,
-  altitudeHold: true,
   cornerTriggers: true,
   secondFingerFire: true,
   autoFire: false,
@@ -93,12 +90,7 @@ export const DEFAULT_TOUCH: TouchSettings = {
   layout: null,
 };
 
-/** The assist to fly with: the pilot's choice, or for 'auto' Horizon on touch and Acro otherwise (ADR-0045). */
-export function resolveAssist(s: Settings, touch: boolean): FlightAssist {
-  return s.flightAssist === 'auto' ? (touch ? 'horizon' : 'acro') : s.flightAssist;
-}
-
-const ASSISTS = ['auto', 'acro', 'horizon', 'angle'] as const;
+const ASSISTS = ['acro', 'horizon', 'angle'] as const;
 
 /** The loadout you fly now: your build for the selected body. */
 export function currentLoadout(s: Settings): Loadout {
@@ -124,7 +116,7 @@ export function defaultSettings(): Settings {
     map: DEFAULT_MAP,
     drone: DEFAULT_DRONE,
     loadouts: allDefaults(),
-    flightAssist: 'auto',
+    flightAssist: 'acro',
     touch: { ...DEFAULT_TOUCH },
     roomOptions: defaultRoomOptions(DEFAULT_MAP),
   };

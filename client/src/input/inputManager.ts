@@ -34,8 +34,6 @@ export interface ControlState extends FlightInput {
   specialPressed: boolean;
   /** True for one poll when Switch weapon is pressed (guns / missiles, ADR-0033). */
   switchPressed: boolean;
-  /** Altitude hold (ADR-0045): climb rate -1..1 commanded by the throttle stick, or null when flying on throttle. */
-  climb: number | null;
 }
 
 export type InputSource = 'radio' | 'gamepad' | 'keyboard' | 'touch';
@@ -70,7 +68,6 @@ export class InputManager {
     special: false,
     specialPressed: false,
     switchPressed: false,
-    climb: null,
   };
   source: InputSource = 'keyboard';
   /** Gamepad.id of a connected controller with no profile yet, if that's all we have. */
@@ -89,8 +86,7 @@ export class InputManager {
   /** Touch controls (ADR-0044), when on a touch device. */
   touch: TouchInput | null = null;
   touchSettings: TouchSettings | null = null;
-  /** Set by the game each frame: altitude hold can apply to the drone you fly, and the lead circle is on a target. */
-  altitudeHoldAllowed = false;
+  /** Set by the game each frame: the lead circle is on a target (for optional auto-fire). */
   leadOnTarget = false;
 
   constructor() {
@@ -159,7 +155,6 @@ export class InputManager {
     let resetDown: boolean;
     let specialDown: boolean;
     let switchDown: boolean;
-    this.state.climb = null;
     if (pad && profile) {
       this.readPad(pad, profile);
       this.source = pad.mapping === 'standard' || looksLikeGamepad(pad.id) ? 'gamepad' : 'radio';
@@ -215,11 +210,9 @@ export class InputManager {
     const t = this.touch!;
     const ts = this.touchSettings;
     const sens = ts?.sensitivity ?? 1;
-    const climbMode = !!ts?.altitudeHold && this.altitudeHoldAllowed;
-    t.climbMode = climbMode;
     const s = this.state;
-    s.throttle = climbMode ? 0 : t.throttle;
-    s.climb = climbMode ? applyDeadband(t.climb, TOUCH_DEADBAND) : null;
+    // One to one with a radio (ADR-0050): the throttle stick is your throttle, nothing in between.
+    s.throttle = t.throttle;
     s.yaw = applySensitivity(applyDeadband(t.yaw, TOUCH_DEADBAND), sens);
     s.roll = applySensitivity(applyDeadband(t.roll, TOUCH_DEADBAND), sens);
     s.pitch = applySensitivity(applyDeadband(t.pitch, TOUCH_DEADBAND), sens);
