@@ -154,8 +154,8 @@ function clouds(): THREE.Group {
 
 // --- The coast (ADR-0054): Rio-like green hills around a bay, the sea toward +X.
 
-/** The map's edge: the land around it starts here. */
-const EDGE = 460;
+/** The map's edge: the land around it starts here. Set from the map's size when the coast is built. */
+let EDGE = 560;
 /** How far out the backdrop's land goes. */
 const LAND_R = 1500;
 const SEA_COLOR = '#3a86b8';
@@ -165,7 +165,7 @@ const CLIFF = new THREE.Color('#8b8680');
 
 /** The shoreline: straight past the map's east edge, then curving out to sea into headlands (a bay). */
 function shoreX(z: number): number {
-  const a = Math.max(0, Math.abs(z) - 470);
+  const a = Math.max(0, Math.abs(z) - EDGE - 10);
   return EDGE + 0.0012 * a * a;
 }
 
@@ -288,13 +288,13 @@ function coastHills(): THREE.Mesh {
   const specs: HillSpec[] = [
     // A sheer granite dome at the mouth of the bay, and its low neighbour.
     { x: 840, z: -250, r: 150, h: 300, steep: 5, seed: 1 },
-    { x: 700, z: -330, r: 120, h: 130, steep: 2.5, seed: 2 },
+    { x: 780, z: -360, r: 120, h: 130, steep: 2.5, seed: 2 },
     // Islands out in the sea, near the sunset.
     { x: 1080, z: 260, r: 90, h: 80, steep: 2.2, seed: 3 },
     { x: 1260, z: -60, r: 70, h: 55, steep: 2, seed: 4 },
     { x: 940, z: 600, r: 110, h: 120, steep: 2.4, seed: 5 },
     // The tallest peak, inland to the west, facing the sea.
-    { x: -980, z: -120, r: 360, h: 430, steep: 1.6, seed: 6 },
+    { x: -1080, z: -120, r: 360, h: 430, steep: 1.6, seed: 6 },
   ];
   let s = 54;
   const rand = () => {
@@ -303,12 +303,12 @@ function coastHills(): THREE.Mesh {
   };
   for (let k = 0; k < 64; k++) {
     const a = rand() * Math.PI * 2;
-    const r = 580 + rand() * 640;
+    const r = EDGE + 120 + rand() * 640;
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
     // Land only: well back from the shore.
     if (x > shoreX(z) - 120) continue;
-    const t = (r - 580) / 640;
+    const t = (r - EDGE - 120) / 640;
     let h = 50 + t * 230 + rand() * 90;
     let fr = h * (1.2 + rand() * 0.6);
     // The whole footprint (with its wobble) stays outside the map, so no hill pokes into the play area.
@@ -370,8 +370,9 @@ function sunGlow(direction: THREE.Vector3): THREE.Sprite {
   return sprite;
 }
 
-export function buildScenery(sunDirection: THREE.Vector3, backdrop: 'mountains' | 'coast' = 'mountains'): THREE.Group {
+export function buildScenery(sunDirection: THREE.Vector3, backdrop: 'mountains' | 'coast' = 'mountains', mapHalf = 560): THREE.Group {
   const group = new THREE.Group();
+  EDGE = mapHalf;
   if (backdrop === 'coast') group.add(coastLand(), coastHills(), sea());
   else for (const spec of RANGES) group.add(mountainRange(spec));
   group.add(clouds());

@@ -53,7 +53,9 @@ const STEP = 1 / SIM.hz;
 const AUTO_FIRE_RADIUS = 0.04;
 
 export async function startGame(container: HTMLElement, hudRoot: HTMLElement, menuRoot: HTMLElement): Promise<void> {
-  const renderer = new THREE.WebGPURenderer({ antialias: true });
+  // Reversed float depth: near-uniform depth precision out to the horizon, so thin layers (lawns, runways,
+  // road paint) don't flicker into each other when seen from high up or far away.
+  const renderer = new THREE.WebGPURenderer({ antialias: true, reversedDepthBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;

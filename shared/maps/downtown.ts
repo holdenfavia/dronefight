@@ -1,5 +1,6 @@
 import { BEAM, beam, boundary, cubeFrame, gate, hoop, mulberry32, pads, polyBeam, spawnFacingCenter, tower, water } from './builders.js';
 import type { GroundHole } from './ground.js';
+import { COTA_CENTERLINE } from './cota.js';
 import { routeFromPoints, roundedRect, type MoverDef, type V3 } from './movers.js';
 import type { ArenaBox, ArenaMaterial, ExplosiveDef, MapDef, SpawnPoint } from './types.js';
 
@@ -14,12 +15,13 @@ const PARKED_COLORS: Record<string, string> = { white: '#e9e9e6', steel: '#8d949
  * a construction site with a crane, and a plaza in the middle for open dogfighting.
  * Around it (ADR-0049, 3x the area): a river with a suspension bridge and an arch bridge, a stadium, a
  * sculpture park of giant hoops, an elevated highway with ramps, a radio mast, and a rail viaduct with a train.
- * The main map (ADR-0054, 920 m across): an airport with a jet flying touch-and-go laps in the east, Central
- * Park with a lake in the north, a street racetrack with race cars in the south, and a megaproject in the west
+ * The main map (ADR-0054, 1,120 m across since ADR-0055): an airport with a jet flying touch-and-go laps in the
+ * east, Central Park with a lake in the north, the Circuit of the Americas with race cars in the south (ADR-0055),
+ * and a megaproject in the west
  * (a half-built supertall, tower cranes and a deep excavation pit you can fly down into).
  */
 
-const HALF = 460;
+const HALF = 560;
 /** The old city's edge: the outskirts (ADR-0049) start beyond it. */
 const CITY = 150;
 /** The river runs east-west across the north (z from 175 to 225). */
@@ -41,7 +43,7 @@ const SPAWNS: readonly SpawnPoint[] = [
   spawnFacingCenter(20, 160),
   spawnFacingCenter(168, 30),
   spawnFacingCenter(-20, 300),
-  spawnFacingCenter(-120, -375),
+  spawnFacingCenter(-445, -475),
   spawnFacingCenter(320, -130),
   spawnFacingCenter(-290, 0),
 ];
@@ -368,7 +370,7 @@ function river(out: ArenaBox[]): void {
   // The east end: a wall short of the airport.
   out.push({ pos: [RIVER_E + 0.75, 0.6, RIVER_Z], size: [1.5, 1.2, RIVER_W + 3], mat: 'concrete' });
   // Promenade lamps on the city bank.
-  for (let x = -440; x <= 250; x += 24) {
+  for (let x = -536; x <= 250; x += 24) {
     if (Math.abs(x + 60) < 14 || Math.abs(x - 110) < 14 || Math.abs(x + 205) < 14) continue;
     out.push({ pos: [x, 3.5, z0 - 4], size: [0.25, 7, 0.25], mat: 'steel' });
     out.push({ pos: [x, 7, z0 - 3.2], size: [0.25, 0.2, 1.8], mat: 'steel' });
@@ -630,7 +632,7 @@ function airport(out: ArenaBox[]): void {
   out.push({ pos: [SEA_WALL_X, 0.6, 0], size: [1.5, 1.2, HALF * 2], mat: 'concrete' });
   out.push({ pos: [(SEA_WALL_X + SEA_X) / 2 + 0.4, 0.05, 0], size: [SEA_X - SEA_WALL_X - 0.8, 0.1, HALF * 2], mat: 'sand' });
   water(out, (SEA_X + HALF + 2) / 2, 0, HALF + 2 - SEA_X, HALF * 2);
-  for (let z = -440; z <= 440; z += 32) palm(out, SEA_WALL_X + 7, z + ((z / 32) % 2 ? 6 : -6), z % 64 ? 1 : -1);
+  for (let z = -544; z <= 544; z += 32) palm(out, SEA_WALL_X + 7, z + ((z / 32) % 2 ? 6 : -6), z % 64 ? 1 : -1);
 }
 
 /** A palm: a leaning trunk and a crown of crossed fronds. */
@@ -651,10 +653,10 @@ function tree(out: ArenaBox[], x: number, z: number, h: number): void {
 /** Central Park, north of the river: lawns, a lake with a stone bridge and a boathouse, groves, rocks, a bandshell. */
 function centralPark(out: ArenaBox[]): void {
   const rand = mulberry32(54);
-  const PX0 = -440;
+  const PX0 = -540;
   const PX1 = 240;
   const PZ0 = 270;
-  const PZ1 = 440;
+  const PZ1 = 540;
   const LAKE = { x: -120, z: 370, w: 150, d: 70 };
   // The lawn: a green sheet over the whole park.
   out.push({ pos: [(PX0 + PX1) / 2, 0.03, (PZ0 + PZ1) / 2], size: [PX1 - PX0, 0.06, PZ1 - PZ0], mat: 'foliage' });
@@ -731,7 +733,7 @@ function centralPark(out: ArenaBox[]): void {
     Math.hypot(x + 250, z - 415) < 8 ||
     Math.hypot(x + 30, z - 345) < 14 ||
     Math.hypot(x + 20, z - 300) < 14;
-  for (let k = 0; k < 220; k++) {
+  for (let k = 0; k < 330; k++) {
     const x = PX0 + 8 + rand() * (PX1 - PX0 - 16);
     const z = PZ0 + 8 + rand() * (PZ1 - PZ0 - 16);
     const h = 9 + rand() * 9;
@@ -740,70 +742,223 @@ function centralPark(out: ArenaBox[]): void {
   }
 }
 
-/** The street racetrack: a rounded circuit with barriers, a start gantry, a grandstand and pit garages. */
-const TRACK = { x0: -420, z0: -440, x1: 180, z1: -310, r: 40, half: 9 } as const;
+/**
+ * The racetrack (ADR-0055): the Circuit of the Americas, from its real centerline at 41% scale (2.26 km a lap),
+ * turned to fit the south strip. Turn 1 is a tight uphill hairpin on a grassy hill; barriers line both edges
+ * (left open on the inside of tight bends), with kerbs inside the corners and striped run-off outside. The main
+ * grandstand and the pit building face the start/finish straight; the observation tower's red veil of steel
+ * tubes sweeps down over an amphitheater in the infield.
+ */
+const CIRCUIT = { cx: -140, cz: -384.5, yawDeg: 25, scale: 0.41, half: 7, hill: 12 } as const;
 
-function trackLoop(offset: number, y: number, clockwise = false): V3[] {
-  return roundedRect(TRACK.x0 - offset, TRACK.z0 - offset, TRACK.x1 + offset, TRACK.z1 + offset, TRACK.r + offset, y, clockwise);
+interface TrackPoint {
+  x: number;
+  y: number;
+  z: number;
+  /** Unit normal toward the infield. */
+  nx: number;
+  nz: number;
+  /** Signed curvature (1/m): positive turns toward the infield side. */
+  k: number;
+}
+
+/** The circuit's centerline in map coordinates, smoothed, with heights (Turn 1 hill), infield normals and curvature. */
+function circuitPoints(): { pts: TrackPoint[]; t1: number; sf: number } {
+  const a = (CIRCUIT.yawDeg * Math.PI) / 180;
+  let raw: V3[] = COTA_CENTERLINE.map(([x, z]) => [(x * Math.cos(a) - z * Math.sin(a)) * CIRCUIT.scale, 0, (x * Math.sin(a) + z * Math.cos(a)) * CIRCUIT.scale]);
+  // Center its bounding box on the strip.
+  const xs = raw.map((p) => p[0]);
+  const zs = raw.map((p) => p[2]);
+  const ox = CIRCUIT.cx - (Math.max(...xs) + Math.min(...xs)) / 2;
+  const oz = CIRCUIT.cz - (Math.max(...zs) + Math.min(...zs)) / 2;
+  raw = raw.map((p) => [p[0] + ox, 0, p[2] + oz]);
+  // The data's first point is the start/finish line; its sixth is the apex of Turn 1.
+  const sfAt = raw[0]!;
+  const t1At = raw[6]!;
+  const smooth = smoothLoop(raw, 2);
+  const n = smooth.length;
+  const near = (q: V3) => smooth.reduce((best, p, i) => (Math.hypot(p[0] - q[0], p[2] - q[2]) < Math.hypot(smooth[best]![0] - q[0], smooth[best]![2] - q[2]) ? i : best), 0);
+  const t1 = near(t1At);
+  const sf = near(sfAt);
+  // Distance along the lap, to shape the hill: up the straight into Turn 1, down through Turn 2.
+  const cum = [0];
+  for (let i = 1; i < n; i++) cum.push(cum[i - 1]! + Math.hypot(smooth[i]![0] - smooth[i - 1]![0], smooth[i]![2] - smooth[i - 1]![2]));
+  const lap = cum[n - 1]! + Math.hypot(smooth[0]![0] - smooth[n - 1]![0], smooth[0]![2] - smooth[n - 1]![2]);
+  const height = (i: number) => {
+    let d = cum[i]! - cum[t1]!;
+    if (d > lap / 2) d -= lap;
+    if (d < -lap / 2) d += lap;
+    if (d < -90 || d > 150) return 0;
+    const u = d < 0 ? 1 + d / 90 : 1 - d / 150;
+    return (CIRCUIT.hill * (1 - Math.cos(Math.PI * u))) / 2;
+  };
+  // Which side is the infield: the circuit runs counter-clockwise, but measure it rather than assume.
+  let area = 0;
+  for (let i = 0; i < n; i++) area += smooth[i]![0] * smooth[(i + 1) % n]![2] - smooth[(i + 1) % n]![0] * smooth[i]![2];
+  const inward = area > 0 ? 1 : -1;
+  const pts: TrackPoint[] = smooth.map((p, i) => {
+    const prev = smooth[(i - 1 + n) % n]!;
+    const next = smooth[(i + 1) % n]!;
+    const tx = next[0] - prev[0];
+    const tz = next[2] - prev[2];
+    const len = Math.hypot(tx, tz) || 1;
+    return { x: p[0], y: height(i), z: p[2], nx: (-tz / len) * inward, nz: (tx / len) * inward, k: 0 };
+  });
+  // Curvature at each point, from its neighbours.
+  for (let i = 0; i < n; i++) {
+    const p = pts[(i - 1 + n) % n]!;
+    const q = pts[i]!;
+    const r = pts[(i + 1) % n]!;
+    const a1 = Math.atan2(q.z - p.z, q.x - p.x);
+    const a2 = Math.atan2(r.z - q.z, r.x - q.x);
+    const turn = ((a2 - a1 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+    const arc = Math.hypot(q.x - p.x, q.z - p.z) + Math.hypot(r.x - q.x, r.z - q.z);
+    // Turning toward the infield normal is positive.
+    const cross = Math.cos(a1) * q.nz - Math.sin(a1) * q.nx;
+    q.k = (Math.abs(turn) / Math.max(arc, 1e-3)) * Math.sign(turn) * Math.sign(cross || 1);
+  }
+  return { pts, t1, sf };
+}
+
+const CIRCUIT_TRACK = circuitPoints();
+
+/** A point on the circuit moved sideways: + toward the infield. */
+function across(p: TrackPoint, off: number, y = p.y): V3 {
+  return [p.x + p.nx * off, y, p.z + p.nz * off];
+}
+
+/** Yaw (degrees) of a box whose length runs from a to b. */
+function yawAlong(a: { x: number; z: number }, b: { x: number; z: number }): number {
+  return (Math.atan2(-(b.z - a.z), b.x - a.x) * 180) / Math.PI;
 }
 
 function racetrack(out: ArenaBox[]): void {
-  // The track surface (decor) and kerbs, segment by segment along the centerline.
-  const center = trackLoop(0, 0.04);
-  for (let i = 0; i < center.length; i++) {
-    const a = center[i]!;
-    const b = center[(i + 1) % center.length]!;
-    beam(DECOR, a, b, 0.04, 'roof', TRACK.half * 2);
+  const { pts, t1, sf } = CIRCUIT_TRACK;
+  const n = pts.length;
+  const H = CIRCUIT.half;
+  // Grass over the whole circuit area (decor), under the track.
+  const xs = pts.map((p) => p.x);
+  const zs = pts.map((p) => p.z);
+  const [gx0, gx1, gz0, gz1] = [Math.min(...xs) - 14, Math.max(...xs) + 14, Math.min(...zs) - 12, Math.max(...zs) + 12];
+  DECOR.push({ pos: [(gx0 + gx1) / 2, 0.012, (gz0 + gz1) / 2], size: [gx1 - gx0, 0.024, gz1 - gz0], mat: 'foliage' });
+
+  const stripes: ArenaMaterial[] = ['gridRed', 'white', 'gridBlue'];
+  for (let i = 0; i < n; i++) {
+    const a = pts[i]!;
+    const b = pts[(i + 1) % n]!;
+    const raised = Math.max(a.y, b.y) > 0.15;
+    if (raised) {
+      // On the hill: a solid road slab on a grassy embankment.
+      beam(out, [a.x, a.y - 0.3, a.z], [b.x, b.y - 0.3, b.z], 0.6, 'roof', H * 2);
+      const berm = Math.min(a.y, b.y) - 0.3;
+      if (berm > 0.3) beam(out, [a.x, berm / 2, a.z], [b.x, berm / 2, b.z], berm, 'foliage', H * 2 + 8);
+    } else beam(DECOR, [a.x, 0.04, a.z], [b.x, 0.04, b.z], 0.04, 'roof', H * 2);
+    for (const side of [1, -1] as const) {
+      // How tightly this stretch (and the points around it) bends toward this side.
+      let toward = -Infinity;
+      for (let j = -4; j <= 5; j++) toward = Math.max(toward, pts[(i + j + n) % n]!.k * side);
+      // Barriers, except on the inside of tight bends (where an offset wall would fold over the track).
+      if (toward < 1 / 13) beam(out, across(a, side * (H + 1.5), a.y + 0.5), across(b, side * (H + 1.5), b.y + 0.5), 1, 'concrete', 0.6);
+      // Kerbs inside corners, striped run-off outside them (decor).
+      if (toward > 1 / 70) beam(DECOR, across(a, side * (H - 0.6), a.y + 0.07), across(b, side * (H - 0.6), b.y + 0.07), 0.05, i % 2 ? 'gridRed' : 'white', 1.2);
+      if (toward < -1 / 70 && !raised) beam(DECOR, across(a, side * (H + 4), 0.05), across(b, side * (H + 4), 0.05), 0.03, stripes[i % 3]!, 4.5);
+    }
   }
-  // A lawn over the infield (decor).
-  DECOR.push({ pos: [(TRACK.x0 + TRACK.x1) / 2, 0.03, (TRACK.z0 + TRACK.z1) / 2], size: [TRACK.x1 - TRACK.x0 - 22, 0.05, TRACK.z1 - TRACK.z0 - 22], mat: 'foliage' });
-  // Barriers on both edges: solid concrete walls you can skim.
-  for (const off of [TRACK.half + 1.5, -TRACK.half - 1.5]) {
-    const loop = trackLoop(off, 0.5);
-    for (let i = 0; i < loop.length; i++) beam(out, loop[i]!, loop[(i + 1) % loop.length]!, 1, 'concrete', 0.6);
+
+  // Start / finish: a checkered line and a gantry over the track.
+  const s = pts[sf]!;
+  const s2 = pts[(sf + 1) % n]!;
+  const across90 = (Math.atan2(-s.nz, s.nx) * 180) / Math.PI;
+  const along = yawAlong(s, s2);
+  for (let k = -6; k <= 6; k++) DECOR.push({ pos: across(s, k * 1.1, 0.08), size: [1, 0.02, 1.1], rot: [0, along, 0], mat: k % 2 ? 'white' : 'roof' });
+  gate(out, s.x, s.z, H * 2 + 6, 9, across90);
+  edged(out, [s.x, 8.6, s.z], [H * 2 + 4, 1.6, 1.2], 'steel', [0, across90, 0]);
+
+  // Along the main straight: the main grandstand outside, the pit building inside.
+  const back = pts[(sf - 12 + n) % n]!;
+  const fwd = pts[(sf + 12) % n]!;
+  const yaw = yawAlong(back, fwd);
+  const len = 150;
+  // Centered a little behind the line, so they stay beside the flat part of the straight.
+  const ul = Math.hypot(fwd.x - back.x, fwd.z - back.z);
+  const g: TrackPoint = { ...s, x: s.x - ((fwd.x - back.x) / ul) * 40, z: s.z - ((fwd.z - back.z) / ul) * 40 };
+  for (const [off, h] of [[-(H + 12), 2], [-(H + 16), 4.5], [-(H + 20), 7], [-(H + 24), 9.5]] as const) {
+    edged(out, across(g, off, h / 2), [len, h, 4], h > 5 ? 'white' : 'concrete', [0, yaw, 0]);
   }
-  // Red and white kerbs along the inside of the corners (decor).
-  const kerb = trackLoop(-TRACK.half + 0.6, 0.06);
-  for (let i = 0; i < kerb.length; i++) {
-    const a = kerb[i]!;
-    const b = kerb[(i + 1) % kerb.length]!;
-    if (Math.hypot(b[0] - a[0], b[2] - a[2]) > 20) continue;
-    beam(DECOR, a, b, 0.05, i % 2 ? 'gridRed' : 'white', 1.2);
+  edged(out, across(g, -(H + 27), 9), [len, 18, 1.2], 'concrete', [0, yaw, 0]);
+  for (let k = -3; k <= 3; k++) {
+    const [px, , pz] = across(g, -(H + 26), 0);
+    const dx = Math.cos((yaw * Math.PI) / 180) * k * 24;
+    const dz = -Math.sin((yaw * Math.PI) / 180) * k * 24;
+    out.push({ pos: [px + dx, 10, pz + dz], size: [0.8, 20, 0.8], rot: [0, yaw, 0], mat: 'steel' });
   }
-  // Start / finish on the north straight: a checkered line and a gantry over the track.
-  const sx = 40;
-  for (let k = 0; k < 9; k++) for (const r of [0, 1]) DECOR.push({ pos: [sx + r, 0.07, TRACK.z1 - TRACK.half + 1 + k * 2 + r], size: [1, 0.02, 1], mat: 'white' });
-  gate(out, sx, TRACK.z1, TRACK.half * 2 + 5, 8, 90);
-  edged(out, [sx, 7.2, TRACK.z1], [1.4, 1.4, TRACK.half * 2 + 3], 'steel');
-  // Grandstand along the north straight, facing the track, with a canopy.
-  const gz = TRACK.z1 + TRACK.half + 6;
-  for (const [dz, h] of [[0, 1.5], [4, 3.5], [8, 5.5], [12, 7.5]] as const) edged(out, [-100, h / 2, gz + dz], [150, h, 4], dz % 8 ? 'white' : 'concrete');
-  edged(out, [-100, 7, gz + 15], [150, 14, 1], 'concrete');
-  for (let x = -170; x <= -30; x += 20) out.push({ pos: [x, 7, gz + 13.6], size: [0.6, 14, 0.6], mat: 'steel' });
-  edged(out, [-100, 14.4, gz + 7], [154, 0.8, 18], 'orange', [-8, 0, 0]);
-  // Pit garages in the infield, behind the north straight.
-  edged(out, [60, 3.5, TRACK.z1 - TRACK.half - 18], [70, 7, 10], 'white');
-  edged(out, [60, 7.3, TRACK.z1 - TRACK.half - 18], [72, 0.6, 12], 'orange');
-  for (let x = 30; x <= 90; x += 10) DECOR.push({ pos: [x, 3, TRACK.z1 - TRACK.half - 12.95], size: [8, 5, 0.1], mat: 'roof' });
-  // Tire stacks on the outside of each corner.
-  for (const [cx, cz] of [[TRACK.x1, TRACK.z0], [TRACK.x1, TRACK.z1], [TRACK.x0, TRACK.z1], [TRACK.x0, TRACK.z0]] as const) {
-    for (let k = 0; k < 3; k++) out.push({ pos: [cx + Math.sign(cx) * (4 + k * 1.3), 0.6 + k * 0.0, cz + Math.sign(cz + 375) * (4 + k * 1.3)], size: [1.2, 1.2, 1.2], mat: 'roof' });
+  // A cantilevered roof over the stands, tipped up toward the track.
+  edged(out, across(g, -(H + 18), 20), [len + 6, 0.8, 22], 'white', [0, yaw, 0]);
+  // Pit building: glass over white, a long roof terrace.
+  edged(out, across(g, H + 20, 4), [len, 8, 12], 'white', [0, yaw, 0]);
+  edged(out, across(g, H + 20, 10), [len, 4, 10], 'glass', [0, yaw, 0]);
+  edged(out, across(g, H + 20, 12.4), [len + 2, 0.8, 14], 'orange', [0, yaw, 0]);
+
+  // Turn 1: a grandstand on the hilltop, outside the hairpin.
+  const top = pts[t1]!;
+  const tYaw = yawAlong(pts[(t1 - 2 + n) % n]!, pts[(t1 + 2) % n]!);
+  const outSide = top.k >= 0 ? -1 : 1;
+  for (const [off, h] of [[H + 14, top.y + 1.5], [H + 18, top.y + 3.5], [H + 22, top.y + 5.5]] as const) {
+    edged(out, across(top, outSide * off, h / 2), [60, h, 4], 'concrete', [0, tYaw, 0]);
+  }
+
+  // The observation tower and its veil, over the amphitheater stage in the infield.
+  const tx = -392;
+  const tz = -362;
+  const dir = [0.8, -0.6] as const;
+  const deckY = 64;
+  edged(out, [tx, deckY / 2, tz], [5, deckY, 5], 'white');
+  edged(out, [tx, deckY + 2.5, tz], [15, 5, 15], 'glass');
+  edged(out, [tx, deckY + 5.4, tz], [17, 0.8, 17], 'white');
+  edged(out, [tx, deckY - 0.4, tz], [17, 0.8, 17], 'white');
+  out.push({ pos: [tx, deckY + 9, tz], size: [0.5, 6.4, 0.5], mat: 'steel' });
+  edged(out, [tx, 3, tz], [12, 6, 12], 'glass');
+  // Seventeen red tubes fanning from the top of the tower down to the ground beyond the stage.
+  const base = Math.atan2(dir[1], dir[0]);
+  for (let k = 0; k < 17; k++) {
+    const ang = base + ((k - 8) / 8) * 0.62;
+    const c = Math.cos(ang);
+    const sn = Math.sin(ang);
+    const curve: V3[] = [];
+    for (let j = 0; j <= 8; j++) {
+      const t = j / 8;
+      // Quadratic curve: out from the deck, sagging down to the ground ~40 m away.
+      const r = (1 - t) * (1 - t) * 8 + 2 * (1 - t) * t * 30 + t * t * 40;
+      const y = (1 - t) * (1 - t) * (deckY + 3) + 2 * (1 - t) * t * (deckY - 8) + t * t * 0.3;
+      curve.push([tx + c * r, y, tz + sn * r]);
+    }
+    polyBeam(out, curve, 0.6, 'gridRed');
+  }
+  // The amphitheater: a stage under the veil and curved rows facing it.
+  const sx = tx + dir[0] * 28;
+  const sz = tz + dir[1] * 28;
+  edged(out, [sx, 0.8, sz], [18, 1.6, 10], 'concrete', [0, (-base * 180) / Math.PI + 90, 0]);
+  for (const [r, h] of [[14, 0.6], [18, 1.2], [22, 1.8], [26, 2.4]] as const) {
+    const row: V3[] = [];
+    for (let j = 0; j <= 8; j++) {
+      const ang = base + ((j - 4) / 4) * 0.8;
+      row.push([sx + Math.cos(ang) * r, h / 2, sz + Math.sin(ang) * r]);
+    }
+    for (let j = 0; j < row.length - 1; j++) beam(out, row[j]!, row[j + 1]!, h, 'concrete', 3.4);
   }
 }
 
-/** Race cars lapping the circuit (ADR-0054): two lanes, each at its own speed, so they never touch. */
+/** Race cars lapping the circuit (ADR-0055): two lanes, each at its own speed, so they never touch. */
 function raceCars(): MoverDef[] {
   const cars: MoverDef[] = [];
   const size: V3 = [2, 1.1, 4.6];
   const lanes = [
-    { off: 3, speed: 34, count: 3, colors: ['#e5483e', '#2f7fe0', '#f5c63a'] },
-    { off: -3, speed: 31, count: 2, colors: ['#ff8a2a', '#eeeeec'] },
+    { off: 2.5, speed: 38, colors: ['#e5483e', '#2f7fe0', '#f5c63a'] },
+    { off: -2.5, speed: 35, colors: ['#ff8a2a', '#eeeeec', '#45b865'] },
   ];
   for (const lane of lanes) {
-    const route = routeFromPoints(trackLoop(lane.off, 0));
-    for (let i = 0; i < lane.count; i++) {
-      cars.push({ kind: 'car', route, offset: (route.length / lane.count) * i, speed: lane.speed, color: lane.colors[i]!, size, lift: 0.55 });
-    }
+    const route = routeFromPoints(CIRCUIT_TRACK.pts.map((p) => across(p, lane.off)));
+    lane.colors.forEach((color, i) => cars.push({ kind: 'car', route, offset: (route.length / lane.colors.length) * i, speed: lane.speed, color, size, lift: 0.55 }));
   }
   return cars;
 }
@@ -837,11 +992,11 @@ function airliner(): MoverDef {
         [x, 0, -60],
         [x, 30, 120],
         [x, 90, 300],
-        [400, 130, 425],
-        [-435, 140, 430],
-        [-438, 140, -430],
-        [250, 55, -438],
-        [x, 22, -438],
+        [400, 130, 525],
+        [-530, 140, 530],
+        [-534, 140, -530],
+        [250, 55, -536],
+        [x, 22, -536],
       ],
       3,
     ),

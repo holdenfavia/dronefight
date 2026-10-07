@@ -108,7 +108,7 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
     else sunDir.copy(SUN_DIRECTION);
     paintSky(sky, sunDir);
     // The backdrop (mountains or a coast) for this map and sun, rebuilt only when it changes.
-    const key = `${map.backdrop ?? 'mountains'}:${sunDir.toArray().join(',')}`;
+    const key = `${map.backdrop ?? 'mountains'}:${map.halfSize}:${sunDir.toArray().join(',')}`;
     if (key !== sceneryKey) {
       if (scenery) {
         scene.remove(scenery);
@@ -116,7 +116,7 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
           if (o instanceof THREE.Mesh || o instanceof THREE.Sprite) o.geometry.dispose();
         });
       }
-      scenery = buildScenery(sunDir, map.backdrop ?? 'mountains');
+      scenery = buildScenery(sunDir, map.backdrop ?? 'mountains', map.halfSize);
       scene.add(scenery);
       sceneryKey = key;
     }
