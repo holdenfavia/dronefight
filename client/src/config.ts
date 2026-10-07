@@ -20,6 +20,11 @@ export interface QuadParams {
   dragQuadratic: { x: number; y: number; z: number };
   dragLinear: number;
   propWash: { startSpeed: number; fullSpeed: number; maxDegPerSec: number };
+  /**
+   * Prop pitch speed (m/s, ADR-0052): thrust fades as air flows into the props this fast, reaching zero there.
+   * With little drag, this is what caps top speed and climb, as on a real quad.
+   */
+  pitchSpeed: number;
   /** Present for 3D mode: throttle center is zero thrust, below center reverses the motors. */
   threeD?: {
     /** Reverse thrust as a fraction of forward (symmetric 3D props are less efficient). */
@@ -55,11 +60,16 @@ export const AIR = {
   cdFlat: 1.17,
   /** Drag coefficient of a blunt, boxy body side-on (front and side views). */
   cdBluff: 1.05,
+  /**
+   * How much of the shape's drag the game applies (ADR-0052). The pilots found full drag floaty: drops
+   * stopped speeding up at ~19 m/s. At 0.35 a cut-throttle drop keeps accelerating to ~32 m/s.
+   */
+  dragScale: 0.35,
 } as const;
 
 /** Quadratic drag coefficient (N per (m/s)^2) for a projected area (m^2) and drag coefficient. */
 function airDrag(areaM2: number, cd: number): number {
-  return 0.5 * AIR.density * cd * areaM2;
+  return 0.5 * AIR.density * cd * areaM2 * AIR.dragScale;
 }
 
 /** Projected areas (m^2) of each quad from above (y), the front (z) and the side (x). */
@@ -94,9 +104,10 @@ export const QUAD: QuadParams = {
    */
   idleThrust: 0.006,
   /** Motor spool time constant (seconds). Modern ESCs and motors spool in ~20 ms. */
-  motorTau: 0.02,
+  motorTau: 0.012,
   /** How fast the quad's rotation tracks the rate setpoint (seconds). Stands in for a tuned PID loop. */
-  rateTau: 0.01,
+  rateTau: 0.006,
+  pitchSpeed: 62,
   /** Quadratic drag per body axis (N per (m/s)^2), from the model's shape (ADR-0042). */
   dragQuadratic: shapeDrag(QUAD_AREAS.freestyle),
   /** Linear drag (N per m/s): rotor drag, spinning props resisting sideways airflow. Small. */
@@ -118,7 +129,7 @@ export const QUAD_3D: QuadParams = {
   massKg: 0.6,
   thrustToWeight: 7,
   // Reversing a motor takes longer than spooling one way.
-  motorTau: 0.035,
+  motorTau: 0.024,
   dragQuadratic: shapeDrag(QUAD_AREAS.quad3d),
   idleThrust: 0,
   threeD: { reverseEfficiency: 0.7, centerDeadband: 0.04 },
@@ -133,8 +144,8 @@ export const RACER: QuadParams = {
   massKg: 0.35,
   halfExtents: { x: 0.08, y: 0.03, z: 0.08 },
   thrustToWeight: 8,
-  motorTau: 0.015,
-  rateTau: 0.007,
+  motorTau: 0.009,
+  rateTau: 0.004,
   dragQuadratic: shapeDrag(QUAD_AREAS.racer),
   dragLinear: 0.005,
 };
@@ -145,8 +156,8 @@ export const X8: QuadParams = {
   massKg: 1.6,
   halfExtents: { x: 0.2, y: 0.06, z: 0.2 },
   thrustToWeight: 4,
-  motorTau: 0.04,
-  rateTau: 0.03,
+  motorTau: 0.028,
+  rateTau: 0.02,
   dragQuadratic: shapeDrag(QUAD_AREAS.x8),
   dragLinear: 0.018,
   // Always flies in horizon mode (ADR-0037, ADR-0045): a stable gun platform, not a dodger.

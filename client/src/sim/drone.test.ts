@@ -118,3 +118,24 @@ describe('flight assist choice (ADR-0045)', () => {
     for (const a of ['acro', 'angle'] as const) expect(flightParams(DEFAULT_LOADOUTS.x8, a).horizon).toEqual(X8.horizon);
   });
 });
+
+describe('not floaty (ADR-0052)', () => {
+  /** Vertical speed after `seconds` of a flat, throttle-cut drop. */
+  function drop(seconds: number): number {
+    const p = flightParams(DEFAULT_LOADOUTS.freestyle);
+    const state = { rotation: new Quaternion(), linvel: new Vector3(), angvel: new Vector3(), motorOutput: 0, time: 0 };
+    const out = createFlightOutput();
+    for (let i = 0; i < seconds * SIM.hz; i++) {
+      stepFlight({ throttle: 0, roll: 0, pitch: 0, yaw: 0 }, state, DEFAULT_RATES, true, 1 / SIM.hz, out, p);
+      state.motorOutput = out.motorOutput;
+      state.linvel.addScaledVector(out.force, 1 / SIM.hz / p.massKg);
+      state.linvel.y -= SIM.gravity / SIM.hz;
+    }
+    return -state.linvel.y;
+  }
+
+  it('a cut-throttle drop keeps speeding up past 30 m/s instead of parachuting at ~19', () => {
+    expect(drop(2)).toBeGreaterThan(16);
+    expect(drop(15)).toBeGreaterThan(30);
+  });
+});

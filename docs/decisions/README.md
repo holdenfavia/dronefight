@@ -55,3 +55,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0049](0049-bigger-maps-landmarks.md) | Maps 3x the area with one-of-a-kind landmarks: Downtown river, bridges, stadium, highway; Yard harbor, cooling towers, rail yard, wind farm; Playground drop tower and fairground; Cavern lake and mine; water material | Accepted |
 | [0050](0050-touch-like-a-radio.md) | Touch flies like a radio: no altitude hold, fixed sticks, Acro by default everywhere, no aiming help unless turned on | Accepted |
 | [0051](0051-afk-kick.md) | Pilots away for 5 minutes are removed from the room (server-decided; warned 30 s before; movement, firing or menu actions count as here) | Accepted |
+| [0052](0052-less-drag-snappier.md) | Drag ×0.35 (drops keep accelerating to ~32 m/s), ~40% snappier spool and rate response, props fade near 62 m/s to cap top speed | Accepted |
