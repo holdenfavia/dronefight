@@ -34,7 +34,7 @@ import { WING } from './sim/wingModel';
 import { currentLoadout, loadSettings, saveSettings } from './settings';
 import type { Loadout } from '../../shared/loadout';
 import { Drone } from './sim/drone';
-import { addGround, ArenaColliders, createPhysics } from './sim/physics';
+import { ArenaColliders, createPhysics } from './sim/physics';
 import { Hud, type MarkerInfo, type NetHudInfo } from './ui/hud';
 import { Menu } from './ui/menu';
 import { Account } from './account/account';
@@ -67,11 +67,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   world.setShadows(settings.graphics.shadows);
 
   const physics = await createPhysics();
-  addGround(physics, 1200);
   const arenaColliders = new ArenaColliders(physics);
   let currentMap: MapDef = getMap(settings.map);
   world.setMap(currentMap);
-  arenaColliders.set(currentMap.boxes);
+  arenaColliders.set(currentMap.boxes, currentMap.holes);
   // Traffic, coaster, tractor (ADR-0020), posed from the shared clock, plus explosives; all destructible (ADR-0023).
   let props = new PropField(currentMap);
   const movingProps = new MovingProps(world.scene, physics);
@@ -111,7 +110,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const loadoutPreview = new LoadoutPreview();
   const particles = new Particles(world.scene);
   // Map geometry for predicting our missile's impacts (rebuilt when the map changes).
-  let mapColliders = buildColliders(currentMap.boxes);
+  let mapColliders = buildColliders(currentMap.boxes, currentMap.holes);
   // Smoke screens and rockets (ADR-0016); explosions are positional sounds.
   const combatEffects = {
     smoke: new SmokeTrails(particles),
@@ -332,13 +331,13 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     if (currentMap.id === id) return;
     currentMap = getMap(id);
     world.setMap(currentMap);
-    arenaColliders.set(currentMap.boxes);
+    arenaColliders.set(currentMap.boxes, currentMap.holes);
     props = new PropField(currentMap);
     movingProps.setMap(currentMap, props);
     combat.props = props;
     combat.setMap(currentMap);
   combat.onLocalRound = (o, d, speed, damage, maxDist) => training.addRound(o, d, speed, damage, maxDist);
-    mapColliders = buildColliders(currentMap.boxes);
+    mapColliders = buildColliders(currentMap.boxes, currentMap.holes);
     surfaces.setMap(currentMap);
     boundaryGrid.setHalfSize(currentMap.halfSize);
     drone.respawnAt(randomSpawn(currentMap));

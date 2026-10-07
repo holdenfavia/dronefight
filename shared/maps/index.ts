@@ -9,6 +9,7 @@ import { YARD } from './yard.js';
 export type { ArenaBox, ArenaMaterial, Atmosphere, MapDef, MapId, SpawnPoint } from './types.js';
 export type { MoverDef, MoverKind } from './movers.js';
 export { moverPose } from './movers.js';
+export { groundRects, inHole, type GroundHole } from './ground.js';
 
 export const MAPS: Record<MapId, MapDef> = { downtown: DOWNTOWN, yard: YARD, playground: PLAYGROUND, cavern: CAVERN, training: TRAINING, lab: LAB };
 /** 'lab' is the temporary Detail test map (one detailed building), for judging 3D building detail. */

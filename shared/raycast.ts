@@ -1,4 +1,5 @@
 import type { ArenaBox } from './maps/types.js';
+import { inHole, type GroundHole } from './maps/ground.js';
 
 /**
  * Ray tests against the arena, with no rendering library, so the server can use it too.
@@ -35,7 +36,7 @@ export function eulerXYZMatrix(xDeg: number, yDeg: number, zDeg: number): number
   return [c * e, -c * f, d, af + be * d, ae - bf * d, -b * c, bf - ae * d, be + af * d, a * c];
 }
 
-export function buildColliders(boxes: readonly ArenaBox[]): BoxCollider[] {
+export function buildColliders(boxes: readonly ArenaBox[], holes: readonly GroundHole[] = []): BoxCollider[] {
   const list = boxes.map((box) => {
     const [hx, hy, hz] = [box.size[0] / 2, box.size[1] / 2, box.size[2] / 2];
     const rot = box.rot ?? [0, 0, 0];
@@ -52,6 +53,8 @@ export function buildColliders(boxes: readonly ArenaBox[]): BoxCollider[] {
   });
   // A spatial grid for big maps, so a ray only tests what's near its path (ADR-0053).
   if (list.length > GRID_MIN) Object.defineProperty(list, GRID_KEY, { value: buildGrid(list), enumerable: false });
+  // Holes in the ground (ADR-0054): rays fall through the ground plane there.
+  if (holes.length) Object.defineProperty(list, HOLES_KEY, { value: holes, enumerable: false });
   return list;
 }
 
@@ -74,6 +77,16 @@ interface Grid {
 const GRID_CELL = 16;
 const GRID_MIN = 64;
 const GRID_KEY = '__grid';
+const HOLES_KEY = '__holes';
+
+/** Where a ray meets the ground plane (y = 0), or null: it's going up, starts below, or hits a hole. */
+function groundHit(colliders: readonly BoxCollider[], ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): number | null {
+  if (dy >= 0 || oy < 0) return null;
+  const t = -oy / dy;
+  const holes = (colliders as unknown as Record<string, readonly GroundHole[] | undefined>)[HOLES_KEY];
+  if (holes && inHole(holes, ox + dx * t, oz + dz * t)) return null;
+  return t;
+}
 
 function buildGrid(list: readonly BoxCollider[]): Grid {
   let minX = Infinity;
@@ -197,7 +210,8 @@ export function raycastArena(
   maxDist: number,
 ): number {
   let best = maxDist;
-  if (dy < 0 && oy >= 0) best = Math.min(best, -oy / dy);
+  const g0 = groundHit(colliders, ox, oy, oz, dx, dy, dz);
+  if (g0 !== null) best = Math.min(best, g0);
 
   walk(colliders, ox, oz, dx, dz, best, (b) => {
     // Early out: closest approach of the ray to the box's bounding sphere.
@@ -248,7 +262,8 @@ export function raycastArenaHit(
   maxDist: number,
 ): RayHit | null {
   let best: RayHit | null = null;
-  if (dy < 0 && oy >= 0 && -oy / dy < maxDist) best = { dist: -oy / dy, nx: 0, ny: 1, nz: 0 };
+  const g0 = groundHit(colliders, ox, oy, oz, dx, dy, dz);
+  if (g0 !== null && g0 < maxDist) best = { dist: g0, nx: 0, ny: 1, nz: 0 };
   walk(colliders, ox, oz, dx, dz, maxDist, (b) => {
     const limit = best ? best.dist : maxDist;
     const px = b.cx - ox;

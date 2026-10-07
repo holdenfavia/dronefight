@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { ArenaBox, ArenaMaterial, MapDef } from '../../../shared/maps';
+import { groundRects, type ArenaBox, type ArenaMaterial, type MapDef } from '../../../shared/maps';
 import { buildScenery } from './scenery';
 import {
   asphaltTexture,
@@ -40,6 +40,8 @@ export const PALETTE = {
 } as const;
 
 const SUN_DIRECTION = new THREE.Vector3(-0.45, 0.8, 0.35).normalize();
+/** Toward the horizon under a low sun, the sky warms (ADR-0054). */
+const SUNSET_GLOW = new THREE.Color('#ffc58a');
 const GROUND_SIZE = 2400;
 const DEG = Math.PI / 180;
 
@@ -58,8 +60,11 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
   const aniso = renderer.getMaxAnisotropy();
 
   scene.fog = new THREE.Fog(PALETTE.fog, 250, 1100);
-  scene.add(buildSky());
-  scene.add(buildScenery(SUN_DIRECTION));
+  const sky = buildSky();
+  scene.add(sky);
+  const sunDir = SUN_DIRECTION.clone();
+  let scenery: THREE.Group | null = null;
+  let sceneryKey = '';
 
   const hemi = new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 1.15);
   scene.add(hemi);
@@ -98,6 +103,23 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
     hemi.groundColor.set(a ? a.hemiGround : PALETTE.hemiGround);
     hemi.intensity = a ? a.hemiIntensity : 1.15;
     sun.intensity = a ? a.sunIntensity : 3.2;
+    sun.color.set(a?.sunColor ?? PALETTE.sun);
+    if (a?.sunDirection) sunDir.set(...a.sunDirection).normalize();
+    else sunDir.copy(SUN_DIRECTION);
+    paintSky(sky, sunDir);
+    // The backdrop (mountains or a coast) for this map and sun, rebuilt only when it changes.
+    const key = `${map.backdrop ?? 'mountains'}:${sunDir.toArray().join(',')}`;
+    if (key !== sceneryKey) {
+      if (scenery) {
+        scene.remove(scenery);
+        scenery.traverse((o) => {
+          if (o instanceof THREE.Mesh || o instanceof THREE.Sprite) o.geometry.dispose();
+        });
+      }
+      scenery = buildScenery(sunDir, map.backdrop ?? 'mountains');
+      scene.add(scenery);
+      sceneryKey = key;
+    }
   }
 
   function setMap(map: MapDef): void {
@@ -111,8 +133,9 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
     arena = new THREE.Group();
 
     currentGround = map.ground;
-    const ground = new THREE.Mesh(groundGeo, gridStyle ? grounds.grid : grounds[map.ground]);
-    ground.rotation.x = -Math.PI / 2;
+    // The whole plane, or (with holes, ADR-0054) the plane cut around them.
+    const ground = new THREE.Mesh(map.holes?.length ? holedGround(map) : groundGeo, gridStyle ? grounds.grid : grounds[map.ground]);
+    if (!map.holes?.length) ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     arena.add(ground);
     groundMesh = ground;
@@ -144,17 +167,18 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
     if (edged.length) arena.add(new THREE.LineSegments(mergeEdges(edged), edgeMaterial));
     scene.add(arena);
 
-    // Fit the shadow camera to this map and re-bake it.
-    const extent = map.halfSize + 20;
-    sun.position.copy(SUN_DIRECTION).multiplyScalar(500);
+    // Fit the shadow camera to this map and re-bake it. A low sun sees the map at a slant, so the box is
+    // a little wider and much deeper than the map.
+    const extent = (map.halfSize + 20) * 1.1;
+    sun.position.copy(sunDir).multiplyScalar(map.halfSize * 2 + 200);
     sun.target.position.set(0, 0, 0);
     const cam = sun.shadow.camera;
     cam.left = -extent;
     cam.right = extent;
     cam.top = extent;
     cam.bottom = -extent;
-    cam.near = 200;
-    cam.far = 900;
+    cam.near = 50;
+    cam.far = map.halfSize * 4 + 400;
     cam.updateProjectionMatrix();
     sun.shadow.needsUpdate = true;
   }
@@ -192,16 +216,9 @@ function groundMaterial(tex: THREE.Texture): THREE.MeshStandardMaterial {
 }
 
 function buildSky(): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(1100, 32, 16);
-  const pos = geo.getAttribute('position');
-  const colors = new Float32Array(pos.count * 3);
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const h = Math.max(0, pos.getY(i) / 1100);
-    c.copy(PALETTE.skyHorizon).lerp(PALETTE.skyZenith, Math.pow(h, 0.55));
-    colors.set([c.r, c.g, c.b], i * 3);
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  // Big enough to stay inside the camera's far plane from any corner of the largest map (ADR-0054).
+  const geo = new THREE.SphereGeometry(1500, 48, 24);
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(geo.getAttribute('position').count * 3), 3));
   const sky = new THREE.Mesh(
     geo,
     new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }),
@@ -213,10 +230,41 @@ function buildSky(): THREE.Mesh {
     new THREE.CircleGeometry(28, 32),
     new THREE.MeshBasicMaterial({ color: '#fffbe8', fog: false, depthWrite: false }),
   );
-  sunDisc.position.copy(SUN_DIRECTION).multiplyScalar(1000);
-  sunDisc.lookAt(0, 0, 0);
+  sunDisc.name = 'sunDisc';
   sky.add(sunDisc);
+  paintSky(sky, SUN_DIRECTION);
   return sky;
+}
+
+/**
+ * Sky colors for a sun direction: horizon to zenith, plus a warm glow along the horizon toward a low sun
+ * (an evening over the sea, ADR-0054). A high sun gives no glow. Moves the sun disc too.
+ */
+function paintSky(sky: THREE.Mesh, dir: THREE.Vector3): void {
+  const geo = sky.geometry;
+  const pos = geo.getAttribute('position');
+  const color = geo.getAttribute('color') as THREE.BufferAttribute;
+  const c = new THREE.Color();
+  const low = Math.max(0, 1 - dir.y / 0.6);
+  const flat = Math.hypot(dir.x, dir.z) || 1;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const h = Math.max(0, y / 1100);
+    c.copy(PALETTE.skyHorizon).lerp(PALETTE.skyZenith, Math.pow(h, 0.55));
+    if (low > 0) {
+      const toward = Math.max(0, (x * dir.x + z * dir.z) / (flat * (Math.hypot(x, z) || 1)));
+      c.lerp(SUNSET_GLOW, low * Math.pow(toward, 4) * Math.pow(1 - Math.min(1, h * 1.6), 2) * 0.75);
+    }
+    color.setXYZ(i, c.r, c.g, c.b);
+  }
+  color.needsUpdate = true;
+  const disc = sky.getObjectByName('sunDisc');
+  if (disc) {
+    disc.position.copy(dir).multiplyScalar(1000);
+    disc.lookAt(0, 0, 0);
+  }
 }
 
 interface MaterialDef {
@@ -266,6 +314,15 @@ function arenaMaterials(aniso: number): Record<VisibleMaterial, MaterialDef> {
       material: new THREE.MeshStandardMaterial({ map: facadeTexture(aniso), roughness: 0.7, metalness: 0.05 }),
       tileM: BUILDING_TILE_M,
     },
+    // Ledges and parapets (ADR-0054): plain painted concrete, so they don't read as rows of windows.
+    trim: {
+      material: new THREE.MeshStandardMaterial({ color: '#e6e0d4', roughness: 0.8, metalness: 0 }),
+      tileM: 0,
+    },
+    sand: {
+      material: new THREE.MeshStandardMaterial({ color: '#e8d6a6', roughness: 0.95, metalness: 0 }),
+      tileM: 0,
+    },
     glass: {
       material: new THREE.MeshStandardMaterial({ map: glassTexture(aniso), roughness: 0.2, metalness: 0.5 }),
       tileM: BUILDING_TILE_M,
@@ -310,7 +367,7 @@ function arenaMaterials(aniso: number): Record<VisibleMaterial, MaterialDef> {
     },
     // Rivers, ponds, the harbor (ADR-0049): deep blue and glossy, catching the sky.
     water: {
-      material: new THREE.MeshStandardMaterial({ color: '#2d6f9e', roughness: 0.12, metalness: 0.35 }),
+      material: new THREE.MeshStandardMaterial({ color: '#3a86b8', roughness: 0.12, metalness: 0.22 }),
       tileM: 0,
     },
   };
@@ -327,6 +384,8 @@ const GRID_EQUIVALENT: Record<Exclude<VisibleMaterial, `grid${string}` | 'pad'>,
   steel: '#44484e',
   white: '#eeeeec',
   facade: '#d8d0c2',
+  trim: '#ebe6dc',
+  sand: '#e6d49c',
   glass: '#4a86c4',
   brick: '#b85c46',
   roof: '#62666c',
@@ -365,6 +424,29 @@ const unitScale = new THREE.Vector3(1, 1, 1);
 const tmpPos = new THREE.Vector3();
 
 /** Build real-sized boxes with UVs scaled to world metres so textures don't stretch, then merge. */
+/**
+ * The ground plane with holes cut out (ADR-0054): one flat rectangle per piece, at y = 0, facing up, with UVs
+ * matching the whole plane's so the texture tiles seamlessly across pieces.
+ */
+function holedGround(map: MapDef): THREE.BufferGeometry {
+  const half = GROUND_SIZE / 2;
+  const pos: number[] = [];
+  const uv: number[] = [];
+  for (const [x0, z0, x1, z1] of groundRects(half, map.holes)) {
+    // Two triangles, wound counterclockwise seen from above.
+    const corners: [number, number][] = [[x0, z1], [x1, z1], [x1, z0], [x0, z1], [x1, z0], [x0, z0]];
+    for (const [x, z] of corners) {
+      pos.push(x, 0, z);
+      uv.push((x + half) / GROUND_SIZE, (half - z) / GROUND_SIZE);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.computeVertexNormals();
+  return geo;
+}
+
 /** Dark outlines for detailed buildings: thin, unlit, one draw call per map. */
 const edgeMaterial = new THREE.LineBasicMaterial({ color: '#1a1b1e', transparent: true, opacity: 0.85 });
 

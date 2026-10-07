@@ -64,6 +64,18 @@ function buildModel(kind: MoverKind, color: string, size: V3): THREE.Group {
       for (const z of [-1.1, 1.1]) part(g, [w * 0.8, 0.9, 1.6], [0, -h / 2 + 1.45, z], mat('#e0c35a', 0.9));
       part(g, [0.2, 0.2, 1.6], [0, -h / 2 + 0.8, -l / 2 - 0.8], BLACK);
       break;
+    case 'plane': {
+      // An airliner (ADR-0054): the collision box is the fuselage; wings and tail are drawn around it.
+      const white = mat('#f2f2ee', 0.4, 0.1);
+      part(g, [w, h, l], [0, 0, 0], white);
+      part(g, [w + 0.05, h * 0.25, l * 0.96], [0, -h * 0.1, 0], body);
+      part(g, [w * 0.7, h * 0.35, 1.2], [0, h * 0.15, -l / 2 - 0.4], GLASS);
+      part(g, [l * 0.95, 0.4, 5], [0, -h * 0.2, l * 0.02], white);
+      for (const s of [-1, 1]) part(g, [1.8, 1.8, 4], [s * l * 0.22, -h * 0.55, -l * 0.02], mat('#9aa0a6', 0.3, 0.6));
+      part(g, [0.4, h * 1.4, 4.5], [0, h * 1.1, l * 0.42], body);
+      part(g, [l * 0.32, 0.3, 3], [0, h * 0.2, l * 0.44], white);
+      break;
+    }
     case 'coasterCar':
       part(g, [w, h * 0.5, l], [0, -h * 0.25, 0], body);
       part(g, [w * 0.85, h * 0.5, 0.25], [0, h * 0.15, l * 0.1], mat('#eeeeec'));

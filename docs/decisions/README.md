@@ -57,3 +57,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0051](0051-afk-kick.md) | Pilots away for 5 minutes are removed from the room (server-decided; warned 30 s before; movement, firing or menu actions count as here) | Accepted |
 | [0052](0052-less-drag-snappier.md) | Drag ×0.35 (drops keep accelerating to ~32 m/s), ~40% snappier spool and rate response, props fade near 62 m/s to cap top speed | Accepted |
 | [0053](0053-downtown-detail-grid.md) | Every Downtown building at level-3 detail (ledges, colonnades, balconies, parapets, outlines); spatial grid for ray checks; grid textures default (switched on once for everyone) | Accepted |
+| [0054](0054-downtown-main-map-coast.md) | Downtown is the main map (920 m): airport with a touch-and-go airliner, Central Park, street racetrack with race cars, megaproject pit (ground holes); coastal Rio-like backdrop with the sun setting over the sea; plain trim for ledges | Accepted |

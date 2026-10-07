@@ -47,8 +47,9 @@ describe('spatial grid (ADR-0053)', () => {
     const { MAPS } = await import('./maps/index.js');
     const { mulberry32 } = await import('./maps/builders.js');
     for (const map of Object.values(MAPS)) {
-      const gridded = buildColliders(map.boxes);
+      const gridded = buildColliders(map.boxes, map.holes);
       const plain = [...gridded]; // a copy has no grid: the brute-force answer
+      if (map.holes) Object.defineProperty(plain, '__holes', { value: map.holes });
       const rand = mulberry32(7);
       for (let k = 0; k < 1500; k++) {
         const o: [number, number, number] = [(rand() * 2 - 1) * map.halfSize, rand() * 80, (rand() * 2 - 1) * map.halfSize];

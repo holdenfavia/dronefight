@@ -200,7 +200,7 @@ export const CAMERA_DEFAULTS = {
   /** The old default: saved settings still on it move to the new one. */
   oldFovHorizontalDeg: 120,
   near: 0.05,
-  far: 1200,
+  far: 2000,
   /** Chase-camera offset behind and above the quad (metres). Debug/spectate view. */
   chaseDistance: 2.2,
   chaseHeight: 0.7,

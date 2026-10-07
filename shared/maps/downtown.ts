@@ -1,4 +1,5 @@
 import { BEAM, beam, boundary, cubeFrame, gate, hoop, mulberry32, pads, polyBeam, spawnFacingCenter, tower, water } from './builders.js';
+import type { GroundHole } from './ground.js';
 import { routeFromPoints, roundedRect, type MoverDef, type V3 } from './movers.js';
 import type { ArenaBox, ArenaMaterial, ExplosiveDef, MapDef, SpawnPoint } from './types.js';
 
@@ -13,14 +14,19 @@ const PARKED_COLORS: Record<string, string> = { white: '#e9e9e6', steel: '#8d949
  * a construction site with a crane, and a plaza in the middle for open dogfighting.
  * Around it (ADR-0049, 3x the area): a river with a suspension bridge and an arch bridge, a stadium, a
  * sculpture park of giant hoops, an elevated highway with ramps, a radio mast, and a rail viaduct with a train.
+ * The main map (ADR-0054, 920 m across): an airport with a jet flying touch-and-go laps in the east, Central
+ * Park with a lake in the north, a street racetrack with race cars in the south, and a megaproject in the west
+ * (a half-built supertall, tower cranes and a deep excavation pit you can fly down into).
  */
 
-const HALF = 260;
+const HALF = 460;
 /** The old city's edge: the outskirts (ADR-0049) start beyond it. */
 const CITY = 150;
 /** The river runs east-west across the north (z from 175 to 225). */
 const RIVER_Z = 200;
 const RIVER_W = 50;
+/** The river ends here, short of the airport (ADR-0054). */
+const RIVER_E = 268;
 /** Block centers along each axis. Streets run between them at ±30 and ±90. */
 const BLOCKS = [-120, -60, 0, 60, 120];
 const STREETS = [-90, -30, 30, 90];
@@ -29,16 +35,21 @@ const LOT = 20;
 const FLOOR = 4;
 
 const SPAWNS: readonly SpawnPoint[] = [
-  // Four in the city, four in the outskirts (ADR-0049) so fights spread over the bigger map.
+  // Four in and around the city, one in each new district (ADR-0054), so fights spread over the map.
   spawnFacingCenter(-30, 90),
   spawnFacingCenter(30, -90),
-  spawnFacingCenter(90, -30),
-  spawnFacingCenter(-90, 30),
   spawnFacingCenter(20, 160),
   spawnFacingCenter(168, 30),
-  spawnFacingCenter(-165, 100),
-  spawnFacingCenter(60, -170),
+  spawnFacingCenter(-20, 300),
+  spawnFacingCenter(-120, -375),
+  spawnFacingCenter(320, -130),
+  spawnFacingCenter(-290, 0),
 ];
+
+/** The megaproject's excavation (ADR-0054): a 90 m square hole in the ground, PIT_DEPTH deep. */
+const PIT = { x: -355, z: 105, w: 90, d: 90 } as const;
+const PIT_DEPTH = 24;
+const HOLES: readonly GroundHole[] = [PIT];
 
 type Rand = () => number;
 
@@ -57,7 +68,7 @@ function building(out: ArenaBox[], rand: Rand, x: number, z: number, w: number, 
   const e = (pos: [number, number, number], size: [number, number, number], m: ArenaMaterial, rot?: [number, number, number]) =>
     out.push(rot ? { pos, size, mat: m, rot, edge: true } : { pos, size, mat: m, edge: true });
   const h = Math.round(height / FLOOR) * FLOOR;
-  const ledgeMat: ArenaMaterial = mat === 'brick' ? 'concrete' : 'facade';
+  const ledgeMat: ArenaMaterial = mat === 'brick' ? 'concrete' : 'trim';
   // Street level: a colonnade and a recessed storefront (two floors), on anything taller than three floors.
   const podium = h >= 12 ? 2 * FLOOR : 0;
   if (podium) {
@@ -340,17 +351,25 @@ function outskirts(out: ArenaBox[], rand: Rand): void {
   highway(out);
   radioMast(out, -222, -215);
   viaduct(out, rand);
+  airport(out);
+  centralPark(out);
+  racetrack(out);
+  megaproject(out);
 }
 
 /** The river: water between two embankment walls, with a little pier and moored boats. */
 function river(out: ArenaBox[]): void {
   const z0 = RIVER_Z - RIVER_W / 2;
   const z1 = RIVER_Z + RIVER_W / 2;
-  water(out, 0, RIVER_Z, HALF * 2, RIVER_W);
-  for (const z of [z0 - 0.75, z1 + 0.75]) out.push({ pos: [0, 0.6, z], size: [HALF * 2, 1.2, 1.5], mat: 'concrete' });
+  const len = RIVER_E + HALF;
+  const mid = (RIVER_E - HALF) / 2;
+  water(out, mid, RIVER_Z, len, RIVER_W);
+  for (const z of [z0 - 0.75, z1 + 0.75]) out.push({ pos: [mid, 0.6, z], size: [len, 1.2, 1.5], mat: 'concrete' });
+  // The east end: a wall short of the airport.
+  out.push({ pos: [RIVER_E + 0.75, 0.6, RIVER_Z], size: [1.5, 1.2, RIVER_W + 3], mat: 'concrete' });
   // Promenade lamps on the city bank.
-  for (let x = -240; x <= 240; x += 24) {
-    if (Math.abs(x + 60) < 14 || Math.abs(x - 110) < 14) continue;
+  for (let x = -440; x <= 250; x += 24) {
+    if (Math.abs(x + 60) < 14 || Math.abs(x - 110) < 14 || Math.abs(x + 205) < 14) continue;
     out.push({ pos: [x, 3.5, z0 - 4], size: [0.25, 7, 0.25], mat: 'steel' });
     out.push({ pos: [x, 7, z0 - 3.2], size: [0.25, 0.2, 1.8], mat: 'steel' });
   }
@@ -481,6 +500,8 @@ function highway(out: ArenaBox[]): void {
   }
   // On-ramps sloping down into the city's edge.
   for (const rz of [-40, 60]) beam(out, [x + w / 2 - 1, y, rz], [-CITY, 0.2, rz], 0.8, 'concrete', 12);
+  // Both ends slope down to the ground (ADR-0054), toward the park and the racetrack.
+  for (const [end, to] of [[z0, z0 - 38], [z1, z1 + 38]] as const) beam(out, [x, y, end], [x, 0.2, to], 0.8, 'concrete', w);
 }
 
 /** A tall lattice radio mast with a blinking-light top (orange, white bands). */
@@ -511,6 +532,8 @@ function viaduct(out: ArenaBox[], rand: Rand): void {
   for (const x of [-20, -5, 10]) out.push({ pos: [x, y + 3.5, z + 6], size: [0.4, 7, 0.4], mat: 'steel' });
   out.push({ pos: [-5, y + 7.2, z + 4], size: [36, 0.4, 8], mat: 'white' });
   out.push({ pos: [-5, y + 0.6, z + 6.5], size: [36, 1.2, 3], mat: 'concrete' });
+  // A buffer stop at the east end of the line.
+  out.push({ pos: [x1 - 1.5, y + 1.6, z], size: [2, 2, 8], mat: 'orange' });
   // A tall water tower beside the line (its tank bursts, ADR-0023).
   const tx = 150;
   const tz = -232;
@@ -523,10 +546,394 @@ function viaduct(out: ArenaBox[], rand: Rand): void {
   }
 }
 
-/** Lane dashes and a distant skyline: drawn, never collided with. */
+// --- The main-map districts (ADR-0054).
+
+/** Visual-only pieces (runway paint, track surface, park paths) collected while building. */
+const DECOR: ArenaBox[] = [];
+/** The coast (ADR-0054): a sea wall, a beach and the sea along the east edge, the sun setting over the water. */
+const SEA_WALL_X = 430;
+const SEA_X = 445;
+/** The runway runs north-south along the east side; the airliner lands and takes off on it. */
+const RUNWAY_X = 405;
+const RUNWAY_HALF_LEN = 340;
+
+/** A box with an outline. */
+function edged(out: ArenaBox[], pos: [number, number, number], size: [number, number, number], mat: ArenaMaterial, rot?: [number, number, number]): void {
+  out.push(rot ? { pos, size, mat, rot, edge: true } : { pos, size, mat, edge: true });
+}
+
+/** A static airliner, nose toward -X: fuselage, wings, engines, fin and tailplane. */
+function parkedAirliner(out: ArenaBox[], x: number, z: number, tail: ArenaMaterial): void {
+  out.push({ pos: [x, 3.4, z], size: [34, 4, 4], mat: 'white' });
+  out.push({ pos: [x - 16.5, 3.9, z], size: [1.2, 1.4, 2.8], mat: 'glass' });
+  out.push({ pos: [x + 1, 2.4, z], size: [5, 0.4, 30], mat: 'white' });
+  for (const s of [-1, 1]) {
+    out.push({ pos: [x - 0.5, 1.3, z + s * 7], size: [4, 1.8, 1.8], mat: 'steel' });
+    out.push({ pos: [x - 1, 0.4, z + s * 2.2], size: [1, 0.8, 0.8], mat: 'steel' });
+  }
+  out.push({ pos: [x - 13, 0.7, z], size: [0.6, 1.4, 0.6], mat: 'steel' });
+  out.push({ pos: [x + 14, 8, z], size: [4.5, 5.4, 0.4], mat: tail });
+  out.push({ pos: [x + 15, 4.6, z], size: [3, 0.3, 11], mat: 'white' });
+}
+
+/** The airport on the bay: runway, taxiway, terminal with jet bridges, control tower, hangars, the beach. */
+function airport(out: ArenaBox[]): void {
+  // Runway and taxiway: dark strips just above the street, with painted markings (decor).
+  out.push({ pos: [RUNWAY_X, 0.03, 0], size: [44, 0.06, RUNWAY_HALF_LEN * 2], mat: 'roof' });
+  out.push({ pos: [372, 0.03, 0], size: [16, 0.06, RUNWAY_HALF_LEN * 2], mat: 'roof' });
+  out.push({ pos: [339, 0.03, 0], size: [50, 0.06, 300], mat: 'concrete' });
+  for (let z = -RUNWAY_HALF_LEN + 40; z <= RUNWAY_HALF_LEN - 40; z += 30) DECOR.push({ pos: [RUNWAY_X, 0.07, z], size: [0.9, 0.02, 15], mat: 'paint' });
+  for (const s of [-1, 1]) {
+    DECOR.push({ pos: [RUNWAY_X + s * 20.5, 0.07, 0], size: [0.6, 0.02, RUNWAY_HALF_LEN * 2 - 4], mat: 'paint' });
+    // Threshold bars at both ends.
+    for (let k = -7; k <= 7; k++) if (k) DECOR.push({ pos: [RUNWAY_X + k * 2.6, 0.07, s * (RUNWAY_HALF_LEN - 12)], size: [1.4, 0.02, 18], mat: 'paint' });
+  }
+  for (let z = -300; z <= 300; z += 12) DECOR.push({ pos: [372, 0.07, z], size: [0.3, 0.02, 6], mat: 'paint' });
+  // Approach lights south of the runway, on short posts.
+  for (let z = -RUNWAY_HALF_LEN - 15; z >= -415; z -= 15) {
+    out.push({ pos: [RUNWAY_X, 1, z], size: [0.3, 2, 0.3], mat: 'steel' });
+    out.push({ pos: [RUNWAY_X, 2.1, z], size: [8, 0.25, 0.4], mat: 'white' });
+  }
+
+  // Terminal: a long glass hall under an overhanging white roof, columns along the airside.
+  edged(out, [300, 7, 0], [24, 14, 140], 'glass');
+  edged(out, [300, 14.6, 0], [32, 1.2, 148], 'white');
+  for (let z = -70; z <= 70; z += 10) edged(out, [315.5, 7, z], [0.8, 14, 0.8], 'white');
+  edged(out, [296, 17.5, 0], [12, 4.6, 60], 'trim');
+  // Jet bridges out to three parked airliners.
+  for (const [z, tail] of [[-45, 'orange'], [0, 'steel'], [45, 'orange']] as const) {
+    edged(out, [322, 5, z], [12, 3, 3], 'white');
+    out.push({ pos: [327, 1.8, z], size: [0.8, 3.6, 0.8], mat: 'steel' });
+    parkedAirliner(out, 346, z, tail);
+  }
+  // Control tower: a concrete shaft, a glass cab, a roof and an antenna.
+  edged(out, [300, 21, 120], [7, 42, 7], 'concrete');
+  edged(out, [300, 45, 120], [13, 6, 13], 'glass');
+  edged(out, [300, 48.4, 120], [15, 0.8, 15], 'white');
+  out.push({ pos: [300, 53, 120], size: [0.4, 8.4, 0.4], mat: 'orange' });
+  // Cars in the lot beside the tower.
+  for (let i = 0; i < 6; i++) EXPLOSIVES.push({ kind: 'car', pos: [292 + i * 5, 0.75, 150], size: [2, 1.5, 4.4], color: CAR_COLORS[(i * 3) % CAR_COLORS.length] });
+  // Hangars: open to the east, big enough to fly through the door and out under the roof.
+  for (const hz of [-190, -250]) {
+    edged(out, [288.5, 9, hz], [1, 18, 44], 'white');
+    for (const s of [-1, 1]) edged(out, [310, 9, hz + s * 21.5], [44, 18, 1], 'white');
+    edged(out, [310, 18.5, hz], [46, 1, 46], 'orange');
+    // A business jet parked inside.
+    out.push({ pos: [306, 1.8, hz], size: [16, 2.4, 2.4], mat: 'white' });
+    out.push({ pos: [307, 1.4, hz], size: [3, 0.3, 14], mat: 'white' });
+    out.push({ pos: [314, 4.2, hz], size: [2.4, 3, 0.3], mat: 'orange' });
+  }
+  // Fuel farm: propane tanks south of the hangars (ADR-0023).
+  for (const z of [-300, -310, -320]) EXPLOSIVES.push({ kind: 'propane', pos: [300, 1.2, z], size: [2.4, 2.4, 6], yawDeg: 90 });
+
+  // The shore: a sea wall, a strip of beach with palms, and the sea up to the edge of the map.
+  out.push({ pos: [SEA_WALL_X, 0.6, 0], size: [1.5, 1.2, HALF * 2], mat: 'concrete' });
+  out.push({ pos: [(SEA_WALL_X + SEA_X) / 2 + 0.4, 0.05, 0], size: [SEA_X - SEA_WALL_X - 0.8, 0.1, HALF * 2], mat: 'sand' });
+  water(out, (SEA_X + HALF + 2) / 2, 0, HALF + 2 - SEA_X, HALF * 2);
+  for (let z = -440; z <= 440; z += 32) palm(out, SEA_WALL_X + 7, z + ((z / 32) % 2 ? 6 : -6), z % 64 ? 1 : -1);
+}
+
+/** A palm: a leaning trunk and a crown of crossed fronds. */
+function palm(out: ArenaBox[], x: number, z: number, lean: number): void {
+  const top: [number, number, number] = [x + lean * 1.6, 10, z + 0.8];
+  beam(out, [x, 0, z], top, 0.55, 'roof');
+  for (const yaw of [0, 60, 120]) out.push({ pos: [top[0], top[1] + 0.3, top[2]], size: [7, 0.3, 1.4], rot: [0, yaw, -8], mat: 'foliage' });
+  out.push({ pos: [top[0], top[1] + 0.4, top[2]], size: [1.4, 1, 1.4], mat: 'foliage' });
+}
+
+/** A park tree: a trunk and a blocky canopy. */
+function tree(out: ArenaBox[], x: number, z: number, h: number): void {
+  out.push({ pos: [x, h * 0.25, z], size: [0.6, h * 0.5, 0.6], mat: 'roof' });
+  const c = h * 0.55;
+  out.push({ pos: [x, h * 0.72, z], size: [c, h * 0.5, c], mat: 'foliage' });
+}
+
+/** Central Park, north of the river: lawns, a lake with a stone bridge and a boathouse, groves, rocks, a bandshell. */
+function centralPark(out: ArenaBox[]): void {
+  const rand = mulberry32(54);
+  const PX0 = -440;
+  const PX1 = 240;
+  const PZ0 = 270;
+  const PZ1 = 440;
+  const LAKE = { x: -120, z: 370, w: 150, d: 70 };
+  // The lawn: a green sheet over the whole park.
+  out.push({ pos: [(PX0 + PX1) / 2, 0.03, (PZ0 + PZ1) / 2], size: [PX1 - PX0, 0.06, PZ1 - PZ0], mat: 'foliage' });
+  // A low stone wall along the south edge, open where the highway comes down and at the paths.
+  for (const [x0, x1] of [[PX0, -224], [-186, -60], [-40, 100], [120, PX1]] as const) out.push({ pos: [(x0 + x1) / 2, 0.5, PZ0], size: [x1 - x0, 1, 0.8], mat: 'rock' });
+  // Paths (decor): the main east-west path and two north-south paths.
+  DECOR.push({ pos: [(PX0 + PX1) / 2, 0.08, 300], size: [PX1 - PX0, 0.03, 5], mat: 'sidewalk' });
+  for (const x of [-50, 110]) DECOR.push({ pos: [x, 0.08, (PZ0 + PZ1) / 2], size: [4, 0.03, PZ1 - PZ0], mat: 'sidewalk' });
+  for (let x = PX0 + 10; x <= PX1 - 10; x += 30) {
+    if (Math.abs(x + 205) < 20) continue;
+    out.push({ pos: [x, 2.5, 304], size: [0.2, 5, 0.2], mat: 'steel' });
+    out.push({ pos: [x, 5.1, 304], size: [0.6, 0.4, 0.6], mat: 'white' });
+  }
+
+  // The lake, its stone arch footbridge, a boathouse and rowboats.
+  water(out, LAKE.x, LAKE.z, LAKE.w, LAKE.d);
+  const arch: [number, number, number][] = [];
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10;
+    arch.push([LAKE.x, 0.3 + 6 * Math.sin(Math.PI * t), LAKE.z - LAKE.d / 2 - 8 + (LAKE.d + 16) * t]);
+  }
+  for (let i = 0; i < arch.length - 1; i++) beam(out, arch[i]!, arch[i + 1]!, 0.8, 'rock', 7);
+  edged(out, [-30, 3, 345], [14, 6, 10], 'brick');
+  edged(out, [-30, 6.4, 345], [16, 0.8, 12], 'roof');
+  for (const [x, z, m] of [[-70, 350, 'white'], [-95, 390, 'orange'], [-160, 360, 'white'], [-175, 395, 'orange']] as const) {
+    out.push({ pos: [x, 0.4, z], size: [1.4, 0.6, 4], rot: [0, (x * 7) % 90, 0], mat: m });
+  }
+
+  // Rock outcrops.
+  for (const [x, z, n] of [[-380, 390, 5], [0, 420, 4], [190, 330, 4], [-260, 300 + 40, 3]] as const) {
+    for (let k = 0; k < n; k++) {
+      const s = 5 + rand() * 7;
+      out.push({ pos: [x + (rand() - 0.5) * 18, s * 0.35, z + (rand() - 0.5) * 14], size: [s * 1.3, s, s], rot: [rand() * 20 - 10, rand() * 90, rand() * 20 - 10], mat: 'rock' });
+    }
+  }
+  // An obelisk to slalom around.
+  edged(out, [-250, 15, 415], [3, 30, 3], 'concrete');
+  out.push({ pos: [-250, 30.9, 415], size: [2.1, 2.1, 2.1], rot: [45, 0, 35.26], mat: 'concrete' });
+
+  // A gazebo: eight posts in a ring under a roof.
+  const gx = -300;
+  const gz = 330;
+  out.push({ pos: [gx, 0.25, gz], size: [13, 0.5, 13], mat: 'concrete' });
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    out.push({ pos: [gx + Math.cos(a) * 5.6, 2.7, gz + Math.sin(a) * 5.6], size: [0.4, 4.4, 0.4], mat: 'white' });
+  }
+  edged(out, [gx, 5.2, gz], [13, 0.6, 13], 'white', [0, 22.5, 0]);
+  edged(out, [gx, 6.2, gz], [8, 1.4, 8], 'white', [0, 22.5, 0]);
+
+  // The bandshell: a stage and nested half-arches opening south, onto the lawn.
+  const bx = 100;
+  const bz = 385;
+  edged(out, [bx, 0.6, bz], [28, 1.2, 16], 'concrete');
+  for (let k = 0; k < 5; k++) {
+    const r = 14 - k * 1.8;
+    const pts: [number, number, number][] = [];
+    for (let i = 0; i <= 10; i++) {
+      const a = (i / 10) * Math.PI;
+      pts.push([bx + Math.cos(a) * r, 1.2 + Math.sin(a) * r, bz - 2 + k * 2.2]);
+    }
+    polyBeam(out, pts, 0.9, k % 2 ? 'orange' : 'white');
+  }
+
+  // Groves: trees scattered over the lawn, clear of the lake, paths, landmarks and the spawn.
+  const clear = (x: number, z: number) =>
+    (Math.abs(x - LAKE.x) < LAKE.w / 2 + 8 && Math.abs(z - LAKE.z) < LAKE.d / 2 + 12) ||
+    Math.abs(z - 300) < 8 ||
+    Math.abs(x + 50) < 6 ||
+    Math.abs(x - 110) < 6 ||
+    Math.abs(x + 205) < 22 ||
+    Math.hypot(x - gx, z - gz) < 14 ||
+    Math.hypot(x - bx, z - bz) < 24 ||
+    Math.hypot(x + 250, z - 415) < 8 ||
+    Math.hypot(x + 30, z - 345) < 14 ||
+    Math.hypot(x + 20, z - 300) < 14;
+  for (let k = 0; k < 220; k++) {
+    const x = PX0 + 8 + rand() * (PX1 - PX0 - 16);
+    const z = PZ0 + 8 + rand() * (PZ1 - PZ0 - 16);
+    const h = 9 + rand() * 9;
+    if (clear(x, z)) continue;
+    tree(out, x, z, h);
+  }
+}
+
+/** The street racetrack: a rounded circuit with barriers, a start gantry, a grandstand and pit garages. */
+const TRACK = { x0: -420, z0: -440, x1: 180, z1: -310, r: 40, half: 9 } as const;
+
+function trackLoop(offset: number, y: number, clockwise = false): V3[] {
+  return roundedRect(TRACK.x0 - offset, TRACK.z0 - offset, TRACK.x1 + offset, TRACK.z1 + offset, TRACK.r + offset, y, clockwise);
+}
+
+function racetrack(out: ArenaBox[]): void {
+  // The track surface (decor) and kerbs, segment by segment along the centerline.
+  const center = trackLoop(0, 0.04);
+  for (let i = 0; i < center.length; i++) {
+    const a = center[i]!;
+    const b = center[(i + 1) % center.length]!;
+    beam(DECOR, a, b, 0.04, 'roof', TRACK.half * 2);
+  }
+  // A lawn over the infield (decor).
+  DECOR.push({ pos: [(TRACK.x0 + TRACK.x1) / 2, 0.03, (TRACK.z0 + TRACK.z1) / 2], size: [TRACK.x1 - TRACK.x0 - 22, 0.05, TRACK.z1 - TRACK.z0 - 22], mat: 'foliage' });
+  // Barriers on both edges: solid concrete walls you can skim.
+  for (const off of [TRACK.half + 1.5, -TRACK.half - 1.5]) {
+    const loop = trackLoop(off, 0.5);
+    for (let i = 0; i < loop.length; i++) beam(out, loop[i]!, loop[(i + 1) % loop.length]!, 1, 'concrete', 0.6);
+  }
+  // Red and white kerbs along the inside of the corners (decor).
+  const kerb = trackLoop(-TRACK.half + 0.6, 0.06);
+  for (let i = 0; i < kerb.length; i++) {
+    const a = kerb[i]!;
+    const b = kerb[(i + 1) % kerb.length]!;
+    if (Math.hypot(b[0] - a[0], b[2] - a[2]) > 20) continue;
+    beam(DECOR, a, b, 0.05, i % 2 ? 'gridRed' : 'white', 1.2);
+  }
+  // Start / finish on the north straight: a checkered line and a gantry over the track.
+  const sx = 40;
+  for (let k = 0; k < 9; k++) for (const r of [0, 1]) DECOR.push({ pos: [sx + r, 0.07, TRACK.z1 - TRACK.half + 1 + k * 2 + r], size: [1, 0.02, 1], mat: 'white' });
+  gate(out, sx, TRACK.z1, TRACK.half * 2 + 5, 8, 90);
+  edged(out, [sx, 7.2, TRACK.z1], [1.4, 1.4, TRACK.half * 2 + 3], 'steel');
+  // Grandstand along the north straight, facing the track, with a canopy.
+  const gz = TRACK.z1 + TRACK.half + 6;
+  for (const [dz, h] of [[0, 1.5], [4, 3.5], [8, 5.5], [12, 7.5]] as const) edged(out, [-100, h / 2, gz + dz], [150, h, 4], dz % 8 ? 'white' : 'concrete');
+  edged(out, [-100, 7, gz + 15], [150, 14, 1], 'concrete');
+  for (let x = -170; x <= -30; x += 20) out.push({ pos: [x, 7, gz + 13.6], size: [0.6, 14, 0.6], mat: 'steel' });
+  edged(out, [-100, 14.4, gz + 7], [154, 0.8, 18], 'orange', [-8, 0, 0]);
+  // Pit garages in the infield, behind the north straight.
+  edged(out, [60, 3.5, TRACK.z1 - TRACK.half - 18], [70, 7, 10], 'white');
+  edged(out, [60, 7.3, TRACK.z1 - TRACK.half - 18], [72, 0.6, 12], 'orange');
+  for (let x = 30; x <= 90; x += 10) DECOR.push({ pos: [x, 3, TRACK.z1 - TRACK.half - 12.95], size: [8, 5, 0.1], mat: 'roof' });
+  // Tire stacks on the outside of each corner.
+  for (const [cx, cz] of [[TRACK.x1, TRACK.z0], [TRACK.x1, TRACK.z1], [TRACK.x0, TRACK.z1], [TRACK.x0, TRACK.z0]] as const) {
+    for (let k = 0; k < 3; k++) out.push({ pos: [cx + Math.sign(cx) * (4 + k * 1.3), 0.6 + k * 0.0, cz + Math.sign(cz + 375) * (4 + k * 1.3)], size: [1.2, 1.2, 1.2], mat: 'roof' });
+  }
+}
+
+/** Race cars lapping the circuit (ADR-0054): two lanes, each at its own speed, so they never touch. */
+function raceCars(): MoverDef[] {
+  const cars: MoverDef[] = [];
+  const size: V3 = [2, 1.1, 4.6];
+  const lanes = [
+    { off: 3, speed: 34, count: 3, colors: ['#e5483e', '#2f7fe0', '#f5c63a'] },
+    { off: -3, speed: 31, count: 2, colors: ['#ff8a2a', '#eeeeec'] },
+  ];
+  for (const lane of lanes) {
+    const route = routeFromPoints(trackLoop(lane.off, 0));
+    for (let i = 0; i < lane.count; i++) {
+      cars.push({ kind: 'car', route, offset: (route.length / lane.count) * i, speed: lane.speed, color: lane.colors[i]!, size, lift: 0.55 });
+    }
+  }
+  return cars;
+}
+
+/** Corner-cutting smoothing of a closed polyline (Chaikin), so the airliner's route has round turns. */
+function smoothLoop(points: V3[], passes: number): V3[] {
+  let pts = points;
+  for (let p = 0; p < passes; p++) {
+    const next: V3[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i]!;
+      const b = pts[(i + 1) % pts.length]!;
+      next.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25, a[2] * 0.75 + b[2] * 0.25]);
+      next.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75, a[2] * 0.25 + b[2] * 0.75]);
+    }
+    pts = next;
+  }
+  return pts;
+}
+
+/**
+ * The airliner (ADR-0054): touch-and-go laps. It rolls north up the runway, climbs out, circles the
+ * map high above everything, and comes back down over the racetrack to land again.
+ */
+function airliner(): MoverDef {
+  const x = RUNWAY_X;
+  const route = routeFromPoints(
+    smoothLoop(
+      [
+        [x, 0, -300],
+        [x, 0, -60],
+        [x, 30, 120],
+        [x, 90, 300],
+        [400, 130, 425],
+        [-435, 140, 430],
+        [-438, 140, -430],
+        [250, 55, -438],
+        [x, 22, -438],
+      ],
+      3,
+    ),
+  );
+  return { kind: 'plane', route, offset: 0, speed: 45, color: '#ff6a13', size: [4, 4, 34], lift: 3.2 };
+}
+
+/** A tower crane: lattice mast, a jib along +X or -X, counter-jib and weight, cab, hook. */
+function towerCrane(out: ArenaBox[], x: number, z: number, mast: number, jib: number, dir: 1 | -1): void {
+  tower(out, x, z, 2.4, mast, 6, 0, false);
+  const y = mast + BEAM / 2 + 0.6;
+  out.push({ pos: [x + dir * (jib / 2 - 2), y, z], size: [jib, 1.2, 1.4], mat: 'orange' });
+  out.push({ pos: [x - dir * 8, y, z], size: [16, 1.2, 1.4], mat: 'orange' });
+  out.push({ pos: [x - dir * 14, y - 1.6, z], size: [3, 2.4, 2.4], mat: 'concrete' });
+  out.push({ pos: [x, y + 1.6, z], size: [2.6, 2.2, 2.6], mat: 'white' });
+  out.push({ pos: [x, y + 4.5, z], size: [0.4, 4, 0.4], mat: 'orange' });
+  const hx = x + dir * jib * 0.7;
+  const hookTop = y - 30;
+  out.push({ pos: [hx, (y - 0.6 + hookTop) / 2, z], size: [0.12, y - 0.6 - hookTop, 0.12], mat: 'steel' });
+  out.push({ pos: [hx, hookTop - 0.7, z], size: [1.2, 1.4, 1.2], mat: 'orange' });
+}
+
+/**
+ * The megaproject, west of the city: a half-built supertall (floors open to fly through), tower cranes,
+ * and a deep excavation pit with shoring struts across it, a ramp down and machines on the floor.
+ */
+function megaproject(out: ArenaBox[]): void {
+  // --- The pit: a floor PIT_DEPTH down, walls, shoring walers and struts, a guard rail around the rim.
+  const { x, z, w, d } = PIT;
+  const D = PIT_DEPTH;
+  out.push({ pos: [x, -D - 0.5, z], size: [w + 2, 1, d + 2], mat: 'rock' });
+  for (const s of [-1, 1]) {
+    out.push({ pos: [x, -D / 2, z + s * (d / 2 + 0.5)], size: [w + 2, D, 1], mat: 'concrete' });
+    out.push({ pos: [x + s * (w / 2 + 0.5), -D / 2, z], size: [1, D, d], mat: 'concrete' });
+    for (const y of [-6, -12, -18]) {
+      out.push({ pos: [x, y, z + s * (d / 2 - 0.4)], size: [w, 0.8, 0.8], mat: 'orange' });
+      out.push({ pos: [x + s * (w / 2 - 0.4), y, z], size: [0.8, 0.8, d - 1.6], mat: 'orange' });
+    }
+    // Guard rail on the rim.
+    out.push({ pos: [x, 1.1, z + s * (d / 2 + 1.2)], size: [w + 3, 0.2, 0.2], mat: 'orange' });
+    out.push({ pos: [x + s * (w / 2 + 1.2), 1.1, z], size: [0.2, 0.2, d + 3], mat: 'orange' });
+  }
+  for (let k = -1; k <= 1; k++) {
+    for (const c of [-1, 1]) out.push({ pos: [x + c * (w / 2 + 1.2), 0.55, z + k * 30], size: [0.2, 1.1, 0.2], mat: 'orange' });
+  }
+  // Cross struts spanning the pit east-west, at two depths.
+  for (const [sz, y] of [[-30, -8], [0, -14], [30, -8]] as const) out.push({ pos: [x, y, z + sz], size: [w - 1.6, 1, 1], mat: 'orange' });
+  out.push({ pos: [x - 15, -16, z], size: [1, 1, d - 1.6], mat: 'orange' });
+  // A haul ramp down along the south wall.
+  beam(out, [x + w / 2 - 1, 0, z - d / 2 + 5], [x - 2, -D, z - d / 2 + 5], 0.8, 'concrete', 8);
+  // Machines on the floor: an excavator and two dump trucks.
+  const fy = -D;
+  edged(out, [x - 25, fy + 1.6, z + 20], [4, 2.4, 6], 'orange');
+  edged(out, [x - 25, fy + 3.5, z + 18.5], [2.4, 1.6, 2.4], 'glass');
+  beam(out, [x - 25, fy + 3, z + 22], [x - 25, fy + 8, z + 28], 0.7, 'orange');
+  beam(out, [x - 25, fy + 8, z + 28], [x - 25, fy + 2, z + 33], 0.6, 'orange');
+  for (const [tx, tz] of [[x + 15, z + 25], [x + 20, z - 10]] as const) {
+    edged(out, [tx, fy + 1.8, tz], [3, 2.4, 7], 'white');
+    edged(out, [tx, fy + 2.4, tz - 4.2], [3, 2.4, 1.8], 'orange');
+  }
+  for (const [dx, dz] of [[-38, -30], [-36.6, -30], [-37.3, -28.8]] as const) EXPLOSIVES.push({ kind: 'fuel', pos: [x + dx, fy + 0.82, z + dz], size: [1.2, 1.6, 1.2] });
+  towerCrane(out, x + 55, z + 35, 64, 50, -1);
+
+  // --- The supertall: a concrete core, open floor slabs every two floors on a column grid,
+  // curtain wall on the lower floors only.
+  const sx = -360;
+  const sz = -60;
+  const half = 20;
+  const top = 128;
+  edged(out, [sx, top / 2 + 4, sz], [10, top + 8, 10], 'concrete');
+  for (let y = 8; y <= top; y += 8) edged(out, [sx, y, sz], [half * 2, 0.6, half * 2], 'concrete');
+  for (const cx of [-half + 0.6, 0, half - 0.6]) {
+    for (const cz of [-half + 0.6, 0, half - 0.6]) {
+      if (cx === 0 && cz === 0) continue;
+      out.push({ pos: [sx + cx, top / 2, sz + cz], size: [1, top, 1], mat: 'concrete' });
+    }
+  }
+  for (const s of [-1, 1]) {
+    edged(out, [sx, 24, sz + s * (half - 0.2)], [half * 2, 48, 0.4], 'glass');
+    edged(out, [sx + s * (half - 0.2), 16, sz], [0.4, 32, half * 2], 'glass');
+  }
+  // A construction hoist up the east face.
+  tower(out, sx + half + 2.5, sz + 10, 3, top - 4, 8, 0, false);
+  towerCrane(out, sx + 30, sz - 40, 150, 56, 1);
+  towerCrane(out, sx - 35, sz + 20, 162, 44, 1);
+  // Site cabins: stacked containers.
+  for (const [cx, cz, y] of [[-300, -110, 1.3], [-300, -102, 1.3], [-300, -106, 3.9]] as const) edged(out, [cx, y, cz], [6, 2.6, 2.4], 'orange');
+}
+
+/** Lane dashes: drawn, never collided with. */
 function buildDecor(): ArenaBox[] {
   const out: ArenaBox[] = [];
-  const rand = mulberry32(99);
   for (const street of STREETS) {
     for (let t = -146; t <= 146; t += 6) {
       if (STREETS.some((s) => Math.abs(t - s) < 9)) continue;
@@ -534,19 +941,7 @@ function buildDecor(): ArenaBox[] {
       out.push({ pos: [t, 0.015, street], size: [3, 0.02, 0.25], mat: 'paint' });
     }
   }
-  // Skyline beyond the boundary. Fog fades it into the haze.
-  // Beyond the outskirts (ADR-0049): starts past the bigger boundary.
-  for (let x = -620; x <= 620; x += 40) {
-    for (let z = -620; z <= 620; z += 40) {
-      if (Math.max(Math.abs(x), Math.abs(z)) < HALF + 40 || rand() < 0.45) continue;
-      const w = 16 + rand() * 18;
-      const d = 16 + rand() * 18;
-      const nearness = 1 - (Math.max(Math.abs(x), Math.abs(z)) - (HALF + 40)) / 320;
-      const h = 20 + rand() * (40 + 100 * nearness);
-      const mat: ArenaMaterial = rand() < 0.4 ? 'glass' : rand() < 0.5 ? 'brick' : 'facade';
-      out.push({ pos: [x + (rand() - 0.5) * 8, h / 2, z + (rand() - 0.5) * 8], size: [w, h, d], mat });
-    }
-  }
+  // Beyond the boundary: the coastal hills and the sea (ADR-0054), drawn by the client's scenery.
   return out;
 }
 
@@ -579,9 +974,23 @@ export const DOWNTOWN: MapDef = {
   name: 'Downtown',
   halfSize: HALF,
   boxes: build(),
-  decor: buildDecor(),
+  decor: [...buildDecor(), ...DECOR],
   spawns: SPAWNS,
   ground: 'asphalt',
-  movers: traffic(),
+  // An evening on the coast (ADR-0054): the sun low over the sea to the east, warm light, long views.
+  backdrop: 'coast',
+  atmosphere: {
+    fog: '#dfe7ec',
+    fogNear: 450,
+    fogFar: 2100,
+    hemiSky: '#bcdcff',
+    hemiGround: '#a39580',
+    hemiIntensity: 1.2,
+    sunIntensity: 3.1,
+    sunDirection: [0.9, 0.38, 0.12],
+    sunColor: '#ffdcb4',
+  },
+  movers: [...traffic(), ...raceCars(), airliner()],
   explosives: EXPLOSIVES,
+  holes: HOLES,
 };

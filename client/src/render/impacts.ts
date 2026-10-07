@@ -17,6 +17,8 @@ const SURFACE_OF: Record<ArenaMaterial, Surface> = {
   white: 'painted',
   pad: 'concrete',
   facade: 'concrete',
+  trim: 'concrete',
+  sand: 'dirt',
   glass: 'glass',
   brick: 'brick',
   roof: 'concrete',
@@ -40,6 +42,7 @@ const SURFACE_OF: Record<ArenaMaterial, Surface> = {
 /** Chip and dust colors per painted material. */
 const PAINT_COLOR: Partial<Record<ArenaMaterial, string>> = {
   white: '#e8e6e0',
+  trim: '#e6e0d4',
   paint: '#d9d4c8',
   gridRed: '#e0473c',
   gridBlue: '#3c78e0',
@@ -71,7 +74,7 @@ export class SurfaceLookup {
   private readonly hit: SurfaceHit = { surface: 'none', normal: new THREE.Vector3(), color: null };
 
   setMap(map: MapDef): void {
-    this.colliders = buildColliders(map.boxes);
+    this.colliders = buildColliders(map.boxes, map.holes);
     this.mats = new Map(this.colliders.map((c, i) => [c, map.boxes[i]!.mat]));
     this.ground = GROUND[map.ground];
   }

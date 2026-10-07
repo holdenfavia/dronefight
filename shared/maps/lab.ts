@@ -74,7 +74,7 @@ function levelTower(out: ArenaBox[], decor: ArenaBox[], x: number, z: number, le
   const shaftY0 = level >= 3 ? podiumH : 0;
   const shaftH = towerTop - shaftY0;
   e(out, [x, shaftY0 + shaftH / 2, z], level >= 3 ? [w - 1.4, shaftH, w - 1.4] : [w, shaftH, w], 'glass');
-  if (level >= 2) for (let f = (level >= 3 ? podium : 0) + 1; f <= towerTop / floorH; f++) e(out, [x, f * floorH, z], [w + 0.8, 0.45, w + 0.8], 'facade');
+  if (level >= 2) for (let f = (level >= 3 ? podium : 0) + 1; f <= towerTop / floorH; f++) e(out, [x, f * floorH, z], [w + 0.8, 0.45, w + 0.8], 'trim');
 
   // --- Pilasters (4+) and window sills / mullions (5): visual only.
   if (level >= 4) {
@@ -130,7 +130,7 @@ function levelTower(out: ArenaBox[], decor: ArenaBox[], x: number, z: number, le
     e(out, [x, towerTop + 0.3, z], [w + 0.8, 0.6, w + 0.8], 'roof');
     const upH = topH - towerTop;
     e(out, [x, towerTop + upH / 2, z], [upW, upH, upW], 'glass');
-    for (let f = setback + 1; f <= floors; f++) e(out, [x, f * floorH, z], [upW + 0.8, 0.45, upW + 0.8], 'facade');
+    for (let f = setback + 1; f <= floors; f++) e(out, [x, f * floorH, z], [upW + 0.8, 0.45, upW + 0.8], 'trim');
     for (const s of [-1, 1]) {
       e(out, [x, towerTop + 1.2, z + s * (half + 0.2)], [w + 0.8, 1.2, 0.15], 'steel');
       e(out, [x + s * (half + 0.2), towerTop + 1.2, z], [0.15, 1.2, w + 0.8], 'steel');

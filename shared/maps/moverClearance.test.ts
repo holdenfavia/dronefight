@@ -7,8 +7,14 @@ import type { ArenaBox } from './types.js';
 
 /** Moving props must never drive or ride through anything solid, or over a spawn pad (ADR-0020). */
 
+const matrices = new WeakMap<ArenaBox, ReturnType<typeof eulerXYZMatrix>>();
+
 function inside(box: ArenaBox, p: V3): boolean {
-  const m = eulerXYZMatrix(...(box.rot ?? [0, 0, 0]));
+  // Cheap reject first: farther than the box's half-diagonal.
+  const r2 = (box.size[0] ** 2 + box.size[1] ** 2 + box.size[2] ** 2) / 4;
+  if ((p[0] - box.pos[0]) ** 2 + (p[1] - box.pos[1]) ** 2 + (p[2] - box.pos[2]) ** 2 > r2) return false;
+  let m = matrices.get(box);
+  if (!m) matrices.set(box, (m = eulerXYZMatrix(...(box.rot ?? [0, 0, 0]))));
   const d = [p[0] - box.pos[0], p[1] - box.pos[1], p[2] - box.pos[2]];
   const lx = m[0]! * d[0]! + m[3]! * d[1]! + m[6]! * d[2]!;
   const ly = m[1]! * d[0]! + m[4]! * d[1]! + m[7]! * d[2]!;
@@ -45,7 +51,8 @@ for (const id of MAP_ORDER) {
           }
         }
       }
-    });
+      // Downtown (ADR-0054) has thousands of boxes and many movers.
+    }, 30_000);
 
     it('ground vehicles keep clear of spawn pads', () => {
       const pos: V3 = [0, 0, 0];

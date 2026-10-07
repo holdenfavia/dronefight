@@ -144,7 +144,8 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [ ] Fly the bigger maps together; fill any empty stretches; tune spawns
 - [x] Downtown buildings at level-3 detail; spatial collider grid; grid textures default (ADR-0053)
 - [ ] Remove the Detail test map when done comparing
-- [ ] Fill Downtown's empty outer areas (ideas pending)
+- [x] Fill Downtown's empty outer areas: airport, Central Park, racetrack, megaproject pit; coastal backdrop (ADR-0054)
+- [ ] Play Downtown (main map) together: spawn spots, airliner and race car feel, pit fights
 - [x] Touch flies like a radio: no altitude hold, Acro default (ADR-0050)
 - [ ] Paint and pilot name shown to others
 - [ ] Unlock track: levels unlock bodies, modules and paints

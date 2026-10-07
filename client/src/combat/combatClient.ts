@@ -54,7 +54,7 @@ export interface CombatSounds {
 
 export class CombatClient {
   private map: MapDef = getMap(DEFAULT_MAP);
-  private colliders = buildColliders(this.map.boxes);
+  private colliders = buildColliders(this.map.boxes, this.map.holes);
   private fireCooldown = 0;
   private toast: { text: string; until: number } | null = null;
   private respawnDeadline: number | null = null;
@@ -264,7 +264,7 @@ export class CombatClient {
   /** Rounds stop at this map's walls; respawns use its spawn list (ADR-0012). */
   setMap(map: MapDef): void {
     this.map = map;
-    this.colliders = buildColliders(map.boxes);
+    this.colliders = buildColliders(map.boxes, map.holes);
   }
 
   /** A match is running: the server owns deaths and respawns. */

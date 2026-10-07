@@ -21,6 +21,8 @@ export const PROP_STATS: Record<PropKind, PropStats> = {
   tractor: { hp: 200, blastRadius: 8, blastDamage: 50, effect: 'fire' },
   trailer: { hp: 80, blastRadius: 6, blastDamage: 35, effect: 'fire' },
   coasterCar: { hp: 60, blastRadius: 6, blastDamage: 35, effect: 'fire' },
+  // The Downtown airliner (ADR-0054): tough, and a big fireball.
+  plane: { hp: 600, blastRadius: 16, blastDamage: 60, effect: 'fire' },
   fuel: { hp: 25, blastRadius: 7, blastDamage: 50, effect: 'fire' },
   propane: { hp: 50, blastRadius: 9, blastDamage: 60, effect: 'fire' },
   water: { hp: 60, blastRadius: 0, blastDamage: 0, effect: 'water' },

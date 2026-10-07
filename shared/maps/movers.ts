@@ -18,7 +18,7 @@ export interface Timing {
   distances: number[];
 }
 
-export type MoverKind = 'car' | 'tractor' | 'trailer' | 'coasterCar';
+export type MoverKind = 'car' | 'tractor' | 'trailer' | 'coasterCar' | 'plane';
 
 export interface MoverDef {
   kind: MoverKind;

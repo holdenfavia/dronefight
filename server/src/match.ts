@@ -167,7 +167,7 @@ export class Match {
   ) {
     this.options = typeof mapOrOptions === 'string' ? cleanRoomOptions(null, mapOrOptions) : mapOrOptions;
     this.map = getMap(this.options.map);
-    this.colliders = buildColliders(this.map.boxes);
+    this.colliders = buildColliders(this.map.boxes, this.map.holes);
     this.props = new PropField(this.map);
   }
 
@@ -186,7 +186,7 @@ export class Match {
     const options = cleanRoomOptions(raw, this.options.map);
     if (options.map !== this.map.id) {
       this.map = getMap(options.map);
-      this.colliders = buildColliders(this.map.boxes);
+      this.colliders = buildColliders(this.map.boxes, this.map.holes);
       this.props = new PropField(this.map);
       this.bullets = [];
       this.missiles = [];

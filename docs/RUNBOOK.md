@@ -276,6 +276,10 @@ Check the network HUD (top right). It shows ping and **delay**: how far behind r
 - "Pilot signal lost" means no update for 0.6 s (their tab is in the background, or their connection stalled). When updates resume, the drone snaps to its current position. Missed time is never replayed.
 - Browsers pause background tabs. If your friend switches away from the game, their drone freezes for you until they come back.
 
+### FPS reads low in a hidden window
+
+A hidden or background window (including the Claude app's browser pane when it's collapsed) throttles frames, so the FPS counter falls steadily even though nothing is wrong. Judge performance only with the game visible and in front, and with no second copy of the game open in another tab.
+
 ## Deploy (Fly.io, ADR-0021)
 
 One container serves the game page and the room server on one URL. Config: `Dockerfile`, `fly.toml`, `.dockerignore`.

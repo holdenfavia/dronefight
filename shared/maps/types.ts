@@ -1,4 +1,5 @@
 import type { MoverDef } from './movers.js';
+import type { GroundHole } from './ground.js';
 
 // Map data shared by client and server (ADR-0012). Rendering, flight collisions and server-side
 // bullet checks are all generated from the same boxes, so what you see is exactly what you hit.
@@ -10,6 +11,10 @@ export type ArenaMaterial =
   | 'white'
   | 'pad'
   | 'facade'
+  /** Plain painted trim (ledges, parapets): no windows (ADR-0054). */
+  | 'trim'
+  /** Beach sand (ADR-0054). */
+  | 'sand'
   | 'glass'
   | 'brick'
   | 'roof'
@@ -82,6 +87,13 @@ export interface MapDef {
   explosives?: readonly ExplosiveDef[];
   /** Lighting and fog for enclosed maps (ADR-0048); omitted = open sky. */
   atmosphere?: Atmosphere;
+  /**
+   * What lies beyond the boundary: rings of mountains (the default), or a coast (ADR-0054): forested hills
+   * on the land sides and the sea toward +X, where the sun sets.
+   */
+  backdrop?: 'mountains' | 'coast';
+  /** Holes in the ground (ADR-0054): pits you can fly down into. */
+  holes?: readonly GroundHole[];
 }
 
 /** A map's own light and air (ADR-0048), e.g. a cave: fog color and range, ambient light, sun strength. */
@@ -93,4 +105,7 @@ export interface Atmosphere {
   hemiGround: string;
   hemiIntensity: number;
   sunIntensity: number;
+  /** Direction toward the sun (any length); default high in the south-west. A low sun is an evening (ADR-0054). */
+  sunDirection?: readonly [number, number, number];
+  sunColor?: string;
 }

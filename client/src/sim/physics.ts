@@ -1,7 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Euler, Quaternion } from 'three';
 import { SIM } from '../config';
-import type { ArenaBox } from '../../../shared/maps';
+import { groundRects, type ArenaBox, type GroundHole } from '../../../shared/maps';
 
 export type Rapier = typeof RAPIER;
 
@@ -21,20 +21,22 @@ const euler = new Euler();
 const quat = new Quaternion();
 const DEG = Math.PI / 180;
 
-/** The ground: one big slab, created once. */
-export function addGround({ rapier, world }: Physics, halfSize: number): void {
-  world.createCollider(rapier.ColliderDesc.cuboid(halfSize, 1, halfSize).setTranslation(0, -1, 0).setFriction(0.8));
-}
+/** How far the ground reaches (m): well past every map's boundary. */
+const GROUND_HALF = 1200;
 
-/** Fixed colliders for a map's boxes, replaceable when the map changes (ADR-0012). */
+/** Fixed colliders for a map's boxes and its ground (with any holes, ADR-0054), replaceable when the map changes (ADR-0012). */
 export class ArenaColliders {
   private colliders: RAPIER.Collider[] = [];
 
   constructor(private readonly physics: Physics) {}
 
-  set(boxes: readonly ArenaBox[]): void {
+  set(boxes: readonly ArenaBox[], holes: readonly GroundHole[] = []): void {
     const { rapier, world } = this.physics;
     for (const c of this.colliders) world.removeCollider(c, false);
+    // The ground: slabs covering everything but the holes, top face at y = 0.
+    const ground = groundRects(GROUND_HALF, holes).map(([x0, z0, x1, z1]) =>
+      world.createCollider(rapier.ColliderDesc.cuboid((x1 - x0) / 2, 1, (z1 - z0) / 2).setTranslation((x0 + x1) / 2, -1, (z0 + z1) / 2).setFriction(0.8)),
+    );
     this.colliders = boxes.map((box) => {
       const desc = rapier.ColliderDesc.cuboid(box.size[0] / 2, box.size[1] / 2, box.size[2] / 2)
         .setTranslation(box.pos[0], box.pos[1], box.pos[2])
@@ -45,5 +47,6 @@ export class ArenaColliders {
       }
       return world.createCollider(desc);
     });
+    this.colliders.push(...ground);
   }
 }
