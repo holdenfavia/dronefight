@@ -139,6 +139,9 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
         arena.add(mesh);
       }
     }
+    // Outlines on boxes that ask for them (detailed buildings): every edge, merged into one line mesh.
+    const edged = [...map.boxes, ...map.decor].filter((b) => b.edge && b.mat !== 'invisible');
+    if (edged.length) arena.add(new THREE.LineSegments(mergeEdges(edged), edgeMaterial));
     scene.add(arena);
 
     // Fit the shadow camera to this map and re-bake it.
@@ -362,6 +365,32 @@ const unitScale = new THREE.Vector3(1, 1, 1);
 const tmpPos = new THREE.Vector3();
 
 /** Build real-sized boxes with UVs scaled to world metres so textures don't stretch, then merge. */
+/** Dark outlines for detailed buildings: thin, unlit, one draw call per map. */
+const edgeMaterial = new THREE.LineBasicMaterial({ color: '#1a1b1e', transparent: true, opacity: 0.85 });
+
+/** The 12 edges of every box, placed and turned like the box, in one geometry. */
+function mergeEdges(boxes: readonly ArenaBox[]): THREE.BufferGeometry {
+  const unit = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+  const src = unit.getAttribute('position');
+  const out = new Float32Array(boxes.length * src.count * 3);
+  const v = new THREE.Vector3();
+  let k = 0;
+  for (const box of boxes) {
+    const rot = box.rot ?? [0, 0, 0];
+    tmpQuat.setFromEuler(tmpEuler.set(rot[0] * DEG, rot[1] * DEG, rot[2] * DEG));
+    tmpMatrix.compose(tmpPos.set(...box.pos), tmpQuat, new THREE.Vector3(box.size[0], box.size[1], box.size[2]));
+    for (let i = 0; i < src.count; i++) {
+      v.fromBufferAttribute(src, i).applyMatrix4(tmpMatrix);
+      out[k++] = v.x;
+      out[k++] = v.y;
+      out[k++] = v.z;
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(out, 3));
+  return geo;
+}
+
 function mergeBoxes(boxes: readonly ArenaBox[], tileM: number): THREE.BufferGeometry {
   const geos = boxes.map((box) => {
     const [w, h, d] = box.size;

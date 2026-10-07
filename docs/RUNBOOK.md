@@ -153,6 +153,11 @@ Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, s
 - Pick the map with **Map: … ▸** on the Play screen. It applies to solo flying and to rooms you create; people joining get the room's map.
 - Mountains, clouds and the sun glow are in `client/src/world/scenery.ts`; building textures in `textures.ts`.
 
+### Detail test map (temporary)
+
+- **Play → Map → Detail test**: one high-detail tower (ledges, balconies, fire escape, setback terrace, rooftop helipad; outlined edges) next to a plain box tower of the same size. Solid detail is in `boxes` (collided, landable), fine detail (pilasters, sills, mullions) in `decor` (drawn only). `shared/maps/lab.ts`. Remove it (and the `'lab'` map id) once Downtown's detail is decided.
+- Outlines: any box with `edge: true` gets its edges drawn (one merged line mesh per map, `mergeEdges` in `client/src/world/scene.ts`).
+
 ### Bigger maps (ADR-0049)
 
 - Downtown, Yard, Playground and Cavern are 3x their original area. Landmarks live in their own functions per map (`outskirts`, `harbor`, `fairground`, `lake`, `mine`…). Shapes: `beam`/`polyBeam`/`hoop`/`water` in `shared/maps/builders.ts`. The drop tower is a mover with a fixed `heading` and `dropTowerTiming` (`shared/maps/movers.ts`).
