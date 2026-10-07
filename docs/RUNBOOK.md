@@ -155,7 +155,7 @@ Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, s
 
 ### Detail test map (temporary)
 
-- **Play → Map → Detail test**: one high-detail tower (ledges, balconies, fire escape, setback terrace, rooftop helipad; outlined edges) next to a plain box tower of the same size. Solid detail is in `boxes` (collided, landable), fine detail (pilasters, sills, mullions) in `decor` (drawn only). `shared/maps/lab.ts`. Remove it (and the `'lab'` map id) once Downtown's detail is decided.
+- **Play → Map → Detail test**: the same tower at five levels of detail, 1 (left, plain) to 5 (right, everything); a post of orange cubes shows each level. Per tower: level 1 = 2 pieces / 24 triangles, 2 = 26 / 312, 3 = 120 / 1,440, 4 = 230 / 2,760, 5 = 776 / 9,312. Solid detail is in `boxes` (collided, landable), fine detail (pilasters, sills, mullions) in `decor` (drawn only). `shared/maps/lab.ts`. Remove it (and the `'lab'` map id) once Downtown's detail is decided.
 - Outlines: any box with `edge: true` gets its edges drawn (one merged line mesh per map, `mergeEdges` in `client/src/world/scene.ts`).
 
 ### Bigger maps (ADR-0049)
