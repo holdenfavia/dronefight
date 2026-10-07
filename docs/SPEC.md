@@ -39,7 +39,7 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 ## Controls
 
 - Real radios through the browser Gamepad API, always behind mapping and calibration (ADR-0006). Primary test device: **DJI FPV Remote Controller 2** over USB-C. Also Xbox/PlayStation/Logitech gamepads (guessed layouts), touch on iPad/iPhone that flies like a radio (fixed sticks, throttle stays put, corner triggers, second-finger fire; no help unless turned on, ADR-0044, ADR-0050), and keyboard (testing only).
-- Inputs: sticks, arm, Fire, Special, Switch weapon. Settings persist per browser. F fullscreen, M mute, Esc pause menu (on touch, the hamburger button top middle).
+- Inputs: sticks, arm, Fire, Special, Switch weapon. Settings persist per browser. F fullscreen, M mute, Esc or the menu button (top middle, every input) opens the pause menu.
 - Near the map edge an orange grid fades in on the invisible boundary wall.
 
 ## Multiplayer and hosting
@@ -47,6 +47,7 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 - Node WebSocket server with rooms by code; one Fly.io machine (Dallas) serves the page and the rooms from one URL and **sleeps when nobody is connected** (ADR-0021).
 - Netcode: **latest state wins**. Remote drones render from a fixed ~100 ms interpolation buffer; stale snapshots are dropped, never replayed (ADR-0004). On-screen ping and remote delay.
 - **The server decides** hits, damage, kills, prop destruction, grenades and missile validity, with ≤ 250 ms lag compensation. Clients decide only their own flight.
+- Pilots away for **5 minutes** are removed from the room, after a 30-second warning (ADR-0051).
 
 ## Combat (ADR-0009 as amended)
 

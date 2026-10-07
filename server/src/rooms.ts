@@ -29,6 +29,10 @@ interface Player {
   xp: number;
   /** Still connected (identify() is asynchronous). */
   connected: boolean;
+  /** Away detection (ADR-0051): when they last did something, where their drone was then, and whether they've been warned. */
+  activeAt: number;
+  activePos: readonly number[] | null;
+  afkWarned: boolean;
 }
 
 interface Room {
@@ -62,7 +66,7 @@ export class RoomManager {
   ) {}
 
   connect(conn: Connection): void {
-    const player: Player = { id: `p${this.nextId++}`, conn, room: null, userId: null, xp: 0, connected: true };
+    const player: Player = { id: `p${this.nextId++}`, conn, room: null, userId: null, xp: 0, connected: true, activeAt: this.now(), activePos: null, afkWarned: false };
     this.players.set(conn, player);
   }
 
@@ -78,6 +82,7 @@ export class RoomManager {
   handle(conn: Connection, msg: ClientMessage): void {
     const player = this.players.get(conn);
     if (!player) return;
+    this.noteActivity(player, msg);
     switch (msg.t) {
       case 'create':
         this.leaveRoom(player);
@@ -162,6 +167,40 @@ export class RoomManager {
   tick(): void {
     const now = this.now();
     for (const room of this.rooms.values()) room.match.tick(now);
+    this.checkAway(now);
+  }
+
+  /**
+   * Away detection (ADR-0051): flying somewhere (more than NET.afkMoveM from where they last were active),
+   * flying a missile, or anything but state, pings and sign-in counts as being here.
+   */
+  private noteActivity(player: Player, msg: ClientMessage): void {
+    if (msg.t === 'ping' || msg.t === 'auth') return;
+    if (msg.t === 'state') {
+      const p = msg.s.p;
+      const at = player.activePos;
+      const moved = !at || Math.hypot(p[0] - at[0]!, p[1] - at[1]!, p[2] - at[2]!) > NET.afkMoveM;
+      if (!moved && !msg.s.k) return;
+      player.activePos = p;
+    }
+    player.activeAt = this.now();
+    player.afkWarned = false;
+  }
+
+  /** Warn, then remove, pilots who've been away from a room too long (ADR-0051). */
+  private checkAway(now: number): void {
+    for (const room of this.rooms.values()) {
+      for (const player of [...room.players.values()]) {
+        const idle = now - player.activeAt;
+        if (idle >= NET.afkKickMs) {
+          send(player.conn, { t: 'kicked', reason: 'afk' });
+          this.leaveRoom(player);
+        } else if (idle >= NET.afkKickMs - NET.afkWarnMs && !player.afkWarned) {
+          player.afkWarned = true;
+          send(player.conn, { t: 'afk', kickInMs: NET.afkKickMs - idle });
+        }
+      }
+    }
   }
 
   stats(): RoomStats {
@@ -226,6 +265,8 @@ export class RoomManager {
 
   private joinRoom(player: Player, room: Room): void {
     room.players.set(player.id, player);
+    player.activeAt = this.now();
+    player.afkWarned = false;
     player.room = room;
     send(player.conn, { t: 'joined', room: room.code, you: player.id, peers: this.peerIds(room, player), map: room.match.mapId });
     for (const other of room.players.values()) {

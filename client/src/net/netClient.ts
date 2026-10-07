@@ -178,7 +178,13 @@ export class NetClient {
     return this.match?.players.find((p) => p.id === this.you)?.team ?? null;
   }
 
+  /** Away warning (ADR-0051): when you'll be removed unless you move (performance.now()), or null. */
+  afkDeadline: number | null = null;
+  /** Why the server removed you from the room, until the menu has shown it. */
+  kicked: string | null = null;
+
   leave(): void {
+    this.afkDeadline = null;
     this.wantRoom = null;
     this.match = null;
     this.map = null;
@@ -341,6 +347,19 @@ export class NetClient {
         this.remoteShots.push(msg);
         if (this.remoteShots.length > MAX_PENDING_SHOTS) this.remoteShots.shift();
         break;
+      case 'afk':
+        // Away warning (ADR-0051): the game shows a countdown until you move.
+        this.afkDeadline = performance.now() + msg.kickInMs;
+        this.onChange();
+        break;
+      case 'kicked': {
+        // Removed for being away (ADR-0051): out of the room, and don't rejoin it on our own.
+        const room = this.room;
+        this.leave();
+        this.kicked = `You were removed from room ${room ?? ''} for being away for ${Math.round(NET.afkKickMs / 60_000)} minutes.`;
+        this.onChange();
+        break;
+      }
       case 'error':
         this.error = msg.message;
         if (msg.code === 'room-not-found' || msg.code === 'room-full') this.wantRoom = null;

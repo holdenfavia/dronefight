@@ -103,6 +103,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const rig = new CameraRig(settings);
   rig.uptiltOverride = drone.classId === 'wing' ? WING.cameraUptiltDeg : null;
   const hud = new Hud(hudRoot);
+  // The same menu button for every input (keyboard, gamepad, radio): top middle, opens the pause menu.
+  hud.onMenu = () => touch.onPause();
   const remotes = new RemoteDrones(world.scene);
   const net = new NetClient(defaultServerUrl(), () => menu.onNetChange());
   const tracers = new Tracers(world.scene);
@@ -704,6 +706,12 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     wasArmed = drone.armed;
     wasCrashed = drone.crashed;
 
+    // Away warning (ADR-0051): count down until you move; any stick, fire or special clears it.
+    if (net.afkDeadline !== null) {
+      const moving = Math.abs(control.roll) + Math.abs(control.pitch) + Math.abs(control.yaw) > 0.1 || control.fire || control.special;
+      if (moving) net.afkDeadline = null;
+      else combat.notify(`Away? Move within ${Math.max(0, Math.ceil((net.afkDeadline - now) / 1000))} s or you'll leave the room`);
+    }
     const leadNow = training.active ? practiceLead() : pilotLead();
     // Auto-fire (ADR-0044) reads this next frame: the lead circle is on the crosshair.
     input.leadOnTarget = !!leadNow && Math.hypot(leadNow.x - container.clientWidth / 2, leadNow.y - container.clientHeight / 2) < Math.min(container.clientWidth, container.clientHeight) * AUTO_FIRE_RADIUS;

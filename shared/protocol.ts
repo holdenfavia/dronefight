@@ -26,6 +26,13 @@ export const NET = {
   maxBufferedBytes: 16 * 1024,
   /** Free-for-all rooms (ADR-0026). */
   maxPlayersPerRoom: 10,
+  /**
+   * Away from keyboard (ADR-0051): a pilot whose drone hasn't moved this far, and who hasn't fired, used a
+   * special or touched a menu, for afkKickMs is removed from the room; warned afkWarnMs before.
+   */
+  afkKickMs: 5 * 60_000,
+  afkWarnMs: 30_000,
+  afkMoveM: 2,
   pingIntervalMs: 1000,
 } as const;
 
@@ -189,6 +196,10 @@ export type ServerMessage =
   | { t: 'progress'; xp: number }
   /** You earned XP (ADR-0032): how much, for what, and your new total. */
   | { t: 'xp'; gained: number; reason: XpReason; xp: number }
+  /** You've been idle (ADR-0051): you'll be removed from the room in `kickInMs` unless you move. */
+  | { t: 'afk'; kickInMs: number }
+  /** You were removed from the room for being away (ADR-0051). */
+  | { t: 'kicked'; reason: 'afk' }
   /** Prop `i` exploded at `p`, set off by `by` (ADR-0023). */
   | { t: 'prop'; i: number; p: Vec3; by: string | null };
 

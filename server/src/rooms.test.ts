@@ -205,3 +205,42 @@ describe('server over real WebSockets', () => {
     b.ws.close();
   });
 });
+
+describe('away from keyboard (ADR-0051)', () => {
+  it('warns 30 s before, then removes an idle pilot; the others stay', () => {
+    const { rooms, a, b, code, advance } = setup();
+    rooms.handle(b, { t: 'join', room: code });
+    // A keeps flying around; B sits still on the pad.
+    let x = 0;
+    const step = (ms: number) => {
+      for (let t = 0; t < ms; t += 10_000) {
+        advance(10_000);
+        x += 10;
+        rooms.handle(a, { t: 'state', s: { ...drone, p: [x, 5, 0] } });
+        rooms.handle(b, { t: 'state', s: drone });
+        rooms.tick();
+      }
+    };
+    // Their first state counts as arriving (10 s in), so idle time runs from there.
+    step(NET.afkKickMs - NET.afkWarnMs + 10_000);
+    expect(b.last('afk')?.kickInMs).toBeLessThanOrEqual(NET.afkWarnMs);
+    expect(a.last('afk')).toBeUndefined();
+    step(NET.afkWarnMs);
+    expect(b.last('kicked')?.reason).toBe('afk');
+    expect(a.last('peer-left')).toBeDefined();
+    expect(a.last('kicked')).toBeUndefined();
+  });
+
+  it('moving, firing or using the menu counts as being here', () => {
+    const { rooms, a, b, code, advance } = setup();
+    rooms.handle(b, { t: 'join', room: code });
+    for (let i = 0; i < 10; i++) {
+      advance(NET.afkKickMs / 4);
+      rooms.handle(a, { t: 'ready', ready: i % 2 === 0 });
+      rooms.handle(b, { t: 'state', s: { ...drone, p: [i * 5, 1, 0] } });
+      rooms.tick();
+    }
+    expect(a.last('kicked')).toBeUndefined();
+    expect(b.last('kicked')).toBeUndefined();
+  });
+});

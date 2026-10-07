@@ -168,6 +168,17 @@ export class Menu {
 
   /** Network status changed: refresh whatever shows it. */
   onNetChange(): void {
+    // Removed for being away (ADR-0051): back to Play, and say why.
+    if (this.net.kicked) {
+      const why = this.net.kicked;
+      this.net.kicked = null;
+      this.flying = false;
+      this.joining = null;
+      this.callbacks.onLeaveGame();
+      this.show('play');
+      this.updateJoinStatus(why);
+      return;
+    }
     // Match phase changes (ADR-0047): the host started, so everyone's menu closes and the match begins; the
     // match ended and the results are over, so everyone comes back to the pre-match menu.
     const phase = this.net.inRoom ? (this.net.match?.phase ?? null) : null;

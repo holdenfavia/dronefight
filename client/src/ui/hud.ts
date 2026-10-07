@@ -108,6 +108,10 @@ export class Hud {
   private readonly el: Record<El, HTMLElement>;
   private readonly cache = new Map<HTMLElement, string>();
 
+  /** The menu button (top middle): opens the pause menu. Touch has its own in the touch overlay. */
+  onMenu: () => void = () => {};
+  private readonly menuBtn: HTMLElement;
+
   constructor(root: HTMLElement) {
     root.innerHTML = `
       <div class="osd-damage" data-damage></div>
@@ -118,6 +122,7 @@ export class Hud {
       <div class="osd-hitmark" data-hitmark></div>
       <div class="osd-lead" data-lead></div>
       <div class="osd-banner" data-banner></div>
+      <button class="osd-menu-btn" data-menu-btn aria-label="Menu"><span></span><span></span><span></span></button>
       <div class="osd-xp" data-xp></div>
       <div class="osd-markers" data-marker></div>
       <div class="osd-status" data-status></div>
@@ -167,6 +172,8 @@ export class Hud {
       mslTime: q('[data-msl-time]'),
       mslRange: q('[data-msl-range]'),
     };
+    this.menuBtn = q('[data-menu-btn]');
+    this.menuBtn.addEventListener('click', () => this.onMenu());
   }
 
   /** You hit the other pilot: flash the hit marker. */
@@ -200,6 +207,8 @@ export class Hud {
 
   update(info: HudInfo): void {
     const { drone } = info;
+    // Touch shows its own menu button in the touch overlay (ADR-0044).
+    this.menuBtn.hidden = info.source === 'touch';
     this.trainingText = info.training;
     this.set(this.el.thr, `${Math.round(info.throttle * 100)}%`);
     this.set(this.el.spd, `${Math.round(drone.speed * 3.6)} km/h`);

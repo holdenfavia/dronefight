@@ -114,6 +114,11 @@ Numbers: `shared/abilities.ts` (smoke), `shared/missile.ts` (missile flight mode
 
 A switch works as Special: in **Map buttons**, flip the switch on when asked for Special. While it's on, maneuver mode stays on.
 
+### Away from keyboard (ADR-0051)
+
+- Server-side in `RoomManager` (`noteActivity`, `checkAway`): warn at 4:30 idle, remove at 5:00. Moving 2+ m, flying a missile, or any non-state message counts as active. Tune in `NET.afkKickMs` / `afkWarnMs` / `afkMoveM`.
+- The menu button (top middle) is on every input; touch draws its own in the touch overlay.
+
 ### Room settings (ADR-0046)
 
 - **Create room** opens Room settings: map, kills to win, time limit, flight assist (Any / Acro only), allowed drones, weapons, specials. In a room, the host changes them from **Pause → Room settings** or the room screen; Apply restarts the match. Others see them read-only.
