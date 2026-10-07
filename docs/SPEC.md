@@ -61,7 +61,7 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 
 - **Downtown** (default; with a river, bridges, stadium, elevated highway, rail viaduct), **Yard** (industrial; harbor with a container ship, cooling towers, rail yard, wind farm), **Playground** (giant solid-color park with a fairground: drop tower, Ferris wheel, hedge maze; ADR-0019), **Cavern** (one huge cave with tunnels, an underground lake and an old mine; ADR-0048), **Training** (solo, with bots, ADR-0017). Each is 3x its original area, filled with one-of-a-kind landmarks (ADR-0049). The room creator picks.
 - Moving props from a shared clock: Downtown traffic, Playground coaster, Yard tractor (ADR-0020). Destructible props explode when shot, chain, hurt pilots in matches, and return after 30 s (ADR-0023).
-- Settings can switch every map to grid textures. Distant mountains, clouds and sun glow everywhere (in the Cavern, through the roof holes).
+- Grid textures (flat colors with grids) are the default look; Settings can switch to realistic textures (ADR-0053). Downtown buildings have real 3D detail you can land on: ledges, colonnades, balconies, rooftops (ADR-0053). Distant mountains, clouds and sun glow everywhere (in the Cavern, through the roof holes).
 
 ## Art direction (ADR-0007)
 

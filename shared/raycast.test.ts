@@ -1,7 +1,7 @@
 import { Euler, Matrix4 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { MAPS } from './maps/index.js';
-import { buildColliders, eulerXYZMatrix, raycastArena, segmentPointDistance } from './raycast.js';
+import { buildColliders, eulerXYZMatrix, raycastArena, raycastArenaHit, segmentPointDistance } from './raycast.js';
 
 describe('raycast', () => {
   it('matches the rotation matrix Three.js builds', () => {
@@ -39,5 +39,30 @@ describe('raycast', () => {
   it('measures segment-to-point distance', () => {
     expect(segmentPointDistance(0, 0, 0, 10, 0, 0, 5, 1, 0)).toBeCloseTo(1);
     expect(segmentPointDistance(0, 0, 0, 10, 0, 0, 12, 0, 0)).toBeCloseTo(2);
+  });
+});
+
+describe('spatial grid (ADR-0053)', () => {
+  it('finds exactly what testing every collider finds, on every map', async () => {
+    const { MAPS } = await import('./maps/index.js');
+    const { mulberry32 } = await import('./maps/builders.js');
+    for (const map of Object.values(MAPS)) {
+      const gridded = buildColliders(map.boxes);
+      const plain = [...gridded]; // a copy has no grid: the brute-force answer
+      const rand = mulberry32(7);
+      for (let k = 0; k < 1500; k++) {
+        const o: [number, number, number] = [(rand() * 2 - 1) * map.halfSize, rand() * 80, (rand() * 2 - 1) * map.halfSize];
+        let d = [rand() * 2 - 1, rand() * 2 - 1, rand() * 2 - 1];
+        // Some straight-down and straight-along-an-axis rays too.
+        if (k % 50 === 0) d = [0, -1, 0];
+        if (k % 50 === 1) d = [1, 0, 0];
+        const len = Math.hypot(d[0]!, d[1]!, d[2]!) || 1;
+        const [dx, dy, dz] = [d[0]! / len, d[1]! / len, d[2]! / len];
+        expect(raycastArena(gridded, ...o, dx, dy, dz, 300)).toBeCloseTo(raycastArena(plain, ...o, dx, dy, dz, 300), 6);
+        const a = raycastArenaHit(gridded, ...o, dx, dy, dz, 300);
+        const b = raycastArenaHit(plain, ...o, dx, dy, dz, 300);
+        expect(a?.dist ?? null).toBe(b?.dist ?? null);
+      }
+    }
   });
 });

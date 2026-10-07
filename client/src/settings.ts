@@ -24,7 +24,15 @@ export interface Settings {
   touch: TouchSettings;
   /** The match settings you last created a room with (ADR-0046). */
   roomOptions: RoomOptions;
+  /** Which one-time setting changes have been applied (see loadSettings). */
+  settingsVersion: number;
 }
+
+/**
+ * One-time changes to everyone's saved settings: 1 = grid textures switched on for everyone, even if they'd
+ * turned them off (ADR-0053).
+ */
+const SETTINGS_VERSION = 1;
 
 /** Touch controls (ADR-0044): saved per device. */
 export interface TouchSettings {
@@ -111,7 +119,8 @@ export function defaultSettings(): Settings {
       fovHorizontalDeg: CAMERA_DEFAULTS.fovHorizontalDeg,
       view: 'fpv',
     },
-    graphics: { shadows: true, showDebug: true, gridTextures: false },
+    // Simplified grid textures are the default look (ADR-0053).
+    graphics: { shadows: true, showDebug: true, gridTextures: true },
     audio: { volume: 0.7, own: 0.8, others: 1, muted: false },
     map: DEFAULT_MAP,
     drone: DEFAULT_DRONE,
@@ -119,6 +128,7 @@ export function defaultSettings(): Settings {
     flightAssist: 'acro',
     touch: { ...DEFAULT_TOUCH },
     roomOptions: defaultRoomOptions(DEFAULT_MAP),
+    settingsVersion: SETTINGS_VERSION,
   };
 }
 
@@ -126,6 +136,8 @@ export function defaultSettings(): Settings {
 export function loadSettings(): Settings {
   const d = defaultSettings();
   const saved = loadJson<Partial<Settings>>(KEY, {});
+  // Version 1 (ADR-0053): grid textures on for everyone, once; after that your choice sticks.
+  if ((saved.settingsVersion ?? 0) < 1 && saved.graphics) saved.graphics = { ...saved.graphics, gridTextures: true };
   return {
     rates: {
       roll: { ...d.rates.roll, ...saved.rates?.roll },
@@ -134,6 +146,7 @@ export function loadSettings(): Settings {
     },
     camera: { ...d.camera, ...saved.camera, ...fovMigration(saved.camera?.fovHorizontalDeg) },
     graphics: { ...d.graphics, ...saved.graphics },
+    settingsVersion: SETTINGS_VERSION,
     audio: { ...d.audio, ...saved.audio },
     map: isMapId(saved.map) ? saved.map : d.map,
     drone: isDroneClassId(saved.drone) ? saved.drone : d.drone,

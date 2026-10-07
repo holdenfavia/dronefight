@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { buildColliders, type BoxCollider } from '../../../shared/raycast';
+import { buildColliders, collidersNear, type BoxCollider } from '../../../shared/raycast';
 import type { ArenaMaterial, MapDef } from '../../../shared/maps';
 import type { Particles } from './particles';
 
@@ -66,13 +66,13 @@ const EPS = 0.06;
 
 export class SurfaceLookup {
   private colliders: BoxCollider[] = [];
-  private mats: ArenaMaterial[] = [];
+  private mats = new Map<BoxCollider, ArenaMaterial>();
   private ground: Surface = 'concrete';
   private readonly hit: SurfaceHit = { surface: 'none', normal: new THREE.Vector3(), color: null };
 
   setMap(map: MapDef): void {
     this.colliders = buildColliders(map.boxes);
-    this.mats = map.boxes.map((b) => b.mat);
+    this.mats = new Map(this.colliders.map((c, i) => [c, map.boxes[i]!.mat]));
     this.ground = GROUND[map.ground];
   }
 
@@ -81,8 +81,8 @@ export class SurfaceLookup {
     const h = this.hit;
     h.color = null;
     let best = Infinity;
-    for (let i = 0; i < this.colliders.length; i++) {
-      const b = this.colliders[i]!;
+    // Only what's in this spot's grid column (ADR-0053).
+    for (const b of collidersNear(this.colliders, p.x, p.z)) {
       const px = p.x - b.cx;
       const py = p.y - b.cy;
       const pz = p.z - b.cz;
@@ -100,7 +100,7 @@ export class SurfaceLookup {
       const face = Math.min(gx, gy, gz);
       if (face >= best) continue;
       best = face;
-      const mat = this.mats[i]!;
+      const mat = this.mats.get(b)!;
       h.surface = SURFACE_OF[mat];
       h.color = PAINT_COLOR[mat] ?? null;
       const axis = face === gx ? 0 : face === gy ? 1 : 2;

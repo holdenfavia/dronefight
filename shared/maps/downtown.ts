@@ -46,34 +46,89 @@ function pick<T>(rand: Rand, items: readonly T[]): T {
   return items[Math.floor(rand() * items.length)] ?? (items[0] as T);
 }
 
-/** A building with a roof cap and rooftop clutter. Tall ones get a setback upper tier. */
+/**
+ * A building at "level 3" detail (ADR-0053, chosen on the Detail test map): a colonnade with a recessed
+ * glass storefront at street level, a ledge at every floor, balconies on one street face, a setback upper
+ * tier with a terrace railing on tall towers, a rooftop parapet and penthouse, AC units, sometimes a water
+ * tank or a billboard. Everything is outlined. The random choices are drawn in the same order as before, so
+ * the city keeps its layout.
+ */
 function building(out: ArenaBox[], rand: Rand, x: number, z: number, w: number, d: number, height: number, mat: ArenaMaterial): void {
+  const e = (pos: [number, number, number], size: [number, number, number], m: ArenaMaterial, rot?: [number, number, number]) =>
+    out.push(rot ? { pos, size, mat: m, rot, edge: true } : { pos, size, mat: m, edge: true });
   const h = Math.round(height / FLOOR) * FLOOR;
-  let top = h;
-  if (h >= 44) {
-    const lower = Math.round((h * 0.6) / FLOOR) * FLOOR;
-    out.push({ pos: [x, lower / 2, z], size: [w, lower, d], mat });
-    out.push({ pos: [x, lower + 0.2, z], size: [w + 0.4, 0.4, d + 0.4], mat: 'roof' });
-    const uw = w * 0.7;
-    const ud = d * 0.7;
-    out.push({ pos: [x, lower + (h - lower) / 2, z], size: [uw, h - lower, ud], mat });
-    w = uw;
-    d = ud;
-  } else {
-    out.push({ pos: [x, h / 2, z], size: [w, h, d], mat });
+  const ledgeMat: ArenaMaterial = mat === 'brick' ? 'concrete' : 'facade';
+  // Street level: a colonnade and a recessed storefront (two floors), on anything taller than three floors.
+  const podium = h >= 12 ? 2 * FLOOR : 0;
+  if (podium) {
+    e([x, podium / 2, z], [w - 2, podium, d - 2], 'glass');
+    for (const [len, along] of [[w, 'x'], [d, 'z']] as const) {
+      const n = Math.max(2, Math.round(len / 5));
+      for (let k = 0; k <= n; k++) {
+        const t = -len / 2 + (len * k) / n;
+        for (const s of [-1, 1]) {
+          const [cx, cz] = along === 'x' ? [x + t, z + s * (d / 2)] : [x + s * (w / 2), z + t];
+          e([cx, podium / 2, cz], [0.8, podium, 0.8], 'white');
+        }
+      }
+    }
+    e([x, podium + 0.3, z], [w + 1.2, 0.6, d + 1.2], 'concrete');
   }
-  out.push({ pos: [x, top + 0.2, z], size: [w + 0.4, 0.4, d + 0.4], mat: 'roof' });
-  top += 0.4;
+  // The shaft (two tiers on tall towers), with a ledge at every floor.
+  const tiered = h >= 44;
+  const lower = tiered ? Math.round((h * 0.6) / FLOOR) * FLOOR : h;
+  const shaft = (y0: number, y1: number, sw: number, sd: number) => {
+    e([x, (y0 + y1) / 2, z], [sw - (podium ? 1.4 : 0), y1 - y0, sd - (podium ? 1.4 : 0)], mat);
+    for (let y = y0 + FLOOR; y <= y1 - 0.01; y += FLOOR) e([x, y, z], [sw + 0.8, 0.45, sd + 0.8], ledgeMat);
+  };
+  shaft(podium, lower, w, d);
+  let topW = w;
+  let topD = d;
+  if (tiered) {
+    e([x, lower + 0.2, z], [w + 0.8, 0.4, d + 0.8], 'roof');
+    for (const s of [-1, 1]) {
+      e([x, lower + 1, z + s * (d / 2 + 0.2)], [w + 0.8, 1.2, 0.15], 'steel');
+      e([x + s * (w / 2 + 0.2), lower + 1, z], [0.15, 1.2, d + 0.8], 'steel');
+    }
+    topW = w * 0.7;
+    topD = d * 0.7;
+    shaft(lower, h, topW, topD);
+  }
+  // Balconies every other floor on one street face (north or south), below any setback.
+  if (h >= 16) {
+    const face = (Math.round(x + z) / 4) % 2 === 0 ? 1 : -1;
+    const per = Math.max(1, Math.floor((w - 4) / 9));
+    for (let y = podium + FLOOR; y < lower - 2; y += FLOOR * 2) {
+      for (let k = 0; k < per; k++) {
+        const bx = x - ((per - 1) * 9) / 2 + k * 9;
+        const fz = z + face * (d / 2 + 1);
+        e([bx, y + 0.25, fz], [4, 0.3, 2], 'concrete');
+        e([bx, y + 0.85, fz + face * 0.95], [4, 1, 0.1], 'steel');
+        for (const s of [-1, 1]) e([bx + s * 1.95, y + 0.85, fz], [0.1, 1, 2], 'steel');
+      }
+    }
+  }
+  // Roof: cap and parapet.
+  e([x, h + 0.2, z], [topW + 0.4, 0.4, topD + 0.4], 'roof');
+  for (const s of [-1, 1]) {
+    e([x, h + 0.9, z + s * (topD / 2)], [topW + 0.4, 1, 0.3], ledgeMat);
+    e([x + s * (topW / 2), h + 0.9, z], [0.3, 1, topD + 0.4], ledgeMat);
+  }
+  const top = h + 0.4;
+  w = topW;
+  d = topD;
 
   // Air-conditioning units.
   const units = 1 + Math.floor(rand() * 3);
   for (let i = 0; i < units; i++) {
     const ux = x + (rand() - 0.5) * (w - 4);
     const uz = z + (rand() - 0.5) * (d - 4);
-    out.push({ pos: [ux, top + 0.6, uz], size: [2.2, 1.2, 1.6], mat: 'steel' });
+    e([ux, top + 0.6, uz], [2.2, 1.2, 1.6], 'steel');
   }
-  // Water tank on legs, on shorter buildings.
+  // Water tank on legs, on shorter buildings; otherwise a penthouse.
+  let tank = false;
   if (h < 40 && rand() < 0.35) {
+    tank = true;
     const tx = x + (rand() - 0.5) * (w - 6);
     const tz = z + (rand() - 0.5) * (d - 6);
     for (const [lx, lz] of [[-1.2, -1.2], [1.2, -1.2], [-1.2, 1.2], [1.2, 1.2]] as const) {
@@ -82,13 +137,14 @@ function building(out: ArenaBox[], rand: Rand, x: number, z: number, w: number, 
     // The tank itself bursts when shot (ADR-0023); its legs stay.
     EXPLOSIVES.push({ kind: 'water', pos: [tx, top + 4.8, tz], size: [3.4, 3.6, 3.4], color: '#8a5a3c' });
   }
+  if (!tank && w >= 14 && d >= 14) e([x - w / 4, top + 1.8, z - d / 4], [6, 3.6, 5], 'concrete');
   // Rooftop billboard: a white panel in an orange frame.
   if (rand() < 0.22) {
     const bz = z + (rand() < 0.5 ? -1 : 1) * (d / 2 - 1.5);
-    out.push({ pos: [x - 4, top + 1.5, bz], size: [BEAM, 3, BEAM], mat: 'orange' });
-    out.push({ pos: [x + 4, top + 1.5, bz], size: [BEAM, 3, BEAM], mat: 'orange' });
-    out.push({ pos: [x, top + 5, bz], size: [11, 4.4, 0.4], mat: 'orange' });
-    out.push({ pos: [x, top + 5, bz], size: [10, 3.6, 0.5], mat: 'white' });
+    e([x - 4, top + 1.5, bz], [BEAM, 3, BEAM], 'orange');
+    e([x + 4, top + 1.5, bz], [BEAM, 3, BEAM], 'orange');
+    e([x, top + 5, bz], [11, 4.4, 0.4], 'orange');
+    e([x, top + 5, bz], [10, 3.6, 0.5], 'white');
   }
 }
 

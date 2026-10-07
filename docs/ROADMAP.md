@@ -142,7 +142,9 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [ ] Fly the Cavern together and tune light, formations and tunnel sizes
 - [x] Maps 3x the area with landmarks (ADR-0049)
 - [ ] Fly the bigger maps together; fill any empty stretches; tune spawns
-- [ ] Decide Downtown building detail from the Detail test map; then a server collider grid, detail pass, and remove the test map
+- [x] Downtown buildings at level-3 detail; spatial collider grid; grid textures default (ADR-0053)
+- [ ] Remove the Detail test map when done comparing
+- [ ] Fill Downtown's empty outer areas (ideas pending)
 - [x] Touch flies like a radio: no altitude hold, Acro default (ADR-0050)
 - [ ] Paint and pilot name shown to others
 - [ ] Unlock track: levels unlock bodies, modules and paints
