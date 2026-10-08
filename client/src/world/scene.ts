@@ -473,26 +473,44 @@ function mergeEdges(boxes: readonly ArenaBox[]): THREE.BufferGeometry {
   return geo;
 }
 
+/**
+ * Real-sized boxes, placed and merged. Tiled materials get world-space UVs (each face projected onto the world
+ * plane it faces most), so two boxes of the same material that overlap in the same plane (track segments joining,
+ * stadium tiers, rock ledges) draw the very same texels there. Per-box UVs gave each box its own grid, and where
+ * two overlapped at the same depth the GPU showed a flickering mix of both (z-fighting no depth buffer can fix).
+ */
 function mergeBoxes(boxes: readonly ArenaBox[], tileM: number): THREE.BufferGeometry {
   const geos = boxes.map((box) => {
     const [w, h, d] = box.size;
     const geo = new THREE.BoxGeometry(w, h, d);
-    if (tileM > 0) {
-      // BoxGeometry faces are ordered +x, -x, +y, -y, +z, -z with 4 vertices each.
-      const faceSize: [number, number][] = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
-      const uv = geo.getAttribute('uv');
-      for (let face = 0; face < 6; face++) {
-        const [fu, fv] = faceSize[face] ?? [1, 1];
-        for (let v = 0; v < 4; v++) {
-          const i = face * 4 + v;
-          uv.setXY(i, (uv.getX(i) * fu) / tileM, (uv.getY(i) * fv) / tileM);
-        }
-      }
-    }
     const rot = box.rot ?? [0, 0, 0];
     tmpQuat.setFromEuler(tmpEuler.set(rot[0] * DEG, rot[1] * DEG, rot[2] * DEG));
     tmpMatrix.compose(tmpPos.set(...box.pos), tmpQuat, unitScale);
     geo.applyMatrix4(tmpMatrix);
+    if (tileM > 0) {
+      const pos = geo.getAttribute('position');
+      const normal = geo.getAttribute('normal');
+      const uv = geo.getAttribute('uv');
+      // BoxGeometry has 6 faces of 4 vertices; project each face as a whole so it has no seam.
+      for (let face = 0; face < 6; face++) {
+        const first = face * 4;
+        const nx = normal.getX(first);
+        const ny = normal.getY(first);
+        const nz = normal.getZ(first);
+        const ax = Math.abs(nx);
+        const ay = Math.abs(ny);
+        const az = Math.abs(nz);
+        for (let i = first; i < first + 4; i++) {
+          const x = pos.getX(i);
+          const y = pos.getY(i);
+          const z = pos.getZ(i);
+          // Tops and bottoms like the ground; walls with v running up, so windows and floors stay upright.
+          if (ay >= ax && ay >= az) uv.setXY(i, x / tileM, -z / tileM);
+          else if (ax >= az) uv.setXY(i, (nx > 0 ? -z : z) / tileM, y / tileM);
+          else uv.setXY(i, (nz > 0 ? x : -x) / tileM, y / tileM);
+        }
+      }
+    }
     return geo;
   });
   const merged = mergeGeometries(geos, false);

@@ -116,8 +116,9 @@ function building(out: ArenaBox[], rand: Rand, x: number, z: number, w: number, 
         const bx = x - ((per - 1) * 9) / 2 + k * 9;
         const fz = z + face * (d / 2 + 1);
         e([bx, y + 0.25, fz], [4, 0.3, 2], 'concrete');
-        e([bx, y + 0.85, fz + face * 0.95], [4, 1, 0.1], 'steel');
-        for (const s of [-1, 1]) e([bx + s * 1.95, y + 0.85, fz], [0.1, 1, 2], 'steel');
+        // Railings stand just proud of the slab's edges, so their faces never share a plane with it.
+        e([bx, y + 0.85, fz + face * 1.0], [4.2, 1, 0.1], 'steel');
+        for (const s of [-1, 1]) e([bx + s * 2.05, y + 0.85, fz], [0.1, 1, 2.1], 'steel');
       }
     }
   }
@@ -493,7 +494,7 @@ function highway(out: ArenaBox[]): void {
   const z0 = -250;
   const z1 = 250;
   out.push({ pos: [x, y, (z0 + z1) / 2], size: [w, 1, z1 - z0], mat: 'concrete' });
-  for (const s of [-1, 1]) out.push({ pos: [x + s * (w / 2 - 0.2), y + 1, (z0 + z1) / 2], size: [0.4, 1.2, z1 - z0], mat: 'white' });
+  for (const s of [-1, 1]) out.push({ pos: [x + s * (w / 2 - 0.35), y + 1, (z0 + z1) / 2], size: [0.4, 1.2, z1 - z0], mat: 'white' });
   for (let z = z0 + 10; z <= z1 - 10; z += 26) {
     // No pier in the river.
     if (Math.abs(z - RIVER_Z) < RIVER_W / 2 + 2) continue;
@@ -522,7 +523,7 @@ function viaduct(out: ArenaBox[], rand: Rand): void {
   const x1 = 255;
   out.push({ pos: [(x0 + x1) / 2, y, z], size: [x1 - x0, 1.2, 10], mat: 'concrete' });
   for (let x = x0 + 8; x <= x1 - 8; x += 22) {
-    out.push({ pos: [x, y / 2, z], size: [3, y, 10], mat: 'brick' });
+    out.push({ pos: [x, y / 2, z], size: [3, y, 9.6], mat: 'brick' });
   }
   // A train of six cars, nose east.
   for (let i = 0; i < 6; i++) {
@@ -832,10 +833,44 @@ function yawAlong(a: { x: number; z: number }, b: { x: number; z: number }): num
   return (Math.atan2(-(b.z - a.z), b.x - a.x) * 180) / Math.PI;
 }
 
+/** Turn angle (radians) of the circuit at point i. */
+function turnAt(pts: readonly TrackPoint[], i: number): number {
+  const n = pts.length;
+  const p = pts[(i - 1 + n) % n]!;
+  const q = pts[i]!;
+  const r = pts[(i + 1) % n]!;
+  const a1 = Math.atan2(q.z - p.z, q.x - p.x);
+  const a2 = Math.atan2(r.z - q.z, r.x - q.x);
+  return Math.abs(((a2 - a1 + 3 * Math.PI) % (2 * Math.PI)) - Math.PI);
+}
+
+/**
+ * A flat strip from a to b (track surface, kerb, run-off), `width` wide. Pieces are straight, so on a bend each one
+ * is lengthened to close the wedge-shaped gap to its neighbour (through which the neighbour's end wall showed as a
+ * flickering dark line), and every other piece sits 3 mm higher so no end wall stops exactly in its neighbour's
+ * surface. A piece whose offset line has folded back on itself (the inside of a bend tighter than the offset)
+ * is skipped.
+ */
+function strip(out: ArenaBox[], a: V3, b: V3, centerA: TrackPoint, centerB: TrackPoint, turnA: number, turnB: number, i: number, thick: number, width: number, mat: ArenaMaterial): void {
+  const dx = b[0] - a[0];
+  const dz = b[2] - a[2];
+  const len = Math.hypot(dx, dz);
+  const centerLen = Math.hypot(centerB.x - centerA.x, centerB.z - centerA.z);
+  // Folded back, or squeezed/stretched so much that the offset has jumped across the bend.
+  if (len < 1e-3 || dx * (centerB.x - centerA.x) + dz * (centerB.z - centerA.z) <= 0 || len < centerLen * 0.4 || len > centerLen * 3 + 1) return;
+  const ux = dx / len;
+  const uz = dz / len;
+  const extA = (width / 2) * Math.tan(Math.min(turnA, 1.2) / 2);
+  const extB = (width / 2) * Math.tan(Math.min(turnB, 1.2) / 2);
+  const lift = (i % 2) * 0.003;
+  beam(out, [a[0] - ux * extA, a[1] + lift, a[2] - uz * extA], [b[0] + ux * extB, b[1] + lift, b[2] + uz * extB], thick, mat, width);
+}
+
 function racetrack(out: ArenaBox[]): void {
   const { pts, t1, sf } = CIRCUIT_TRACK;
   const n = pts.length;
   const H = CIRCUIT.half;
+  const turns = pts.map((_, i) => turnAt(pts, i));
   // Grass over the whole circuit area (decor), under the track.
   const xs = pts.map((p) => p.x);
   const zs = pts.map((p) => p.z);
@@ -852,16 +887,22 @@ function racetrack(out: ArenaBox[]): void {
       beam(out, [a.x, a.y - 0.3, a.z], [b.x, b.y - 0.3, b.z], 0.6, 'roof', H * 2);
       const berm = Math.min(a.y, b.y) - 0.3;
       if (berm > 0.3) beam(out, [a.x, berm / 2, a.z], [b.x, berm / 2, b.z], berm, 'foliage', H * 2 + 8);
-    } else beam(DECOR, [a.x, 0.04, a.z], [b.x, 0.04, b.z], 0.04, 'roof', H * 2);
+    } else strip(DECOR, [a.x, 0.04, a.z], [b.x, 0.04, b.z], a, b, turns[i]!, turns[(i + 1) % n]!, i, 0.04, H * 2, 'roof');
     for (const side of [1, -1] as const) {
       // How tightly this stretch (and the points around it) bends toward this side.
       let toward = -Infinity;
       for (let j = -4; j <= 5; j++) toward = Math.max(toward, pts[(i + j + n) % n]!.k * side);
       // Barriers, except on the inside of tight bends (where an offset wall would fold over the track).
-      if (toward < 1 / 13) beam(out, across(a, side * (H + 1.5), a.y + 0.5), across(b, side * (H + 1.5), b.y + 0.5), 1, 'concrete', 0.6);
+      if (toward < 1 / 13) {
+        const wa = across(a, side * (H + 1.5), a.y + 0.5);
+        const wb = across(b, side * (H + 1.5), b.y + 0.5);
+        // Never a wall whose offset line folded back across the track.
+        if ((wb[0] - wa[0]) * (b.x - a.x) + (wb[2] - wa[2]) * (b.z - a.z) > 0) beam(out, wa, wb, 1, 'concrete', 0.6);
+      }
       // Kerbs inside corners, striped run-off outside them (decor).
-      if (toward > 1 / 70) beam(DECOR, across(a, side * (H - 0.6), a.y + 0.07), across(b, side * (H - 0.6), b.y + 0.07), 0.05, i % 2 ? 'gridRed' : 'white', 1.2);
-      if (toward < -1 / 70 && !raised) beam(DECOR, across(a, side * (H + 4), 0.05), across(b, side * (H + 4), 0.05), 0.03, stripes[i % 3]!, 4.5);
+      // Neighbouring stripes of different colours overlap where they join, so each colour sits at its own height.
+      if (toward > 1 / 70 && toward < 1 / (H + 1)) strip(DECOR, across(a, side * (H - 0.6), a.y + 0.07 + (i % 2) * 0.012), across(b, side * (H - 0.6), b.y + 0.07 + (i % 2) * 0.012), a, b, turns[i]!, turns[(i + 1) % n]!, i, 0.05, 1.2, i % 2 ? 'gridRed' : 'white');
+      if (toward < -1 / 70 && !raised) strip(DECOR, across(a, side * (H + 4), 0.05 + (i % 3) * 0.012), across(b, side * (H + 4), 0.05 + (i % 3) * 0.012), a, b, turns[i]!, turns[(i + 1) % n]!, i, 0.03, 4.5, stripes[i % 3]!);
     }
   }
 
@@ -1055,7 +1096,7 @@ function megaproject(out: ArenaBox[]): void {
   beam(out, [x - 25, fy + 8, z + 28], [x - 25, fy + 2, z + 33], 0.6, 'orange');
   for (const [tx, tz] of [[x + 15, z + 25], [x + 20, z - 10]] as const) {
     edged(out, [tx, fy + 1.8, tz], [3, 2.4, 7], 'white');
-    edged(out, [tx, fy + 2.4, tz - 4.2], [3, 2.4, 1.8], 'orange');
+    edged(out, [tx, fy + 2.4, tz - 4.2], [2.8, 2.4, 1.8], 'orange');
   }
   for (const [dx, dz] of [[-38, -30], [-36.6, -30], [-37.3, -28.8]] as const) EXPLOSIVES.push({ kind: 'fuel', pos: [x + dx, fy + 0.82, z + dz], size: [1.2, 1.6, 1.2] });
   towerCrane(out, x + 55, z + 35, 64, 50, -1);
@@ -1075,8 +1116,9 @@ function megaproject(out: ArenaBox[]): void {
     }
   }
   for (const s of [-1, 1]) {
-    edged(out, [sx, 24, sz + s * (half - 0.2)], [half * 2, 48, 0.4], 'glass');
-    edged(out, [sx + s * (half - 0.2), 16, sz], [0.4, 32, half * 2], 'glass');
+    // Set just inside the slab edges, so glass and concrete never share a face (no z-fighting).
+    edged(out, [sx, 24, sz + s * (half - 0.35)], [half * 2 - 0.4, 48, 0.4], 'glass');
+    edged(out, [sx + s * (half - 0.35), 16, sz], [0.4, 32, half * 2 - 0.4], 'glass');
   }
   // A construction hoist up the east face.
   tower(out, sx + half + 2.5, sz + 10, 3, top - 4, 8, 0, false);

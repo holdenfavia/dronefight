@@ -26,6 +26,12 @@ centimetres apart (lawns, runway, track, road paint) ran out of depth-buffer pre
   out to the horizon, so overlapping thin surfaces stay stable from any height. Falls back to normal depth on
   WebGL2 without `EXT_clip_control`.
 
+- **No shared faces (added the same day, after the flicker persisted):** reversed depth fixed far-away layers,
+  but most flicker came from faces in *exactly* the same plane. Tiled materials now get **world-space UVs**, so
+  overlapping boxes of one material draw identical pixels; boxes of different materials are kept from sharing a
+  face (curtain walls, railings, viaduct piers, kerb colours), guarded by a test; track strips close the wedge
+  gaps on bends.
+
 ## Alternatives considered
 - **Keep the map at 920 m:** the circuit would be at ~29% scale, its hairpins too tight to read.
 - **Draw it freehand:** wouldn't be recognizable; the real centerline is open data.
