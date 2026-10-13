@@ -66,7 +66,8 @@ function build(): ArenaBox[] {
     out.push({ pos: [px, 20, -40], size: [1, 40, 1], mat: 'orange' });
     out.push({ pos: [px, 0.12, -40], size: [2.4, 0.24, 2.4], mat: 'concrete' });
   }
-  for (const y of [8, 16, 24, 32, 39.7]) out.push({ pos: [57.5, y, -40], size: [26, 0.6, 0.6], mat: 'white' });
+  // Bars end inside the posts, below their tops, so no faces are shared (no z-fighting).
+  for (const y of [8, 16, 24, 32, 39.5]) out.push({ pos: [57.5, y, -40], size: [24.8, 0.6, 0.6], mat: 'white' });
   // A low tunnel at the far west end.
   for (const s of [-1, 1]) out.push({ pos: [-55 + s * 4.6, 3, -108], size: [0.8, 6, 20], mat: 'concrete' });
   out.push({ pos: [-55, 6.4, -108], size: [10, 0.8, 20], mat: 'orange' });

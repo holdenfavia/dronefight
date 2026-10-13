@@ -249,7 +249,8 @@ function build(): ArenaBox[] {
     for (const sx of [-2.2, 2.2]) box(out, [mx + sx, mbY / 2, mz + end], [0.6, mbY, 0.6], 'gridYellow');
     for (let y = 2; y < mbY; y += 2) box(out, [mx, y, mz + end], [4.4, 0.4, 0.4], 'gridYellow');
   }
-  for (const sx of [-2.2, 2.2]) box(out, [mx + sx, mbY, mz], [0.6, 0.6, 32.6], 'gridBlue');
+  // Rails a touch slimmer and shorter than the posts they sit on, so no faces are shared (no z-fighting).
+  for (const sx of [-2.2, 2.2]) box(out, [mx + sx, mbY, mz], [0.5, 0.6, 32.4], 'gridBlue');
   for (let t = -15; t <= 15; t += 2) box(out, [mx, mbY, mz + t], [4.4, 0.35, 0.35], 'gridBlue');
 
   // --- Climbing lattice.
@@ -287,7 +288,8 @@ function build(): ArenaBox[] {
   const tz = -10;
   for (const s of [-1, 1]) box(out, [tx + s * 3.6, 3.6, tz], [0.8, 7.2, 36], 'gridGreen');
   box(out, [tx, 7.6, tz], [8, 0.8, 36], 'gridGreen');
-  box(out, [tx, 0.1, tz], [8, 0.2, 36], 'gridYellow');
+  // The floor tucks inside the walls, so their faces never share a plane with it (no z-fighting).
+  box(out, [tx, 0.1, tz], [7.2, 0.2, 35.8], 'gridYellow');
 
   // --- Climbing wall, leaning back, with colored holds.
   const wallTilt = 12;
@@ -308,8 +310,9 @@ function build(): ArenaBox[] {
   const lz = -45;
   for (const sx of [-4, 4]) for (const sz of [-4, 4]) box(out, [sx, deckY / 2, lz + sz], [1.2, deckY, 1.2], 'gridOrange');
   box(out, [0, deckY + 0.5, lz], [10, 1, 10], 'gridGreen');
-  for (const s of [-1, 1]) box(out, [s * 4.6, deckY + 2, lz], [0.8, 3, 10], 'gridWhite');
-  box(out, [0, deckY + 2, lz - 4.6], [10, 3, 0.8], 'gridWhite');
+  // Railings stand just proud of the deck's edges (no shared faces).
+  for (const s of [-1, 1]) box(out, [s * 4.65, deckY + 2, lz], [0.8, 3, 10.1], 'gridWhite');
+  box(out, [0, deckY + 2, lz - 4.65], [10.1, 3, 0.8], 'gridWhite');
   const bridgeAt = (t: number): [number, number] => [deckY + 1 - 3 * Math.sin(Math.PI * t), -10 - 30 * t];
   const segs = 10;
   for (let i = 0; i < segs; i++) {
@@ -399,7 +402,8 @@ function dropTower(out: ArenaBox[]): void {
   const { x, z, base, height } = DROP;
   const top = base + height + 8;
   box(out, [x, 0.5, z], [14, 1, 14], 'gridWhite');
-  for (let y = 0; y < top; y += 8) box(out, [x, y + 4, z], [3, 8.05, 3], y % 16 === 0 ? 'gridRed' : 'gridWhite');
+  // Bands butt together rather than overlap: overlapping red and white would share faces and flicker.
+  for (let y = 0; y < top; y += 8) box(out, [x, y + 4, z], [3, 8, 3], y % 16 === 0 ? 'gridRed' : 'gridWhite');
   box(out, [x, top + 1, z], [9, 2, 9], 'gridYellow');
   box(out, [x, top + 3, z], [5, 2, 5], 'gridRed');
   box(out, [x, top + 6, z], [0.6, 4, 0.6], 'gridWhite');

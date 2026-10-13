@@ -100,12 +100,12 @@ function levelTower(out: ArenaBox[], decor: ArenaBox[], x: number, z: number, le
       const y = f * floorH + 0.25;
       for (const bx of [-9, 0, 9]) {
         e(out, [x + bx, y, z + half + 1], [4, 0.3, 2], 'concrete');
-        e(out, [x + bx, y + 0.6, z + half + 1.95], [4, 1, 0.1], 'steel');
-        for (const s of [-1, 1]) e(out, [x + bx + s * 1.95, y + 0.6, z + half + 1], [0.1, 1, 2], 'steel');
+        e(out, [x + bx, y + 0.6, z + half + 2], [4.2, 1, 0.1], 'steel');
+        for (const s of [-1, 1]) e(out, [x + bx + s * 2.05, y + 0.6, z + half + 1], [0.1, 1, 2.1], 'steel');
         if (level >= 4) {
           e(out, [x + half + 1, y, z + bx], [2, 0.3, 4], 'concrete');
-          e(out, [x + half + 1.95, y + 0.6, z + bx], [0.1, 1, 4], 'steel');
-          for (const s of [-1, 1]) e(out, [x + half + 1, y + 0.6, z + bx + s * 1.95], [2, 1, 0.1], 'steel');
+          e(out, [x + half + 2, y + 0.6, z + bx], [0.1, 1, 4.2], 'steel');
+          for (const s of [-1, 1]) e(out, [x + half + 1, y + 0.6, z + bx + s * 2.05], [2.1, 1, 0.1], 'steel');
         }
       }
     }
@@ -127,7 +127,7 @@ function levelTower(out: ArenaBox[], decor: ArenaBox[], x: number, z: number, le
   if (tiered) {
     const upW = 20;
     roofW = upW;
-    e(out, [x, towerTop + 0.3, z], [w + 0.8, 0.6, w + 0.8], 'roof');
+    e(out, [x, towerTop + 0.3, z], [w + 1, 0.6, w + 1], 'roof');
     const upH = topH - towerTop;
     e(out, [x, towerTop + upH / 2, z], [upW, upH, upW], 'glass');
     for (let f = setback + 1; f <= floors; f++) e(out, [x, f * floorH, z], [upW + 0.8, 0.45, upW + 0.8], 'trim');
@@ -145,7 +145,7 @@ function levelTower(out: ArenaBox[], decor: ArenaBox[], x: number, z: number, le
 
   // --- Roof: a cap (1+); parapet, AC units, penthouse (2+); helipad, water tank, antenna, trim (5).
   const roof = topH;
-  e(out, [x, roof + 0.3, z], [roofW + 0.8, 0.6, roofW + 0.8], 'roof');
+  e(out, [x, roof + 0.3, z], [roofW + 1, 0.6, roofW + 1], 'roof');
   if (level >= 2) {
     for (const s of [-1, 1]) {
       e(out, [x, roof + 1.1, z + s * (roofW / 2 + 0.2)], [roofW + 0.8, 1, 0.4], 'facade');
@@ -159,7 +159,7 @@ function levelTower(out: ArenaBox[], decor: ArenaBox[], x: number, z: number, le
     for (const [lx, lz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) e(out, [x + 6 + lx, roof + 1.8, z - 6 + lz], [0.2, 2.4, 0.2], 'steel');
     EXPLOSIVES.push({ kind: 'water', pos: [x + 6, roof + 4.6, z - 6], size: [3.4, 3.4, 3.4], color: '#8a5a3c' });
     e(out, [x - 5, roof + 4.6 + 6, z - 5], [0.4, 12, 0.4], 'orange');
-    e(out, [x, roof + 1.7, z], [roofW + 1, 0.2, roofW + 1], 'orange');
+    e(out, [x, roof + 1.75, z], [roofW + 1.2, 0.2, roofW + 1.2], 'orange');
   }
 }
 

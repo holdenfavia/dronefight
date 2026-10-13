@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { MAPS } from './index.js';
+import { MAP_ORDER, MAPS } from './index.js';
 import type { ArenaBox } from './types.js';
 
 /**
  * Z-fighting guard (ADR-0055): two boxes of different materials must not share a visible face. Where they do,
  * both are at exactly the same depth and the GPU shows a flickering mix of the two, which no depth buffer can fix.
  * (Same-material overlaps are fine: tiled materials use world-space UVs, so both draw the same texels.)
- * Checks the tops of boxes turned only about Y, and the sides of boxes turned in 90° steps.
+ * Checks the tops of boxes turned only about Y, and the sides of boxes turned in 90° steps, on every map.
  */
 interface Face {
   key: string;
@@ -73,9 +73,11 @@ function sharedArea(boxes: readonly ArenaBox[]): { area: number; worst: string }
 }
 
 describe('no z-fighting (ADR-0055)', () => {
-  it('Downtown: no two materials share a visible face', () => {
-    const map = MAPS.downtown;
-    const { area, worst } = sharedArea([...map.boxes, ...map.decor]);
-    expect(area, `worst: ${worst}`).toBeLessThan(1);
-  });
+  for (const id of MAP_ORDER) {
+    it(`${MAPS[id].name}: no two materials share a visible face`, () => {
+      const map = MAPS[id];
+      const { area, worst } = sharedArea([...map.boxes, ...map.decor]);
+      expect(area, `worst: ${worst}`).toBeLessThan(0.5);
+    });
+  }
 });
