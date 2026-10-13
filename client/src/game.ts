@@ -633,6 +633,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       drone.autoHover = watching;
       drone.hoverLook = watching && drone.classId !== 'wing' ? watchLook : null;
       accumulator += frameDt;
+      arenaColliders.near(drone.currPos.x, drone.currPos.z);
       while (accumulator >= STEP) {
         drone.preStep(control, settings.rates, STEP);
         physics.world.step();

@@ -6,6 +6,13 @@ export const SIM = {
   /** Longest frame we will simulate. Anything longer (tab hidden, hitch) is dropped, not caught up. */
   maxFrameSeconds: 0.1,
   gravity: 9.81,
+  /**
+   * Only map boxes near the drone are in the physics world (each collider costs Rapier time every step, even far
+   * away). Grid cell size (m), and how many cells around the drone's cell are loaded: 20 m x 2 keeps everything
+   * within 40-60 m, far more than a quad covers in one frame.
+   */
+  colliderCellSize: 20,
+  colliderReachCells: 2,
 } as const;
 
 /** Quad flight parameters. Freestyle and 3D share the model; 3D adds reversible thrust (ADR-0013). */
