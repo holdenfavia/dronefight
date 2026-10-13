@@ -12,6 +12,7 @@ The owner still found the flight floaty and inaccurate, and wanted it to fly mor
 - **Full body drag** from drag areas: the 5" freestyle uses CdA 0.0095 (side), 0.019 (top), 0.0085 (front) m²; every other quad scales those by its own projected areas (`QUAD_AREAS`). `AIR.dragScale` and the per-face Cd values are gone.
 - **Rotor drag:** in-plane force = flapping × |thrust| × crossing speed ÷ tip speed, with tip speed growing as √thrust (5": flapping 2, tip speed 213 m/s at full thrust). Applied to body x and z only, so a throttle-cut drop is not slowed by it.
 - **Throttle curve:** thrust ∝ throttle² (rpm ∝ throttle, thrust ∝ rpm²); idle 5.5% motor, i.e. 0.3% thrust. A 5" hovers near 35% throttle.
+- **Prop fade follows rpm:** the 62 m/s pitch speed is at full rpm; at part throttle it scales with rpm (√ motor output), so thrust fades at lower airspeeds and altitude stays tied to the throttle (holding level at 50° tilt takes ~59% throttle instead of ~50%).
 - Every quad body (3D, racer, X8) uses the same model with its own numbers. The wing is unchanged.
 
 | Stock build | Hover throttle | Drop after 2 s | Flat-fall terminal | Top speed | Punch-out | 20 m/s slide after 1 s at hover |
