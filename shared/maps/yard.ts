@@ -83,7 +83,7 @@ function build(): ArenaBox[] {
   out.push({ pos: [-70, 5, -8.5], size: [2, 10, 16], mat: 'concrete' });
 
   // Shipping-container yard: neat rows with aisles to fly down, some slots empty, some stacked two high.
-  const containerMats: ArenaMaterial[] = ['orange', 'white', 'steel'];
+  const containerMats: ArenaMaterial[] = ['corrugatedOrange', 'corrugatedWhite', 'corrugatedGrey'];
   for (const x of [-88, -76, -64]) {
     for (const z of [60, 70, 80, 90, 100]) {
       if (rand() < 0.2) continue;
@@ -189,7 +189,7 @@ function harbor(out: ArenaBox[], rand: () => number): void {
   out.push({ pos: [x0 + 8, 15, sz], size: [12, 12, 15], mat: 'white' });
   out.push({ pos: [x0 + 8, 18, sz], size: [12.2, 2, 15.2], mat: 'glass' });
   out.push({ pos: [x0 + 2, 24, sz], size: [4, 6, 4], mat: 'orange' });
-  const boxMats: ArenaMaterial[] = ['orange', 'white', 'steel', 'brick'];
+  const boxMats: ArenaMaterial[] = ['corrugatedOrange', 'corrugatedWhite', 'corrugatedGrey', 'corrugatedRed'];
   for (let bx = x0 + 20; bx <= x1 - 6; bx += 6.6) {
     for (let k = 0; k < 6; k++) {
       const stack = 1 + Math.floor(rand() * 3);
@@ -238,7 +238,7 @@ function coolingTower(out: ArenaBox[], cx: number, cz: number): void {
 /** Freight rail yard: four tracks of boxcars and tank cars with gaps, a signal gantry and a footbridge. */
 function railYard(out: ArenaBox[], rand: () => number): void {
   const tracks = [-142, -157, -172, -187];
-  const carMats: ArenaMaterial[] = ['orange', 'steel', 'brick', 'white'];
+  const carMats: ArenaMaterial[] = ['corrugatedOrange', 'corrugatedGrey', 'corrugatedRed', 'corrugatedBlue'];
   for (const z of tracks) {
     let x = -185 + rand() * 20;
     while (x < 185) {

@@ -9,6 +9,7 @@ export type { ArenaBox, ArenaMaterial, Atmosphere, MapDef, MapId, SpawnPoint } f
 export type { MoverDef, MoverKind } from './movers.js';
 export { moverPose } from './movers.js';
 export { groundRects, inHole, type GroundHole } from './ground.js';
+export { SURFACE, terrainHeight, terrainNormal, terrainSurface, type Terrain } from './terrain.js';
 
 export const MAPS: Record<MapId, MapDef> = { downtown: DOWNTOWN, yard: YARD, playground: PLAYGROUND, cavern: CAVERN, training: TRAINING };
 export const MAP_ORDER: readonly MapId[] = ['downtown', 'yard', 'playground', 'cavern', 'training'];

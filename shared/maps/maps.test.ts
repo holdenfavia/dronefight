@@ -16,19 +16,20 @@ describe('maps', () => {
       });
 
       it('leaves room to take off from every spawn (nothing solid within 4 m above the pad)', () => {
-        const colliders = buildColliders([...map.boxes.filter((b) => b.mat !== 'pad'), ...explosiveBoxes(map)]);
+        const colliders = buildColliders([...map.boxes.filter((b) => b.mat !== 'pad'), ...explosiveBoxes(map)], map.holes, map.terrain);
         for (const s of map.spawns) {
-          const up = raycastArena(colliders, s.pos[0], 0.5, s.pos[2], 0, 1, 0, 20);
+          // From just above the pad (spawns sit on the rolling ground, ADR-0059).
+          const up = raycastArena(colliders, s.pos[0], s.pos[1] + 0.4, s.pos[2], 0, 1, 0, 20);
           expect(up, `spawn at ${s.pos}`).toBeGreaterThan(4);
         }
       });
 
       it('does not start any spawn inside geometry', () => {
-        const colliders = buildColliders([...map.boxes.filter((b) => b.mat !== 'pad' && b.mat !== 'sidewalk'), ...explosiveBoxes(map)]);
+        const colliders = buildColliders([...map.boxes.filter((b) => b.mat !== 'pad' && b.mat !== 'sidewalk'), ...explosiveBoxes(map)], map.holes, map.terrain);
         for (const s of map.spawns) {
-          // Cast in four directions from pad height: something inside a box would report 0.
+          // Cast in four directions from just above the pad: something inside a box (or rising ground) reports 0.
           for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-            expect(raycastArena(colliders, s.pos[0], 1, s.pos[2], dx, 0, dz, 10), `spawn at ${s.pos}`).toBeGreaterThan(1.5);
+            expect(raycastArena(colliders, s.pos[0], s.pos[1] + 0.9, s.pos[2], dx, 0, dz, 10), `spawn at ${s.pos}`).toBeGreaterThan(1.5);
           }
         }
       });

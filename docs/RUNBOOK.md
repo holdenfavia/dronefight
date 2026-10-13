@@ -271,6 +271,14 @@ Check the network HUD (top right). It shows ping and **delay**: how far behind r
 - "Pilot signal lost" means no update for 0.6 s (their tab is in the background, or their connection stalled). When updates resume, the drone snaps to its current position. Missed time is never replayed.
 - Browsers pause background tabs. If your friend switches away from the game, their drone freezes for you until they come back.
 
+### Building maps on rolling ground (ADR-0059)
+
+Write map code as if the ground were flat (y = 0 means "on the ground"); `applyTerrain` fits it onto the terrain at the end of the map's build. Wrap anything made of several parts that must stay aligned (a building, a house, a sculpture, a block) in `grouped(() => { ... }, [anchorX, anchorZ])`, or each part moves by the ground under its own centre. Big groups cut a level pad. Anything that must be level (water, roads, tracks, runways, ramps meeting other structures) belongs in a flat zone (`FLAT_ZONES` in `downtown.ts`). Lawn and sand sheets on the ground become terrain grass and sand automatically.
+
+### Picking materials (ADR-0060)
+
+Use the material for what the thing is made of: `facade`/`glass`/`brick` are building walls with windows (buildings only); `masonry` is bare brick; houses use `brickHouse`, `plaster*` or `siding`; roofs `roof` (flat), `shingle` or `clayTile`; roads `road`; trunks `bark`; benches and timber `wood`; containers and cladding `corrugated*`; colored metal `red`/`yellow`/`blue`/`green`. Grid colors (`grid*`) are for the Playground.
+
 ### Flickering surfaces (z-fighting)
 
 Two faces in exactly the same plane flicker between each other at any distance; a better depth buffer can't fix that. Tiled materials use world-space UVs, so overlapping boxes of the **same** material draw identical pixels and are safe. Boxes of **different** materials must never share a visible face: inset one by a few centimetres (e.g. glass inside slab edges, railings just proud of a balcony). `shared/maps/coplanar.test.ts` guards Downtown. Strips built from straight pieces along curves (track, kerbs) need their pieces lengthened to close the wedge gaps on bends; see `strip()` in `downtown.ts`.

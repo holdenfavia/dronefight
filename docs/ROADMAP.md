@@ -148,7 +148,8 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Racetrack recreated as the Circuit of the Americas; reversed depth buffer fixes far flicker (ADR-0055)
 - [x] Fill Downtown's last bare asphalt: suburb, favela hill, sports park, airport south; no shared faces on any map (ADR-0055, ADR-0056)
 - [x] Downtown flow: boulevards, sculpture garden, airport roundabout and hotel, no bare ground (ADR-0058)
-- [ ] Play Downtown (main map) together: spawn spots, airliner and race car feel, pit fights; check frame rate on the mid-range laptop
+- [x] Rolling terrain under Downtown, street trees in the city (ADR-0059); honest materials everywhere (ADR-0060)
+- [ ] Play Downtown (main map) together: spawn spots, airliner and race car feel, pit fights, hills; check frame rate on the mid-range laptop
 - [x] Touch flies like a radio: no altitude hold, Acro default (ADR-0050)
 - [ ] Paint and pilot name shown to others
 - [ ] Unlock track: levels unlock bodies, modules and paints

@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { groundRects, type ArenaBox, type ArenaMaterial, type MapDef } from '../../../shared/maps';
+import { groundRects, SURFACE, type ArenaBox, type ArenaMaterial, type MapDef } from '../../../shared/maps';
+import { terrainTriangles } from '../../../shared/maps/terrain';
 import { buildScenery } from './scenery';
 import {
   asphaltTexture,
@@ -24,6 +25,24 @@ import {
   paintedMetalTexture,
   rockTexture,
   ROCK_TILE_M,
+  BARK_TILE_M,
+  barkTexture,
+  brickHouseTexture,
+  clayTileTexture,
+  CORRUGATED_TILE_M,
+  corrugatedTexture,
+  COURT_TILE_M,
+  courtTexture,
+  HOUSE_TILE_M,
+  MASONRY_TILE_M,
+  masonryTexture,
+  plasterTexture,
+  ROOFING_TILE_M,
+  shingleTexture,
+  SIDING_TILE_M,
+  sidingTexture,
+  WOOD_TILE_M,
+  woodTexture,
 } from './textures';
 
 // Art direction per ADR-0007: bright sky, clean light, orange / black / white on concrete.
@@ -87,7 +106,7 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
   const groundGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
   let arena: THREE.Group | null = null;
   let currentGround: MapDef['ground'] = 'concrete';
-  let groundMesh: THREE.Mesh | null = null;
+  let groundMeshes: THREE.Mesh[] = [];
   let gridStyle = false;
   const gridAlternates = gridVersions(materials, aniso);
   const materialFor = (key: VisibleMaterial) => (gridStyle ? gridAlternates[key] : materials[key].material);
@@ -133,12 +152,28 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
     arena = new THREE.Group();
 
     currentGround = map.ground;
-    // The whole plane, or (with holes, ADR-0054) the plane cut around them.
-    const ground = new THREE.Mesh(map.holes?.length ? holedGround(map) : groundGeo, gridStyle ? grounds.grid : grounds[map.ground]);
-    if (!map.holes?.length) ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    arena.add(ground);
-    groundMesh = ground;
+    groundMeshes = [];
+    const groundMat = gridStyle ? grounds.grid : grounds[map.ground];
+    if (map.terrain) {
+      // Rolling ground (ADR-0059): the plane outside the map, and the terrain inside it in three surfaces.
+      const outside = new THREE.Mesh(holedGround(map.halfSize, [{ x: 0, z: 0, w: map.halfSize * 2, d: map.halfSize * 2 }]), groundMat);
+      outside.receiveShadow = true;
+      arena.add(outside);
+      groundMeshes.push(outside);
+      for (const part of terrainMeshes(map, materials)) {
+        part.mesh.material = part.key ? materialFor(part.key) : groundMat;
+        if (part.key) part.mesh.userData.matKey = part.key;
+        else groundMeshes.push(part.mesh);
+        arena.add(part.mesh);
+      }
+    } else {
+      // The whole plane, or (with holes, ADR-0054) the plane cut around them.
+      const ground = new THREE.Mesh(map.holes?.length ? holedGround(map.halfSize, map.holes) : groundGeo, groundMat);
+      if (!map.holes?.length) ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      arena.add(ground);
+      groundMeshes.push(ground);
+    }
 
     // Structures and decor: one merged mesh (one draw call) per material each.
     for (const [boxes, solid] of [
@@ -155,11 +190,18 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
       }
       for (const [mat, list] of byMaterial) {
         const def = materials[mat];
-        const mesh = new THREE.Mesh(mergeBoxes(list, def.tileM), materialFor(mat));
-        mesh.userData.matKey = mat;
-        mesh.castShadow = solid;
-        mesh.receiveShadow = true;
-        arena.add(mesh);
+        // Walls with windows (ADR-0060) keep them on their sides only; their tops and bottoms are plain roof.
+        const windowed = WINDOWED.has(mat);
+        const parts: [VisibleMaterial, THREE.BufferGeometry][] = windowed
+          ? [[mat, mergeBoxes(list, def.tileM, 'sides')], ['roof', mergeBoxes(list, materials.roof.tileM, 'caps')]]
+          : [[mat, mergeBoxes(list, def.tileM)]];
+        for (const [key, geo] of parts) {
+          const mesh = new THREE.Mesh(geo, materialFor(key));
+          mesh.userData.matKey = key;
+          mesh.castShadow = solid;
+          mesh.receiveShadow = true;
+          arena.add(mesh);
+        }
       }
     }
     // Outlines on boxes that ask for them (detailed buildings): every edge, merged into one line mesh.
@@ -189,7 +231,7 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
     arena?.traverse((o) => {
       if (o instanceof THREE.Mesh && o.userData.matKey) o.material = materialFor(o.userData.matKey as VisibleMaterial);
     });
-    if (groundMesh) groundMesh.material = on ? grounds.grid : grounds[currentGround];
+    for (const g of groundMeshes) g.material = on ? grounds.grid : grounds[currentGround];
   }
 
   return {
@@ -365,6 +407,31 @@ function arenaMaterials(aniso: number): Record<VisibleMaterial, MaterialDef> {
       material: new THREE.MeshStandardMaterial({ color: '#7fe8ff', emissive: '#3ad0ff', emissiveIntensity: 1.6, roughness: 0.2, metalness: 0.1 }),
       tileM: 0,
     },
+    // What things are made of (ADR-0060).
+    masonry: tex(masonryTexture(aniso), MASONRY_TILE_M, 0.9),
+    brickHouse: tex(brickHouseTexture(aniso), HOUSE_TILE_M, 0.85),
+    plasterWhite: tex(plasterTexture(aniso, '#ece6da', 141), HOUSE_TILE_M, 0.9),
+    plasterYellow: tex(plasterTexture(aniso, '#e8c35a', 143), HOUSE_TILE_M, 0.9),
+    plasterBlue: tex(plasterTexture(aniso, '#5c8fc4', 145), HOUSE_TILE_M, 0.9),
+    plasterGreen: tex(plasterTexture(aniso, '#6fae6a', 147), HOUSE_TILE_M, 0.9),
+    plasterPink: tex(plasterTexture(aniso, '#e39a9a', 149), HOUSE_TILE_M, 0.9),
+    siding: tex(sidingTexture(aniso), SIDING_TILE_M, 0.8),
+    clayTile: tex(clayTileTexture(aniso), ROOFING_TILE_M, 0.85),
+    shingle: tex(shingleTexture(aniso), ROOFING_TILE_M, 0.95),
+    road: tex(asphaltTexture(aniso), GROUND_TILE_M, 0.92),
+    bark: tex(barkTexture(aniso), BARK_TILE_M, 0.95),
+    wood: tex(woodTexture(aniso), WOOD_TILE_M, 0.85),
+    rubber: { material: new THREE.MeshStandardMaterial({ color: '#1f2022', roughness: 0.95 }), tileM: 0 },
+    corrugatedOrange: tex(corrugatedTexture(aniso, '#e46a24', 151), CORRUGATED_TILE_M, 0.6, 0.3),
+    corrugatedBlue: tex(corrugatedTexture(aniso, '#2f5f9e', 153), CORRUGATED_TILE_M, 0.6, 0.3),
+    corrugatedRed: tex(corrugatedTexture(aniso, '#a3352a', 155), CORRUGATED_TILE_M, 0.6, 0.3),
+    corrugatedWhite: tex(corrugatedTexture(aniso, '#e6e6e2', 157), CORRUGATED_TILE_M, 0.55, 0.3),
+    corrugatedGrey: tex(corrugatedTexture(aniso, '#7b8189', 159), CORRUGATED_TILE_M, 0.6, 0.35),
+    red: tex(paintedMetalTexture(aniso, '#d43a2c', 11), PAINT_TILE_M, 0.45, 0.25),
+    yellow: tex(paintedMetalTexture(aniso, '#f2c230', 13), PAINT_TILE_M, 0.45, 0.25),
+    blue: tex(paintedMetalTexture(aniso, '#2f6fc4', 17), PAINT_TILE_M, 0.45, 0.25),
+    green: tex(paintedMetalTexture(aniso, '#3f9a52', 19), PAINT_TILE_M, 0.45, 0.25),
+    court: tex(courtTexture(aniso), COURT_TILE_M, 0.75),
     // Rivers, ponds, the harbor (ADR-0049): deep blue and glossy, catching the sky.
     water: {
       material: new THREE.MeshStandardMaterial({ color: '#3a86b8', roughness: 0.12, metalness: 0.22 }),
@@ -372,10 +439,17 @@ function arenaMaterials(aniso: number): Record<VisibleMaterial, MaterialDef> {
     },
   };
 
+  function tex(map: THREE.Texture, tileM: number, roughness: number, metalness = 0): MaterialDef {
+    return { material: new THREE.MeshStandardMaterial({ map, roughness, metalness }), tileM };
+  }
+
   function grid(color: string): MaterialDef {
     return { material: new THREE.MeshStandardMaterial({ map: gridTexture(aniso, color), roughness: 0.75, metalness: 0 }), tileM: GRID_TILE_M };
   }
 }
+
+/** Wall materials with windows painted on (ADR-0060): their tops and bottoms draw as plain roof instead. */
+const WINDOWED: ReadonlySet<VisibleMaterial> = new Set(['facade', 'glass', 'brick', 'brickHouse', 'plasterWhite', 'plasterYellow', 'plasterBlue', 'plasterGreen', 'plasterPink', 'siding']);
 
 /** Flat colors standing in for each realistic material when grid textures are on (ADR-0020). */
 const GRID_EQUIVALENT: Record<Exclude<VisibleMaterial, `grid${string}` | 'pad'>, string> = {
@@ -395,6 +469,30 @@ const GRID_EQUIVALENT: Record<Exclude<VisibleMaterial, `grid${string}` | 'pad'>,
   crystal: '#7fe8ff',
   water: '#3a86c8',
   paint: '#f2f1ec',
+  masonry: '#a95c46',
+  brickHouse: '#b5664c',
+  plasterWhite: '#efeae0',
+  plasterYellow: '#f0cc63',
+  plasterBlue: '#6b9ad0',
+  plasterGreen: '#78b873',
+  plasterPink: '#eba5a5',
+  siding: '#f1eee6',
+  clayTile: '#c4643a',
+  shingle: '#55585d',
+  road: '#5c5f63',
+  bark: '#6b5139',
+  wood: '#9a7248',
+  rubber: '#2a2b2e',
+  corrugatedOrange: '#f07a30',
+  corrugatedBlue: '#3a6db0',
+  corrugatedRed: '#b8443a',
+  corrugatedWhite: '#ececea',
+  corrugatedGrey: '#8a9098',
+  red: '#e0473c',
+  yellow: '#f5c63a',
+  blue: '#3c78e0',
+  green: '#45b865',
+  court: '#4a8f66',
 };
 
 /**
@@ -428,11 +526,11 @@ const tmpPos = new THREE.Vector3();
  * The ground plane with holes cut out (ADR-0054): one flat rectangle per piece, at y = 0, facing up, with UVs
  * matching the whole plane's so the texture tiles seamlessly across pieces.
  */
-function holedGround(map: MapDef): THREE.BufferGeometry {
+function holedGround(_mapHalf: number, holes: MapDef['holes']): THREE.BufferGeometry {
   const half = GROUND_SIZE / 2;
   const pos: number[] = [];
   const uv: number[] = [];
-  for (const [x0, z0, x1, z1] of groundRects(half, map.holes)) {
+  for (const [x0, z0, x1, z1] of groundRects(half, holes)) {
     // Two triangles, wound counterclockwise seen from above.
     const corners: [number, number][] = [[x0, z1], [x1, z1], [x1, z0], [x0, z1], [x1, z0], [x0, z0]];
     for (const [x, z] of corners) {
@@ -445,6 +543,50 @@ function holedGround(map: MapDef): THREE.BufferGeometry {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geo.computeVertexNormals();
   return geo;
+}
+
+/**
+ * The terrain (ADR-0059) as three meshes: paved (the map's ground material, `key` null), grass and sand. All share
+ * one set of vertices and normals; UVs follow each material's tiling (the ground's matches the outer plane's).
+ */
+function terrainMeshes(map: MapDef, materials: Record<VisibleMaterial, MaterialDef>): { mesh: THREE.Mesh; key: VisibleMaterial | null }[] {
+  const t = map.terrain!;
+  const { positions, indices, bySurface } = terrainTriangles(t, map.holes ?? []);
+  const all = new THREE.BufferGeometry();
+  all.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  all.setIndex(new THREE.BufferAttribute(indices, 1));
+  all.computeVertexNormals();
+  const normal = all.getAttribute('normal');
+  const half = GROUND_SIZE / 2;
+  const count = positions.length / 3;
+  const parts: { mesh: THREE.Mesh; key: VisibleMaterial | null }[] = [];
+  ([[SURFACE.paved, null], [SURFACE.grass, 'foliage'], [SURFACE.sand, 'sand']] as const).forEach(([code, key]) => {
+    const idx = bySurface[code]!;
+    if (!idx.length) return;
+    const uv = new Float32Array(count * 2);
+    const tile = key ? materials[key].tileM || 1 : 0;
+    for (let k = 0; k < count; k++) {
+      const x = positions[k * 3]!;
+      const z = positions[k * 3 + 2]!;
+      if (key) {
+        uv[k * 2] = x / tile;
+        uv[k * 2 + 1] = -z / tile;
+      } else {
+        uv[k * 2] = (x + half) / GROUND_SIZE;
+        uv[k * 2 + 1] = (half - z) / GROUND_SIZE;
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', all.getAttribute('position'));
+    geo.setAttribute('normal', normal);
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    const mesh = new THREE.Mesh(geo);
+    mesh.receiveShadow = true;
+    mesh.castShadow = true;
+    parts.push({ mesh, key });
+  });
+  return parts;
 }
 
 /** Dark outlines for detailed buildings: thin, unlit, one draw call per map. */
@@ -479,7 +621,7 @@ function mergeEdges(boxes: readonly ArenaBox[]): THREE.BufferGeometry {
  * stadium tiers, rock ledges) draw the very same texels there. Per-box UVs gave each box its own grid, and where
  * two overlapped at the same depth the GPU showed a flickering mix of both (z-fighting no depth buffer can fix).
  */
-function mergeBoxes(boxes: readonly ArenaBox[], tileM: number): THREE.BufferGeometry {
+function mergeBoxes(boxes: readonly ArenaBox[], tileM: number, faces: 'all' | 'sides' | 'caps' = 'all'): THREE.BufferGeometry {
   const geos = boxes.map((box) => {
     const [w, h, d] = box.size;
     const geo = new THREE.BoxGeometry(w, h, d);
@@ -487,6 +629,19 @@ function mergeBoxes(boxes: readonly ArenaBox[], tileM: number): THREE.BufferGeom
     tmpQuat.setFromEuler(tmpEuler.set(rot[0] * DEG, rot[1] * DEG, rot[2] * DEG));
     tmpMatrix.compose(tmpPos.set(...box.pos), tmpQuat, unitScale);
     geo.applyMatrix4(tmpMatrix);
+    if (faces !== 'all') {
+      // Keep only the faces that face mostly up/down (caps) or mostly sideways (sides).
+      const index = geo.getIndex()!;
+      const normal = geo.getAttribute('normal');
+      const keep: number[] = [];
+      for (const g of geo.groups) {
+        const first = index.getX(g.start);
+        const cap = Math.abs(normal.getY(first)) > 0.7;
+        if (cap === (faces === 'caps')) for (let k = g.start; k < g.start + g.count; k++) keep.push(index.getX(k));
+      }
+      geo.setIndex(keep);
+      geo.clearGroups();
+    }
     if (tileM > 0) {
       const pos = geo.getAttribute('position');
       const normal = geo.getAttribute('normal');

@@ -1,7 +1,8 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Euler, Quaternion } from 'three';
 import { SIM } from '../config';
-import { groundRects, type ArenaBox, type GroundHole } from '../../../shared/maps';
+import { groundRects, type ArenaBox, type GroundHole, type Terrain } from '../../../shared/maps';
+import { terrainTriangles } from '../../../shared/maps/terrain';
 
 export type Rapier = typeof RAPIER;
 
@@ -30,13 +31,19 @@ export class ArenaColliders {
 
   constructor(private readonly physics: Physics) {}
 
-  set(boxes: readonly ArenaBox[], holes: readonly GroundHole[] = []): void {
+  set(boxes: readonly ArenaBox[], holes: readonly GroundHole[] = [], terrain?: Terrain, mapHalf = 0): void {
     const { rapier, world } = this.physics;
     for (const c of this.colliders) world.removeCollider(c, false);
-    // The ground: slabs covering everything but the holes, top face at y = 0.
-    const ground = groundRects(GROUND_HALF, holes).map(([x0, z0, x1, z1]) =>
+    // The ground: slabs covering everything but the holes, top face at y = 0. With rolling ground (ADR-0059) the
+    // slabs only cover the outside of the map, and the map itself is the terrain's own triangles.
+    const cut = terrain ? [{ x: 0, z: 0, w: mapHalf * 2, d: mapHalf * 2 }] : holes;
+    const ground = groundRects(GROUND_HALF, cut).map(([x0, z0, x1, z1]) =>
       world.createCollider(rapier.ColliderDesc.cuboid((x1 - x0) / 2, 1, (z1 - z0) / 2).setTranslation((x0 + x1) / 2, -1, (z0 + z1) / 2).setFriction(0.8)),
     );
+    if (terrain) {
+      const { positions, indices } = terrainTriangles(terrain, holes);
+      ground.push(world.createCollider(rapier.ColliderDesc.trimesh(positions, indices).setFriction(0.8)));
+    }
     this.colliders = boxes.map((box) => {
       const desc = rapier.ColliderDesc.cuboid(box.size[0] / 2, box.size[1] / 2, box.size[2] / 2)
         .setTranslation(box.pos[0], box.pos[1], box.pos[2])

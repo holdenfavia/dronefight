@@ -347,8 +347,8 @@ function mine(out: ArenaBox[], rand: () => number): void {
     if (nearSpawn(x, z, 10) || cartNear(x, z)) continue;
     const tx = -Math.sin(a) * 3;
     const tz = Math.cos(a) * 3;
-    for (const s of [-1, 1]) out.push({ pos: [x + tx * s, 6, z + tz * s], size: [0.8, 12, 0.8], mat: 'brick' });
-    beam(out, [x - tx, 12, z - tz], [x + tx, 12, z + tz], 0.9, 'brick');
+    for (const s of [-1, 1]) out.push({ pos: [x + tx * s, 6, z + tz * s], size: [0.8, 12, 0.8], mat: 'wood' });
+    beam(out, [x - tx, 12, z - tz], [x + tx, 12, z + tz], 0.9, 'wood');
   }
   // Ore piles outside the loop.
   for (const [dx, dz] of [[-50, -10], [48, 22], [-45, 30]] as const) {

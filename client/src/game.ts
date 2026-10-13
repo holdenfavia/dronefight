@@ -72,7 +72,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const arenaColliders = new ArenaColliders(physics);
   let currentMap: MapDef = getMap(settings.map);
   world.setMap(currentMap);
-  arenaColliders.set(currentMap.boxes, currentMap.holes);
+  arenaColliders.set(currentMap.boxes, currentMap.holes, currentMap.terrain, currentMap.halfSize);
   // Traffic, coaster, tractor (ADR-0020), posed from the shared clock, plus explosives; all destructible (ADR-0023).
   let props = new PropField(currentMap);
   const movingProps = new MovingProps(world.scene, physics);
@@ -112,7 +112,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const loadoutPreview = new LoadoutPreview();
   const particles = new Particles(world.scene);
   // Map geometry for predicting our missile's impacts (rebuilt when the map changes).
-  let mapColliders = buildColliders(currentMap.boxes, currentMap.holes);
+  let mapColliders = buildColliders(currentMap.boxes, currentMap.holes, currentMap.terrain);
   // Smoke screens and rockets (ADR-0016); explosions are positional sounds.
   const combatEffects = {
     smoke: new SmokeTrails(particles),
@@ -333,13 +333,13 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     if (currentMap.id === id) return;
     currentMap = getMap(id);
     world.setMap(currentMap);
-    arenaColliders.set(currentMap.boxes, currentMap.holes);
+    arenaColliders.set(currentMap.boxes, currentMap.holes, currentMap.terrain, currentMap.halfSize);
     props = new PropField(currentMap);
     movingProps.setMap(currentMap, props);
     combat.props = props;
     combat.setMap(currentMap);
   combat.onLocalRound = (o, d, speed, damage, maxDist) => training.addRound(o, d, speed, damage, maxDist);
-    mapColliders = buildColliders(currentMap.boxes, currentMap.holes);
+    mapColliders = buildColliders(currentMap.boxes, currentMap.holes, currentMap.terrain);
     surfaces.setMap(currentMap);
     boundaryGrid.setHalfSize(currentMap.halfSize);
     drone.respawnAt(randomSpawn(currentMap));

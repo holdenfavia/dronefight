@@ -1,6 +1,8 @@
 import { BEAM, beam, boundary, cubeFrame, gate, hoop, mulberry32, pads, polyBeam, spawnFacingCenter, tower, water } from './builders.js';
 import type { GroundHole } from './ground.js';
 import { COTA_CENTERLINE } from './cota.js';
+import { applyTerrain, drapeRoute, paintGroundCover, type Grouping } from './drape.js';
+import { makeTerrain, terrainHeight, type Terrain } from './terrain.js';
 import { routeFromPoints, roundedRect, type MoverDef, type V3 } from './movers.js';
 import type { ArenaBox, ArenaMaterial, ExplosiveDef, MapDef, SpawnPoint } from './types.js';
 
@@ -52,6 +54,81 @@ const SPAWNS: readonly SpawnPoint[] = [
 const PIT = { x: -355, z: 105, w: 90, d: 90 } as const;
 const PIT_DEPTH = 24;
 const HOLES: readonly GroundHole[] = [PIT];
+
+// --- Rolling ground (ADR-0059): SF / Rio hills under the city, the parks and the suburb; flat where it must be.
+
+/** Flat on purpose: [x0, x1, z0, z1, falloff (m)]. The ground rises gently away from each. */
+const FLAT_ZONES: readonly (readonly [number, number, number, number, number])[] = [
+  [-HALF, HALF, 150, 282, 60], // the river, its bridges, the riverside boulevard, the park's south wall
+  [-226, -184, -HALF, HALF, 45], // the elevated highway
+  [-226, -138, -50, -30, 30], // its on-ramps into the city
+  [-226, -138, 50, 70, 30],
+  [-305, 270, -216, -160, 45], // the rail viaduct and the south avenue
+  [-HALF, 275, -HALF, -215, 45], // the Circuit of the Americas
+  [262, HALF, -HALF, 285, 50], // the airport
+  [352, HALF, -HALF, HALF, 40], // the runway strip and the airliner's climb-out
+  [150, 290, -190, 50, 45], // the stadium and the sports park
+  [-425, -295, -125, 165, 35], // the megaproject
+  [-HALF, -420, -205, 145, 30], // the favela (it's terraced already)
+  [-200, -40, 330, 410, 40], // the lake
+];
+
+const smooth01 = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+
+/** The ground's height before anything is built on it: rolling hills, smoothed down to 0 in the flat zones. */
+function groundHeight(x: number, z: number): number {
+  // Flat at the map's edge too, to meet the backdrop.
+  let mask = smooth01((HALF - Math.max(Math.abs(x), Math.abs(z)) - 25) / 80);
+  for (const [x0, x1, z0, z1, f] of FLAT_ZONES) {
+    if (mask <= 0) return 0;
+    const dx = Math.max(x0 - x, 0, x - x1);
+    const dz = Math.max(z0 - z, 0, z - z1);
+    mask = Math.min(mask, smooth01(Math.hypot(dx, dz) / f));
+  }
+  if (mask <= 0) return 0;
+  // In the city long, smooth swells (its blocks step down them as terraces); outside, fuller rolling hills.
+  const outside = smooth01((Math.max(Math.abs(x), Math.abs(z)) - CITY) / 60);
+  // The city's swell rises from the stadium and the bay (east) toward the west.
+  const swell = 0.5 + 0.38 * Math.sin(x / 170 - 2.45) * Math.cos(z / 150 - 0.4);
+  const hills = 0.5 + 0.22 * Math.sin(x / 105 + 0.7) * Math.cos(z / 131 - 0.4) + 0.16 * Math.sin((x + z) / 83 + 2.1) + 0.12 * Math.sin((x - 1.7 * z) / 57 + 0.3);
+  const b = swell + (hills - swell) * outside;
+  const amp = 10 + 6 * outside;
+  return mask * amp * Math.pow(Math.min(1, Math.max(0, b)), 1.5);
+}
+
+/** The terrain, made when the map is built (5 m grid). */
+let TERRAIN: Terrain = makeTerrain(HALF, 5, () => 0);
+/** What moves onto the terrain together (ADR-0059): a building, a city block, a house, a sculpture. */
+const GROUPING: Grouping = { groupOf: new Map(), anchors: [] };
+/** The map's solid parts while it's being built (for `grouped`). */
+let OUT: ArenaBox[] = [];
+/** The skybridge pair spans two blocks, which move together. */
+const SKYBRIDGE_ANCHOR: [number, number] = [-30, -60];
+
+/** Everything `fn` adds (solid, decor, props) moves onto the terrain as one, by the ground at `anchor`. */
+function grouped(fn: () => void, anchor: [number, number] | null = null): void {
+  const b0 = OUT.length;
+  const d0 = DECOR.length;
+  const e0 = EXPLOSIVES.length;
+  fn();
+  const id = GROUPING.anchors.length;
+  GROUPING.anchors.push(anchor);
+  for (let k = b0; k < OUT.length; k++) GROUPING.groupOf.set(OUT[k]!, id);
+  for (let k = d0; k < DECOR.length; k++) GROUPING.groupOf.set(DECOR[k]!, id);
+  for (let k = e0; k < EXPLOSIVES.length; k++) GROUPING.groupOf.set(EXPLOSIVES[k]!, id);
+}
+
+/** Street trees on a block's sidewalk (ADR-0059), between the street lamps, clear of spawns. */
+function blockTrees(out: ArenaBox[], cx: number, cz: number): void {
+  for (const t of [-13, -7, 7, 13]) {
+    for (const s of [-1, 1]) {
+      for (const [x, z] of [[cx + t, cz + s * 22.6], [cx + s * 22.6, cz + t]] as const) {
+        if (SPAWNS.some((p) => Math.hypot(p.pos[0] - x, p.pos[2] - z) < 9)) continue;
+        streetTree(out, x, z, 6 + (Math.abs(Math.round(x * 7 + z * 3)) % 3) * 0.6);
+      }
+    }
+  }
+}
 
 type Rand = () => number;
 
@@ -254,13 +331,13 @@ function constructionSite(out: ArenaBox[], cx: number, cz: number): void {
 /** The central plaza: open air for dogfighting, a fountain, trees and an orange arch. */
 function plaza(out: ArenaBox[], cx: number, cz: number): void {
   out.push({ pos: [cx, 0.3, cz], size: [12, 0.6, 12], mat: 'concrete' });
-  out.push({ pos: [cx, 0.32, cz], size: [11, 0.62, 11], mat: 'glass' });
+  out.push({ pos: [cx, 0.32, cz], size: [11, 0.62, 11], mat: 'water' });
   out.push({ pos: [cx, 2.8, cz], size: [1.4, 5, 1.4], mat: 'white' });
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
     const x = cx + Math.cos(a) * 15;
     const z = cz + Math.sin(a) * 15;
-    out.push({ pos: [x, 2, z], size: [0.5, 4, 0.5], mat: 'roof' });
+    out.push({ pos: [x, 2, z], size: [0.5, 4, 0.5], mat: 'bark' });
     out.push({ pos: [x, 5.2, z], size: [3.6, 3.2, 3.6], mat: 'foliage' });
   }
   gate(out, cx, cz - 19, 14, 11, 0);
@@ -311,37 +388,44 @@ function parkedCars(rand: Rand): void {
 
 function build(): ArenaBox[] {
   const out: ArenaBox[] = [];
+  OUT = out;
+  TERRAIN = makeTerrain(HALF, 5, groundHeight);
   const rand = mulberry32(2026);
   boundary(out, HALF);
   pads(out, SPAWNS);
+  DECOR.push(...buildDecor());
 
-  // Sidewalks around every block.
-  for (const x of BLOCKS) {
-    for (const z of BLOCKS) out.push({ pos: [x, 0.1, z], size: [48, 0.2, 48], mat: 'sidewalk' });
-  }
-
+  // Each block, with its sidewalk and street trees, moves onto the terrain as one: a level terrace (ADR-0059).
   for (let i = 0; i < BLOCKS.length; i++) {
     for (let j = 0; j < BLOCKS.length; j++) {
       const x = BLOCKS[i] ?? 0;
       const z = BLOCKS[j] ?? 0;
       const key = `${i},${j}`;
-      if (key === '2,2') plaza(out, x, z);
-      else if (key === '1,3') garage(out, rand, x, z);
-      else if (key === '3,1') constructionSite(out, x, z);
-      else if (key === '1,1' || key === '2,1') continue; // skybridge pair, below
-      else {
-        // Taller buildings toward the corners, lower toward the plaza.
-        const corner = Math.abs(i - 2) + Math.abs(j - 2) >= 3;
-        cityBlock(out, rand, x, z, corner);
-      }
+      const skybridge = key === '1,1' || key === '2,1';
+      grouped(() => {
+        out.push({ pos: [x, 0.1, z], size: [48, 0.2, 48], mat: 'sidewalk' });
+        if (key === '2,2') plaza(out, x, z);
+        else if (key === '1,3') garage(out, rand, x, z);
+        else if (key === '3,1') constructionSite(out, x, z);
+        else if (!skybridge) {
+          // Taller buildings toward the corners, lower toward the plaza.
+          const corner = Math.abs(i - 2) + Math.abs(j - 2) >= 3;
+          cityBlock(out, rand, x, z, corner);
+        }
+        blockTrees(out, x, z);
+      }, skybridge ? SKYBRIDGE_ANCHOR : [x, z]);
     }
   }
-  skybridgePair(out, rand);
+  // The skybridge pair (its two blocks' buildings) after the loop, as before, so the city keeps its layout.
+  grouped(() => skybridgePair(out, rand), SKYBRIDGE_ANCHOR);
   streetLamps(out);
   parkedCars(rand);
   outskirts(out, rand);
-  // Last: lawns and trees over whatever ground is still bare (ADR-0058).
+  // Lawns and trees over whatever ground is still bare (ADR-0058).
   fillGaps(out);
+  // Last: lawns become the terrain's grass, and everything moves onto the rolling ground (ADR-0059).
+  paintGroundCover(TERRAIN, [out, DECOR]);
+  applyTerrain(TERRAIN, out, DECOR, EXPLOSIVES, GROUPING);
   return out;
 }
 
@@ -488,11 +572,11 @@ function stadium(out: ArenaBox[], cx: number, cz: number): void {
 
 /** Giant hoops at odd angles, to string together. */
 function sculpturePark(out: ArenaBox[]): void {
-  hoop(out, [180, 22, 70], 18, 0, 1.4, 'orange');
-  hoop(out, [215, 30, 110], 14, 50, 1.2, 'white');
-  hoop(out, [185, 40, 140], 10, -30, 1, 'orange');
+  grouped(() => hoop(out, [180, 22, 70], 18, 0, 1.4, 'orange'));
+  grouped(() => hoop(out, [215, 30, 110], 14, 50, 1.2, 'white'));
+  grouped(() => hoop(out, [185, 40, 140], 10, -30, 1, 'orange'));
   // A leaning steel spike sculpture.
-  beam(out, [235, 0, 60], [222, 46, 70], 2, 'steel');
+  grouped(() => beam(out, [235, 0, 60], [222, 46, 70], 2, 'steel'), [235, 60]);
 }
 
 /** An elevated highway on piers along the west side, crossing the river, with two on-ramps from the city. */
@@ -532,7 +616,7 @@ function viaduct(out: ArenaBox[], rand: Rand): void {
   const x1 = 255;
   out.push({ pos: [(x0 + x1) / 2, y, z], size: [x1 - x0, 1.2, 10], mat: 'concrete' });
   for (let x = x0 + 8; x <= x1 - 8; x += 22) {
-    out.push({ pos: [x, y / 2, z], size: [3, y, 9.6], mat: 'brick' });
+    out.push({ pos: [x, y / 2, z], size: [3, y, 9.6], mat: 'masonry' });
   }
   // A train of six cars, nose east.
   for (let i = 0; i < 6; i++) {
@@ -591,8 +675,8 @@ function parkedAirliner(out: ArenaBox[], x: number, z: number, tail: ArenaMateri
 /** The airport on the bay: runway, taxiway, terminal with jet bridges, control tower, hangars, the beach. */
 function airport(out: ArenaBox[]): void {
   // Runway and taxiway: dark strips just above the street, with painted markings (decor).
-  out.push({ pos: [RUNWAY_X, 0.03, 0], size: [44, 0.06, RUNWAY_HALF_LEN * 2], mat: 'roof' });
-  out.push({ pos: [372, 0.03, 0], size: [16, 0.06, RUNWAY_HALF_LEN * 2], mat: 'roof' });
+  out.push({ pos: [RUNWAY_X, 0.03, 0], size: [44, 0.06, RUNWAY_HALF_LEN * 2], mat: 'road' });
+  out.push({ pos: [372, 0.03, 0], size: [16, 0.06, RUNWAY_HALF_LEN * 2], mat: 'road' });
   out.push({ pos: [339, 0.03, 0], size: [50, 0.06, 300], mat: 'concrete' });
   for (let z = -RUNWAY_HALF_LEN + 40; z <= RUNWAY_HALF_LEN - 40; z += 30) DECOR.push({ pos: [RUNWAY_X, 0.07, z], size: [0.9, 0.02, 15], mat: 'paint' });
   for (const s of [-1, 1]) {
@@ -627,8 +711,8 @@ function airport(out: ArenaBox[]): void {
   for (let i = 0; i < 6; i++) EXPLOSIVES.push({ kind: 'car', pos: [292 + i * 5, 0.75, 150], size: [2, 1.5, 4.4], color: CAR_COLORS[(i * 3) % CAR_COLORS.length] });
   // Hangars: open to the east, big enough to fly through the door and out under the roof.
   for (const hz of [-190, -250]) {
-    edged(out, [288.5, 9, hz], [1, 18, 44], 'white');
-    for (const s of [-1, 1]) edged(out, [310, 9, hz + s * 21.5], [44, 18, 1], 'white');
+    edged(out, [288.5, 9, hz], [1, 18, 44], 'corrugatedWhite');
+    for (const s of [-1, 1]) edged(out, [310, 9, hz + s * 21.5], [44, 18, 1], 'corrugatedWhite');
     edged(out, [310, 18.5, hz], [46, 1, 46], 'orange');
     // A business jet parked inside.
     out.push({ pos: [306, 1.8, hz], size: [16, 2.4, 2.4], mat: 'white' });
@@ -648,14 +732,14 @@ function airport(out: ArenaBox[]): void {
 /** A palm: a leaning trunk and a crown of crossed fronds. */
 function palm(out: ArenaBox[], x: number, z: number, lean: number): void {
   const top: [number, number, number] = [x + lean * 1.6, 10, z + 0.8];
-  beam(out, [x, 0, z], top, 0.55, 'roof');
+  beam(out, [x, 0, z], top, 0.55, 'bark');
   for (const yaw of [0, 60, 120]) out.push({ pos: [top[0], top[1] + 0.3, top[2]], size: [7, 0.3, 1.4], rot: [0, yaw, -8], mat: 'foliage' });
   out.push({ pos: [top[0], top[1] + 0.4, top[2]], size: [1.4, 1, 1.4], mat: 'foliage' });
 }
 
 /** A park tree: a trunk and a blocky canopy. */
 function tree(out: ArenaBox[], x: number, z: number, h: number): void {
-  out.push({ pos: [x, h * 0.25, z], size: [0.6, h * 0.5, 0.6], mat: 'roof' });
+  out.push({ pos: [x, h * 0.25, z], size: [0.6, h * 0.5, 0.6], mat: 'bark' });
   const c = h * 0.55;
   out.push({ pos: [x, h * 0.72, z], size: [c, h * 0.5, c], mat: 'foliage' });
 }
@@ -689,8 +773,10 @@ function centralPark(out: ArenaBox[]): void {
     arch.push([LAKE.x, 0.3 + 6 * Math.sin(Math.PI * t), LAKE.z - LAKE.d / 2 - 8 + (LAKE.d + 16) * t]);
   }
   for (let i = 0; i < arch.length - 1; i++) beam(out, arch[i]!, arch[i + 1]!, 0.8, 'rock', 7);
-  edged(out, [-30, 3, 345], [14, 6, 10], 'brick');
-  edged(out, [-30, 6.4, 345], [16, 0.8, 12], 'roof');
+  grouped(() => {
+    edged(out, [-30, 3, 345], [14, 6, 10], 'brickHouse');
+    edged(out, [-30, 6.4, 345], [16, 0.8, 12], 'roof');
+  });
   for (const [x, z, m] of [[-70, 350, 'white'], [-95, 390, 'orange'], [-160, 360, 'white'], [-175, 395, 'orange']] as const) {
     out.push({ pos: [x, 0.4, z], size: [1.4, 0.6, 4], rot: [0, (x * 7) % 90, 0], mat: m });
   }
@@ -703,33 +789,39 @@ function centralPark(out: ArenaBox[]): void {
     }
   }
   // An obelisk to slalom around.
-  edged(out, [-250, 15, 415], [3, 30, 3], 'concrete');
-  out.push({ pos: [-250, 30.9, 415], size: [2.1, 2.1, 2.1], rot: [45, 0, 35.26], mat: 'concrete' });
+  grouped(() => {
+    edged(out, [-250, 15, 415], [3, 30, 3], 'concrete');
+    out.push({ pos: [-250, 30.9, 415], size: [2.1, 2.1, 2.1], rot: [45, 0, 35.26], mat: 'concrete' });
+  });
 
   // A gazebo: eight posts in a ring under a roof.
   const gx = -300;
   const gz = 330;
-  out.push({ pos: [gx, 0.25, gz], size: [13, 0.5, 13], mat: 'concrete' });
-  for (let k = 0; k < 8; k++) {
-    const a = (k / 8) * Math.PI * 2;
-    out.push({ pos: [gx + Math.cos(a) * 5.6, 2.7, gz + Math.sin(a) * 5.6], size: [0.4, 4.4, 0.4], mat: 'white' });
-  }
-  edged(out, [gx, 5.2, gz], [13, 0.6, 13], 'white', [0, 22.5, 0]);
-  edged(out, [gx, 6.2, gz], [8, 1.4, 8], 'white', [0, 22.5, 0]);
+  grouped(() => {
+    out.push({ pos: [gx, 0.25, gz], size: [13, 0.5, 13], mat: 'concrete' });
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      out.push({ pos: [gx + Math.cos(a) * 5.6, 2.7, gz + Math.sin(a) * 5.6], size: [0.4, 4.4, 0.4], mat: 'white' });
+    }
+    edged(out, [gx, 5.2, gz], [13, 0.6, 13], 'white', [0, 22.5, 0]);
+    edged(out, [gx, 6.2, gz], [8, 1.4, 8], 'white', [0, 22.5, 0]);
+  }, [gx, gz]);
 
   // The bandshell: a stage and nested half-arches opening south, onto the lawn.
   const bx = 100;
   const bz = 385;
-  edged(out, [bx, 0.6, bz], [28, 1.2, 16], 'concrete');
-  for (let k = 0; k < 5; k++) {
-    const r = 14 - k * 1.8;
-    const pts: [number, number, number][] = [];
-    for (let i = 0; i <= 10; i++) {
-      const a = (i / 10) * Math.PI;
-      pts.push([bx + Math.cos(a) * r, 1.2 + Math.sin(a) * r, bz - 2 + k * 2.2]);
+  grouped(() => {
+    edged(out, [bx, 0.6, bz], [28, 1.2, 16], 'concrete');
+    for (let k = 0; k < 5; k++) {
+      const r = 14 - k * 1.8;
+      const pts: [number, number, number][] = [];
+      for (let i = 0; i <= 10; i++) {
+        const a = (i / 10) * Math.PI;
+        pts.push([bx + Math.cos(a) * r, 1.2 + Math.sin(a) * r, bz - 2 + k * 2.2]);
+      }
+      polyBeam(out, pts, 0.9, k % 2 ? 'orange' : 'white');
     }
-    polyBeam(out, pts, 0.9, k % 2 ? 'orange' : 'white');
-  }
+  }, [bx, bz]);
 
   // Groves: trees scattered over the lawn, clear of the lake, paths, landmarks and the spawn.
   const clear = (x: number, z: number) =>
@@ -886,17 +978,17 @@ function racetrack(out: ArenaBox[]): void {
   const [gx0, gx1, gz0, gz1] = [Math.min(...xs) - 14, Math.max(...xs) + 14, Math.min(...zs) - 12, Math.max(...zs) + 12];
   DECOR.push({ pos: [(gx0 + gx1) / 2, 0.012, (gz0 + gz1) / 2], size: [gx1 - gx0, 0.024, gz1 - gz0], mat: 'foliage' });
 
-  const stripes: ArenaMaterial[] = ['gridRed', 'white', 'gridBlue'];
+  const stripes: ArenaMaterial[] = ['red', 'white', 'blue'];
   for (let i = 0; i < n; i++) {
     const a = pts[i]!;
     const b = pts[(i + 1) % n]!;
     const raised = Math.max(a.y, b.y) > 0.15;
     if (raised) {
       // On the hill: a solid road slab on a grassy embankment.
-      beam(out, [a.x, a.y - 0.3, a.z], [b.x, b.y - 0.3, b.z], 0.6, 'roof', H * 2);
+      beam(out, [a.x, a.y - 0.3, a.z], [b.x, b.y - 0.3, b.z], 0.6, 'road', H * 2);
       const berm = Math.min(a.y, b.y) - 0.3;
       if (berm > 0.3) beam(out, [a.x, berm / 2, a.z], [b.x, berm / 2, b.z], berm, 'foliage', H * 2 + 8);
-    } else strip(DECOR, [a.x, 0.04, a.z], [b.x, 0.04, b.z], a, b, turns[i]!, turns[(i + 1) % n]!, i, 0.04, H * 2, 'roof');
+    } else strip(DECOR, [a.x, 0.04, a.z], [b.x, 0.04, b.z], a, b, turns[i]!, turns[(i + 1) % n]!, i, 0.04, H * 2, 'road');
     for (const side of [1, -1] as const) {
       // How tightly this stretch (and the points around it) bends toward this side.
       let toward = -Infinity;
@@ -910,7 +1002,7 @@ function racetrack(out: ArenaBox[]): void {
       }
       // Kerbs inside corners, striped run-off outside them (decor).
       // Neighbouring stripes of different colours overlap where they join, so each colour sits at its own height.
-      if (toward > 1 / 70 && toward < 1 / (H + 1)) strip(DECOR, across(a, side * (H - 0.6), a.y + 0.07 + (i % 2) * 0.012), across(b, side * (H - 0.6), b.y + 0.07 + (i % 2) * 0.012), a, b, turns[i]!, turns[(i + 1) % n]!, i, 0.05, 1.2, i % 2 ? 'gridRed' : 'white');
+      if (toward > 1 / 70 && toward < 1 / (H + 1)) strip(DECOR, across(a, side * (H - 0.6), a.y + 0.07 + (i % 2) * 0.012), across(b, side * (H - 0.6), b.y + 0.07 + (i % 2) * 0.012), a, b, turns[i]!, turns[(i + 1) % n]!, i, 0.05, 1.2, i % 2 ? 'red' : 'white');
       if (toward < -1 / 70 && !raised) strip(DECOR, across(a, side * (H + 4), 0.05 + (i % 3) * 0.012), across(b, side * (H + 4), 0.05 + (i % 3) * 0.012), a, b, turns[i]!, turns[(i + 1) % n]!, i, 0.03, 4.5, stripes[i % 3]!);
     }
   }
@@ -920,7 +1012,7 @@ function racetrack(out: ArenaBox[]): void {
   const s2 = pts[(sf + 1) % n]!;
   const across90 = (Math.atan2(-s.nz, s.nx) * 180) / Math.PI;
   const along = yawAlong(s, s2);
-  for (let k = -6; k <= 6; k++) DECOR.push({ pos: across(s, k * 1.1, 0.08), size: [1, 0.02, 1.1], rot: [0, along, 0], mat: k % 2 ? 'white' : 'roof' });
+  for (let k = -6; k <= 6; k++) DECOR.push({ pos: across(s, k * 1.1, 0.08), size: [1, 0.02, 1.1], rot: [0, along, 0], mat: k % 2 ? 'white' : 'rubber' });
   gate(out, s.x, s.z, H * 2 + 6, 9, across90);
   edged(out, [s.x, 8.6, s.z], [H * 2 + 4, 1.6, 1.2], 'steel', [0, across90, 0]);
 
@@ -982,7 +1074,7 @@ function racetrack(out: ArenaBox[]): void {
       const y = (1 - t) * (1 - t) * (deckY + 3) + 2 * (1 - t) * t * (deckY - 8) + t * t * 0.3;
       curve.push([tx + c * r, y, tz + sn * r]);
     }
-    polyBeam(out, curve, 0.6, 'gridRed');
+    polyBeam(out, curve, 0.6, 'red');
   }
   // The amphitheater: a stage under the veil and curved rows facing it.
   const sx = tx + dir[0] * 28;
@@ -1144,27 +1236,30 @@ function megaproject(out: ArenaBox[]): void {
  * the walls), two roof slabs, sometimes a chimney. The ridge runs along X (or Z when `alongZ`).
  */
 function house(out: ArenaBox[], x: number, z: number, w: number, d: number, h: number, wall: ArenaMaterial, roof: ArenaMaterial, alongZ: boolean, chimney: boolean): void {
-  // Footprint: `w` along the ridge, `d` across it.
-  const [sx, sz] = alongZ ? [d, w] : [w, d];
-  edged(out, [x, h / 2, z], [sx, h, sz], wall);
-  const g = d / Math.SQRT2;
-  edged(out, [x, h, z], alongZ ? [g, g, w] : [w, g, g], wall, alongZ ? [0, 0, 45] : [45, 0, 0]);
-  // Roof slabs over the two sloping faces, just proud of them, with a little overhang.
-  const slab = d / Math.SQRT2 + 0.6;
-  const off = d / 4 + 0.15 * Math.SQRT1_2;
-  for (const s of [-1, 1]) {
-    const y = h + d / 4 + 0.15 * Math.SQRT1_2;
-    if (alongZ) edged(out, [x + s * off, y, z], [slab, 0.3, w + 0.6], roof, [0, 0, -s * 45]);
-    else edged(out, [x, y, z + s * off], [w + 0.6, 0.3, slab], roof, [s * 45, 0, 0]);
-  }
-  if (chimney) out.push({ pos: alongZ ? [x + d * 0.2, h + d * 0.45, z + w * 0.3] : [x + w * 0.3, h + d * 0.45, z + d * 0.2], size: [0.9, d * 0.6, 0.9], mat: 'brick' });
+  // The whole house moves onto the terrain as one (ADR-0059).
+  grouped(() => {
+    // Footprint: `w` along the ridge, `d` across it.
+    const [sx, sz] = alongZ ? [d, w] : [w, d];
+    edged(out, [x, h / 2, z], [sx, h, sz], wall);
+    const g = d / Math.SQRT2;
+    edged(out, [x, h, z], alongZ ? [g, g, w] : [w, g, g], wall, alongZ ? [0, 0, 45] : [45, 0, 0]);
+    // Roof slabs over the two sloping faces, just proud of them, with a little overhang.
+    const slab = d / Math.SQRT2 + 0.6;
+    const off = d / 4 + 0.15 * Math.SQRT1_2;
+    for (const s of [-1, 1]) {
+      const y = h + d / 4 + 0.15 * Math.SQRT1_2;
+      if (alongZ) edged(out, [x + s * off, y, z], [slab, 0.3, w + 0.6], roof, [0, 0, -s * 45]);
+      else edged(out, [x, y, z + s * off], [w + 0.6, 0.3, slab], roof, [s * 45, 0, 0]);
+    }
+    if (chimney) out.push({ pos: alongZ ? [x + d * 0.2, h + d * 0.45, z + w * 0.3] : [x + w * 0.3, h + d * 0.45, z + d * 0.2], size: [0.9, d * 0.6, 0.9], mat: 'masonry' });
+  }, [x, z]);
 }
 
 /** A suburb between Central Park and the runway: three streets of family houses with yards, pools and cars. */
 function suburb(out: ArenaBox[]): void {
   const rand = mulberry32(56);
-  const walls: ArenaMaterial[] = ['white', 'facade', 'brick', 'white', 'facade'];
-  const roofs: ArenaMaterial[] = ['roof', 'roof', 'orange'];
+  const walls: ArenaMaterial[] = ['siding', 'plasterWhite', 'brickHouse', 'siding', 'plasterYellow'];
+  const roofs: ArenaMaterial[] = ['shingle', 'shingle', 'clayTile'];
   for (const street of [340, 420, 500]) {
     // Street paint (decor) and a few lamps.
     for (let x = 256; x <= 420; x += 8) DECOR.push({ pos: [x, 0.015, street], size: [3, 0.02, 0.25], mat: 'paint' });
@@ -1194,11 +1289,13 @@ function suburb(out: ArenaBox[]): void {
         if (rand() < 0.3) {
           const pz = lz + side * 8.2;
           const px = x + (rand() - 0.5) * 6;
-          water(out, px, pz, 5, 3);
-          for (const es of [-1, 1]) {
-            out.push({ pos: [px, 0.12, pz + es * 1.75], size: [6, 0.24, 0.5], mat: 'concrete' });
-            out.push({ pos: [px + es * 2.75, 0.12, pz], size: [0.5, 0.24, 3], mat: 'concrete' });
-          }
+          grouped(() => {
+            water(out, px, pz, 5, 3);
+            for (const es of [-1, 1]) {
+              out.push({ pos: [px, 0.12, pz + es * 1.75], size: [6, 0.24, 0.5], mat: 'concrete' });
+              out.push({ pos: [px + es * 2.75, 0.12, pz], size: [0.5, 0.24, 3], mat: 'concrete' });
+            }
+          }, [px, pz]);
         } else tree(out, x + (rand() - 0.5) * 12, lz + side * 9, 7 + rand() * 4);
       }
     }
@@ -1214,7 +1311,7 @@ function favela(out: ArenaBox[]): void {
   const Z0 = -195;
   const Z1 = 135;
   const STEP = 13.5;
-  const mats: ArenaMaterial[] = ['brick', 'brick', 'brick', 'brick', 'concrete', 'white', 'facade', 'orange', 'gridBlue', 'gridYellow', 'gridGreen'];
+  const mats: ArenaMaterial[] = ['brickHouse', 'brickHouse', 'brickHouse', 'brickHouse', 'masonry', 'plasterWhite', 'plasterPink', 'plasterYellow', 'plasterBlue', 'plasterYellow', 'plasterGreen'];
   const stairs = (z: number) => Math.abs(((z - Z0) % 66) - 33) < 3.5;
   for (let k = 0; k < 10; k++) {
     const x1 = -425 - STEP * k;
@@ -1237,7 +1334,7 @@ function favela(out: ArenaBox[]): void {
         out.push({ pos: [x, top + h / 2, zz], size: [w, h, d], mat: mats[Math.floor(rand() * mats.length)]! });
         const roofY = top + h;
         const r = rand();
-        if (r < 0.35) out.push({ pos: [x + (rand() - 0.5) * 2, roofY + 0.7, zz + (rand() - 0.5) * 2], size: [1.4, 1.4, 1.4], mat: 'gridBlue' });
+        if (r < 0.35) out.push({ pos: [x + (rand() - 0.5) * 2, roofY + 0.7, zz + (rand() - 0.5) * 2], size: [1.4, 1.4, 1.4], mat: 'blue' });
         else if (r < 0.6) for (const [px, pz] of [[-1, -1], [1, 1], [1, -1]] as const) out.push({ pos: [x + px * (w / 2 - 0.4), roofY + 0.6, zz + pz * (d / 2 - 0.4)], size: [0.12, 1.2, 0.12], mat: 'steel' });
       }
     }
@@ -1310,7 +1407,7 @@ function sportsPark(out: ArenaBox[]): void {
   // --- Two tennis courts, long side north-south, with nets.
   for (const cx of [253, 271]) {
     const cz = 20;
-    DECOR.push({ pos: [cx, 0.03, cz], size: [14, 0.05, 30], mat: 'gridGreen' });
+    DECOR.push({ pos: [cx, 0.03, cz], size: [14, 0.05, 30], mat: 'court' });
     for (const s of [-1, 1]) {
       DECOR.push({ pos: [cx + s * 5.5, 0.07, cz], size: [0.12, 0.02, 23.8], mat: 'paint' });
       DECOR.push({ pos: [cx, 0.07, cz + s * 11.9], size: [11, 0.02, 0.12], mat: 'paint' });
@@ -1336,9 +1433,9 @@ function airportSouth(out: ArenaBox[]): void {
   // Cargo terminal with dock doors on its west face.
   edged(out, [345, 6, -400], [40, 12, 30], 'white');
   edged(out, [345, 12.3, -400], [41, 0.6, 31], 'orange');
-  for (let z = -410; z <= -390; z += 6) DECOR.push({ pos: [324.95, 2.5, z], size: [0.1, 5, 4], mat: 'roof' });
+  for (let z = -410; z <= -390; z += 6) DECOR.push({ pos: [324.95, 2.5, z], size: [0.1, 5, 4], mat: 'steel' });
   // Container stacks, one to three high, with gaps between the stacks to fly down.
-  const boxes: ArenaMaterial[] = ['orange', 'steel', 'white', 'gridBlue'];
+  const boxes: ArenaMaterial[] = ['corrugatedOrange', 'corrugatedGrey', 'corrugatedWhite', 'corrugatedBlue'];
   for (let i = 0; i < 4; i++) {
     for (let j = 0; j < 3; j++) {
       const n = 1 + Math.floor(rand() * 3);
@@ -1359,7 +1456,7 @@ function airportSouth(out: ArenaBox[]): void {
 
 /** A street tree: a slim trunk and a rounded canopy (a smaller version of the park's). */
 function streetTree(out: ArenaBox[], x: number, z: number, h: number): void {
-  out.push({ pos: [x, h * 0.3, z], size: [0.45, h * 0.6, 0.45], mat: 'roof' });
+  out.push({ pos: [x, h * 0.3, z], size: [0.45, h * 0.6, 0.45], mat: 'bark' });
   out.push({ pos: [x, h * 0.72, z], size: [h * 0.42, h * 0.45, h * 0.42], mat: 'foliage' });
   out.push({ pos: [x, h * 0.72, z], size: [h * 0.3, h * 0.6, h * 0.3], mat: 'foliage', rot: [0, 45, 0] });
 }
@@ -1374,7 +1471,7 @@ function boulevard(out: ArenaBox[], along: 'x' | 'z', at: number, t0: number, t1
   const mid = (t0 + t1) / 2;
   const pos = (t: number, off: number, y: number): [number, number, number] => (along === 'x' ? [t, y, at + off] : [at + off, y, t]);
   const size = (l: number, h: number, w: number): [number, number, number] => (along === 'x' ? [l, h, w] : [w, h, l]);
-  DECOR.push({ pos: pos(mid, 0, 0.03), size: size(len, 0.04, W), mat: 'roof' });
+  DECOR.push({ pos: pos(mid, 0, 0.03), size: size(len, 0.04, W), mat: 'road' });
   for (const s of [-1, 1]) DECOR.push({ pos: pos(mid, s * (W / 2 + 1.75), 0.06), size: size(len, 0.06, 3.5), mat: 'sidewalk' });
   for (let t = t0 + 3; t < t1 - 3; t += 9) DECOR.push({ pos: pos(t, 0, 0.065), size: size(4, 0.02, 0.3), mat: 'paint' });
   for (let t = t0 + 8; t < t1 - 8; t += 16) {
@@ -1422,7 +1519,7 @@ function sculptureGarden(out: ArenaBox[]): void {
   // Sculptures, alternating sides of the path. Each stays in its own spot clear of the path.
   const spot = (z: number, side: 1 | -1): [number, number] => [pathX(z) + side * 17, z];
   // 1. A tower of five cubes, each smaller and turned further.
-  {
+  grouped(() => {
     const [x, z] = spot(-140, 1);
     let y = 0;
     for (let k = 0; k < 5; k++) {
@@ -1430,69 +1527,69 @@ function sculptureGarden(out: ArenaBox[]): void {
       edged(out, [x, y + sz / 2, z], [sz, sz, sz], k % 2 ? 'white' : 'orange', [0, k * 18, 0]);
       y += sz;
     }
-  }
+  });
   // 2. A twisting spine: thin slabs stacked and turned 9° each.
-  {
+  grouped(() => {
     const [x, z] = spot(-110, -1);
     for (let k = 0; k < 16; k++) edged(out, [x, 1 + k * 1.6, z], [9, 0.5, 2.2], 'white', [0, k * 9, 0]);
     out.push({ pos: [x, 13, z], size: [0.8, 26, 0.8], mat: 'steel' });
-  }
+  });
   // 3. Two tilted rings, interlocked, big enough to fly through.
-  {
+  grouped(() => {
     const [x, z] = spot(-78, 1);
     hoop(out, [x, 11, z], 9, 20, 0.9, 'steel', 20);
     hoop(out, [x + 3, 11, z + 3], 9, 110, 0.9, 'orange', 20);
-  }
+  });
   // 4. Balanced rocks: a heavy stone on a small one, on a plinth.
-  {
+  grouped(() => {
     const [x, z] = spot(-46, -1);
     out.push({ pos: [x, 0.5, z], size: [6, 1, 6], mat: 'concrete' });
     out.push({ pos: [x, 2.6, z], size: [2.4, 3.2, 2.4], rot: [10, 30, -8], mat: 'rock' });
     out.push({ pos: [x + 0.6, 7.6, z], size: [7, 6, 5.5], rot: [-14, 60, 22], mat: 'rock' });
-  }
+  });
   // 5. A forest of steel poles of different heights to weave through.
-  {
+  grouped(() => {
     const [x, z] = spot(-14, 1);
     for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {
       const h = 4 + rand() * 18;
       out.push({ pos: [x - 8 + i * 4, h / 2, z - 8 + j * 4], size: [0.35, h, 0.35], mat: (i + j) % 3 ? 'steel' : 'orange' });
     }
-  }
+  });
   // (The megaproject spawn sits in a clearing at z = 0.)
   // 6. A giant cube balanced on one corner.
-  {
+  grouped(() => {
     const [x, z] = spot(30, 1);
     const sz = 8;
-    edged(out, [x, (sz * Math.sqrt(3)) / 2, z], [sz, sz, sz], 'gridYellow', [45, 0, 35.26]);
-  }
+    edged(out, [x, (sz * Math.sqrt(3)) / 2, z], [sz, sz, sz], 'yellow', [45, 0, 35.26]);
+  });
   // 7. A reflecting pool with stepping stones across it.
-  {
+  grouped(() => {
     const [x, z] = [pathX(58), 58];
     water(out, x, z, 22, 14);
     for (let k = -3; k <= 3; k++) out.push({ pos: [x + k * 3, 0.35, z + (k % 2) * 1.2], size: [1.8, 0.5, 1.8], mat: 'rock' });
-  }
+  });
   // 8. An arch of three leaning slabs.
-  {
+  grouped(() => {
     const [x, z] = spot(86, -1);
     beam(out, [x - 7, 0, z], [x - 2, 12, z], 1.6, 'concrete', 3);
     beam(out, [x + 7, 0, z], [x + 2, 12, z], 1.6, 'concrete', 3);
     edged(out, [x, 12.6, z], [6.4, 1.6, 3], 'concrete');
-  }
+  });
   // 9. A helix climbing around a mast.
-  {
+  grouped(() => {
     const [x, z] = spot(116, 1);
     const pts: V3[] = [];
     for (let k = 0; k <= 36; k++) {
       const a = (k / 36) * Math.PI * 4;
       pts.push([x + Math.cos(a) * 5, 1 + k * 0.6, z + Math.sin(a) * 5]);
     }
-    polyBeam(out, pts, 0.6, 'gridRed');
+    polyBeam(out, pts, 0.6, 'red');
     out.push({ pos: [x, 11.5, z], size: [0.6, 23, 0.6], mat: 'white' });
-  }
+  });
   // Benches and lamps along the path, clear of the sculptures.
   for (let z = Z0 + 20; z < Z1 - 10; z += 32) {
     const x = pathX(z) + 3.4;
-    out.push({ pos: [x, 0.25, z], size: [0.6, 0.5, 2.2], mat: 'roof' });
+    out.push({ pos: [x, 0.25, z], size: [0.6, 0.5, 2.2], mat: 'wood' });
     out.push({ pos: [pathX(z + 16) - 3.2, 2.5, z + 16], size: [0.2, 5, 0.2], mat: 'steel' });
     out.push({ pos: [pathX(z + 16) - 3.2, 5.1, z + 16], size: [0.6, 0.3, 0.6], mat: 'white' });
   }
@@ -1508,7 +1605,7 @@ function airportLandside(out: ArenaBox[]): void {
     const a = (k / 24) * Math.PI * 2;
     ring.push([rx + Math.cos(a) * 15, 0.03, rz + Math.sin(a) * 15]);
   }
-  for (let k = 0; k < 24; k++) beam(DECOR, ring[k]!, ring[k + 1]!, 0.04, 'roof', 9);
+  for (let k = 0; k < 24; k++) beam(DECOR, ring[k]!, ring[k + 1]!, 0.04, 'road', 9);
   DECOR.push({ pos: [rx, 0.07, rz], size: [14, 0.06, 14], rot: [0, 22.5, 0], mat: 'foliage' });
   water(out, rx, rz, 6, 6, 45);
   out.push({ pos: [rx, 2.5, rz], size: [0.8, 5, 0.8], mat: 'white' });
@@ -1580,7 +1677,7 @@ function fillGaps(out: ArenaBox[]): void {
       else if (r < 0.72) for (const [dx, dz] of [[-4, -3], [4, -2], [0, 4]] as const) tree(out, x + dx + jx * 0.3, z + dz + jz * 0.3, 7 + rand() * 4);
       else if (r < 0.88) for (const [dx, dz] of [[-3, 0], [2, 2], [1, -3]] as const) out.push({ pos: [x + dx + jx * 0.4, 0.8, z + dz + jz * 0.4], size: [2.4, 1.6, 2.4], rot: [0, rand() * 90, 0], mat: 'foliage' });
       else {
-        out.push({ pos: [x + jx * 0.5, 0.25, z + jz * 0.5], size: [2.2, 0.5, 0.6], mat: 'roof' });
+        out.push({ pos: [x + jx * 0.5, 0.25, z + jz * 0.5], size: [2.2, 0.5, 0.6], mat: 'wood' });
         tree(out, x - jx, z - jz, 10 + rand() * 4);
       }
     }
@@ -1617,7 +1714,8 @@ function traffic(): MoverDef[] {
   ];
   let c = 0;
   for (const loop of loops) {
-    const route = routeFromPoints(roundedRect(-loop.half, -loop.half, loop.half, loop.half, 5, 0, loop.clockwise));
+    // On the rolling streets (ADR-0059).
+    const route = routeFromPoints(drapeRoute(TERRAIN, roundedRect(-loop.half, -loop.half, loop.half, loop.half, 5, 0, loop.clockwise)));
     for (let i = 0; i < loop.count; i++) {
       cars.push({ kind: 'car', route, offset: (route.length / loop.count) * i, speed: loop.speed, color: CAR_COLORS[c++ % CAR_COLORS.length]!, size, lift: 0.75 });
     }
@@ -1630,8 +1728,9 @@ export const DOWNTOWN: MapDef = {
   name: 'Downtown',
   halfSize: HALF,
   boxes: build(),
-  decor: [...buildDecor(), ...DECOR],
-  spawns: SPAWNS,
+  decor: DECOR,
+  // On the rolling ground (ADR-0059), like their pads.
+  spawns: SPAWNS.map((s) => ({ ...s, pos: [s.pos[0], terrainHeight(TERRAIN, s.pos[0], s.pos[2]) + 0.1, s.pos[2]] as [number, number, number] })),
   ground: 'asphalt',
   // An evening on the coast (ADR-0054): the sun low over the sea to the east, warm light, long views.
   backdrop: 'coast',
@@ -1649,4 +1748,5 @@ export const DOWNTOWN: MapDef = {
   movers: [...traffic(), ...raceCars(), airliner()],
   explosives: EXPLOSIVES,
   holes: HOLES,
+  terrain: TERRAIN,
 };

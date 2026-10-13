@@ -1,5 +1,6 @@
 import type { MoverDef } from './movers.js';
 import type { GroundHole } from './ground.js';
+import type { Terrain } from './terrain.js';
 
 // Map data shared by client and server (ADR-0012). Rendering, flight collisions and server-side
 // bullet checks are all generated from the same boxes, so what you see is exactly what you hit.
@@ -34,6 +35,36 @@ export type ArenaMaterial =
   | 'crystal'
   /** Rivers, ponds, harbors (ADR-0049). */
   | 'water'
+  /** What things are made of (ADR-0060): bare brick; small houses in brick, painted plaster or siding. */
+  | 'masonry'
+  | 'brickHouse'
+  | 'plasterWhite'
+  | 'plasterYellow'
+  | 'plasterBlue'
+  | 'plasterGreen'
+  | 'plasterPink'
+  | 'siding'
+  /** Roofing: terracotta tiles and asphalt shingles. */
+  | 'clayTile'
+  | 'shingle'
+  /** Road surfaces (runways, the circuit, boulevards). */
+  | 'road'
+  /** Tree trunks, timber and planks, tires. */
+  | 'bark'
+  | 'wood'
+  | 'rubber'
+  /** Corrugated steel: containers, boxcars, hangar cladding. */
+  | 'corrugatedOrange'
+  | 'corrugatedBlue'
+  | 'corrugatedRed'
+  | 'corrugatedWhite'
+  | 'corrugatedGrey'
+  /** Painted steel in colors (sculptures, kerbs, tanks), and a sports court. */
+  | 'red'
+  | 'yellow'
+  | 'blue'
+  | 'green'
+  | 'court'
   | 'invisible';
 
 export interface ArenaBox {
@@ -94,6 +125,8 @@ export interface MapDef {
   backdrop?: 'mountains' | 'coast';
   /** Holes in the ground (ADR-0054): pits you can fly down into. */
   holes?: readonly GroundHole[];
+  /** Rolling ground (ADR-0059) instead of the flat plane y = 0. */
+  terrain?: Terrain;
 }
 
 /** A map's own light and air (ADR-0048), e.g. a cave: fog color and range, ambient light, sun strength. */

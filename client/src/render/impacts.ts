@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { buildColliders, collidersNear, type BoxCollider } from '../../../shared/raycast';
-import type { ArenaMaterial, MapDef } from '../../../shared/maps';
+import { SURFACE, terrainHeight, terrainNormal, terrainSurface, type ArenaMaterial, type MapDef, type Terrain } from '../../../shared/maps';
 import type { Particles } from './particles';
 
 /**
@@ -36,12 +36,43 @@ const SURFACE_OF: Record<ArenaMaterial, Surface> = {
   rock: 'stone',
   crystal: 'glass',
   water: 'water',
+  masonry: 'brick',
+  brickHouse: 'brick',
+  plasterWhite: 'painted',
+  plasterYellow: 'painted',
+  plasterBlue: 'painted',
+  plasterGreen: 'painted',
+  plasterPink: 'painted',
+  siding: 'painted',
+  clayTile: 'brick',
+  shingle: 'asphalt',
+  road: 'asphalt',
+  bark: 'dirt',
+  wood: 'dirt',
+  rubber: 'asphalt',
+  corrugatedOrange: 'metal',
+  corrugatedBlue: 'metal',
+  corrugatedRed: 'metal',
+  corrugatedWhite: 'metal',
+  corrugatedGrey: 'metal',
+  red: 'metal',
+  yellow: 'metal',
+  blue: 'metal',
+  green: 'metal',
+  court: 'painted',
   invisible: 'none',
 };
 
 /** Chip and dust colors per painted material. */
 const PAINT_COLOR: Partial<Record<ArenaMaterial, string>> = {
   white: '#e8e6e0',
+  plasterWhite: '#efeae0',
+  plasterYellow: '#f0cc63',
+  plasterBlue: '#6b9ad0',
+  plasterGreen: '#78b873',
+  plasterPink: '#eba5a5',
+  siding: '#f1eee6',
+  court: '#4a8f66',
   trim: '#e6e0d4',
   paint: '#d9d4c8',
   gridRed: '#e0473c',
@@ -71,12 +102,14 @@ export class SurfaceLookup {
   private colliders: BoxCollider[] = [];
   private mats = new Map<BoxCollider, ArenaMaterial>();
   private ground: Surface = 'concrete';
+  private terrain: Terrain | undefined;
   private readonly hit: SurfaceHit = { surface: 'none', normal: new THREE.Vector3(), color: null };
 
   setMap(map: MapDef): void {
-    this.colliders = buildColliders(map.boxes, map.holes);
+    this.colliders = buildColliders(map.boxes, map.holes, map.terrain);
     this.mats = new Map(this.colliders.map((c, i) => [c, map.boxes[i]!.mat]));
     this.ground = GROUND[map.ground];
+    this.terrain = map.terrain;
   }
 
   /** What's at a round's stopping point, and which way it faces. */
@@ -112,9 +145,12 @@ export class SurfaceLookup {
       h.normal.set(m[axis]! * sign, m[3 + axis]! * sign, m[6 + axis]! * sign);
     }
     if (best === Infinity) {
-      // Nothing solid but the open ground (or the air at max range, which never calls this).
-      h.surface = p.y < 0.2 ? this.ground : 'none';
-      h.normal.set(0, 1, 0);
+      // Nothing solid but the open ground (or the air at max range, which never calls this). On rolling ground
+      // (ADR-0059): its height, slope and cover (grass and sand kick up dirt).
+      const onGround = p.y < terrainHeight(this.terrain, p.x, p.z) + 0.25;
+      const cover = terrainSurface(this.terrain, p.x, p.z);
+      h.surface = !onGround ? 'none' : cover === SURFACE.paved ? this.ground : 'dirt';
+      h.normal.set(...terrainNormal(this.terrain, p.x, p.z));
     }
     return h;
   }
