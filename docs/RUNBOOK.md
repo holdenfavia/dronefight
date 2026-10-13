@@ -61,7 +61,7 @@ Keyboard flight is for testing only.
 
 ### Tuning the flight feel
 
-Every physics and feel constant lives in `client/src/config.ts` (thrust-to-weight, drag, motor spool, rate tracking, prop wash, crash threshold). Rates and camera are adjustable in-game under **Settings**. Current baseline (guarded by tests in `client/src/sim/flightModel.test.ts`): hover near 25% throttle, idle lift ~5% of weight (zero throttle drops almost like free fall), flat terminal fall ~16 m/s, full-throttle punch ~160 km/h, forward top speed ~170 km/h, full stick reaches max rate in ~25 ms, prop wash very light (max 12°/s shake, only when dropping faster than 4 m/s; set `propWash.maxDegPerSec` to 0 to remove it). Gravity is real (9.81 m/s²); fix floatiness with idle thrust and drag, not gravity.
+Every physics and feel constant lives in `client/src/config.ts` (thrust-to-weight, drag, motor spool, rate tracking, prop wash, crash threshold). Rates and camera are adjustable in-game under **Settings**. Current baseline (guarded by tests in `client/src/sim/flightModel.test.ts`): hover near 35% throttle (thrust ∝ throttle², ADR-0061), idle lift ~2.5% of weight (zero throttle drops almost like free fall), flat terminal fall ~23 m/s, full-throttle punch ~130 km/h, forward top speed ~145 km/h, a 20 m/s slide at hover bleeds ~7 m/s in a second (rotor drag), full stick reaches max rate in ~25 ms, prop wash very light (max 12°/s shake, only when dropping faster than 4 m/s; set `propWash.maxDegPerSec` to 0 to remove it). Gravity is real (9.81 m/s²); fix floatiness with idle thrust and drag, not gravity.
 
 ### Combat
 
@@ -97,7 +97,7 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 - **Wing jets (ADR-0038):** in the wing's Propulsion slot: micro turbine (slow spool, never idles), pulse jet (can't throttle below ~45%, shakes), ramjet (30% booster until 22 m/s, full by 45 m/s). Behavior in `jet` in `shared/propellers.ts`, applied in `stepWing`; models in `mountJet` (`droneModel.ts`); sounds in `client/src/audio/jetVoice.ts` (`engineVoice` picks prop or jet, for you and other pilots).
 - **X8 horizon mode (ADR-0037):** the X8 self-levels near center stick and is acro past 75% stick. Tuning in `X8.horizon` (`client/src/config.ts`), logic in `horizonBlend` (`flightModel.ts`).
 - **Body sizes (ADR-0036, ADR-0043):** `visualScale` (1 = real-size model) and `hitRadius` per body in `shared/drones.ts`; hit spheres are deliberately bigger than the drones. Physics colliders stay real size (`halfExtents` in `config.ts`) so gaps stay flyable (ADR-0041; drawn-size colliders were tried in ADR-0040 and reverted).
-- **Drag (ADR-0042):** quad drag comes from projected areas (`QUAD_AREAS`) and drag coefficients (`AIR`) in `config.ts`. To change how a quad carries speed or falls, change its areas or `AIR.dragScale` (ADR-0052); `pitchSpeed` caps top speed and climb; `motorTau`/`rateTau` set how snappy it is.
+- **Drag (ADR-0042, ADR-0061):** the 5"'s drag areas are `FREESTYLE_DRAG_AREA`; other quads scale them by their projected areas (`QUAD_AREAS`) in `config.ts`. How hard a quad carves (velocity following its heading) is `rotorDrag` (`flapping`, `tipSpeed`); how it falls is the top drag area; `pitchSpeed` caps top speed and climb; `motorTau`/`rateTau` set how snappy it is.
 - **Loadout preview:** the Loadout screen shows your build spinning on a turntable on the right, with numbered badges on each hardpoint (`client/src/render/loadoutPreview.ts`).
 
 ### Class specials (ADR-0016, ADR-0022)

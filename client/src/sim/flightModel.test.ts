@@ -39,10 +39,10 @@ function run(input: FlightInput, seconds: number, state = level()) {
 }
 
 describe('flight model', () => {
-  it('hovers near 25% throttle', () => {
+  it('hovers near 35% throttle (thrust goes with throttle squared, ADR-0061)', () => {
     const t = hoverThrottle();
-    expect(t).toBeGreaterThan(0.2);
-    expect(t).toBeLessThan(0.3);
+    expect(t).toBeGreaterThan(0.3);
+    expect(t).toBeLessThan(0.4);
     const { out } = run({ ...centered, throttle: t }, 0.5);
     expect(out.force.y).toBeCloseTo(QUAD.massKg * SIM.gravity, 1);
   });

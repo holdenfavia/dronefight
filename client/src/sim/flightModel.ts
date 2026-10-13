@@ -181,14 +181,18 @@ export function stepFlight(
 
   // --- Forces: thrust along body up, drag computed in the body frame.
   // Props lose thrust as air flows into them near their pitch speed (ADR-0052): this caps top speed and climb.
-  out.force.copy(up).multiplyScalar(out.motorOutput * maxThrust(p) * propEfficiency(state.linvel.dot(up) * Math.sign(out.motorOutput), p));
+  const thrust = out.motorOutput * maxThrust(p) * propEfficiency(state.linvel.dot(up) * Math.sign(out.motorOutput), p);
+  out.force.copy(up).multiplyScalar(thrust);
 
   bodyVec.copy(state.linvel).applyQuaternion(invRot);
   const speed = bodyVec.length();
+  // Rotor drag (ADR-0061): flapping blades push back on air crossing the discs (body x and z), growing with
+  // thrust. Tip speed goes with sqrt(thrust), so the force per m/s is flapping * sqrt(T * Tmax) / tip speed.
+  const rotor = (p.rotorDrag.flapping * Math.sqrt(Math.abs(thrust) * maxThrust(p))) / p.rotorDrag.tipSpeed;
   bodyVec.set(
-    -(p.dragQuadratic.x * speed + p.dragLinear) * bodyVec.x,
+    -(p.dragQuadratic.x * speed + p.dragLinear + rotor) * bodyVec.x,
     -(p.dragQuadratic.y * speed + p.dragLinear) * bodyVec.y,
-    -(p.dragQuadratic.z * speed + p.dragLinear) * bodyVec.z,
+    -(p.dragQuadratic.z * speed + p.dragLinear + rotor) * bodyVec.z,
   );
   out.force.add(bodyVec.applyQuaternion(state.rotation));
 

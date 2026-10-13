@@ -4,6 +4,7 @@ import { cleanLoadout, gunDps, handling, launchers, missilePods, thrustKg, thrus
 import { SPECIAL_ORDER, SPECIALS, specialFits, type SpecialId } from '../../../shared/specials';
 import { WEAPON_ORDER, WEAPONS, type WeaponId } from '../../../shared/weapons';
 import { saveSettings, type Settings } from '../settings';
+import { QUAD } from '../config';
 import { agilityScore, speedScore } from '../sim/drone';
 import { PROPELLER_ORDER, PROPELLERS, propellerFits } from '../../../shared/propellers';
 import { BODY_ICONS, EMPTY_ICON, finishSwatch, paintSwatch, PROPELLER_ICONS, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
@@ -125,7 +126,7 @@ export class LoadoutScreen {
     const tw = (l: Loadout) => thrustToWeight(l);
     const hover = (l: Loadout) => {
       const t = tw(l);
-      return droneClass(l.body).flight === 'wing' || t <= 1 ? null : Math.pow(1 / t, 1 / 1.5);
+      return droneClass(l.body).flight === 'wing' || t <= 1 ? null : Math.pow(1 / t, 1 / QUAD.throttleExponent);
     };
     const hv = hover(b);
     const heavy = (l: Loadout) => {
