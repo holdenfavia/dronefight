@@ -125,9 +125,14 @@ export function horizonBlend(input: FlightInput, rotation: Quaternion, h: NonNul
   return target;
 }
 
-/** Fraction of static thrust left with `inflow` m/s of air coming into the props (ADR-0052). */
-export function propEfficiency(inflow: number, p: QuadParams): number {
-  return Math.max(0, 1 - Math.max(0, inflow) / p.pitchSpeed);
+/**
+ * Fraction of static thrust left with `inflow` m/s of air coming into the props (ADR-0052). The props' pitch
+ * speed scales with their rpm, which goes with the square root of `motor` output (ADR-0061): at part throttle
+ * the thrust fades at much lower airspeeds, so the quad stays tied to the throttle instead of coasting.
+ */
+export function propEfficiency(inflow: number, p: QuadParams, motor = 1): number {
+  const pitchSpeed = p.pitchSpeed * Math.sqrt(Math.abs(motor));
+  return pitchSpeed > 0 ? Math.max(0, 1 - Math.max(0, inflow) / pitchSpeed) : 0;
 }
 
 export function stepFlight(
@@ -181,7 +186,7 @@ export function stepFlight(
 
   // --- Forces: thrust along body up, drag computed in the body frame.
   // Props lose thrust as air flows into them near their pitch speed (ADR-0052): this caps top speed and climb.
-  const thrust = out.motorOutput * maxThrust(p) * propEfficiency(state.linvel.dot(up) * Math.sign(out.motorOutput), p);
+  const thrust = out.motorOutput * maxThrust(p) * propEfficiency(state.linvel.dot(up) * Math.sign(out.motorOutput), p, out.motorOutput);
   out.force.copy(up).multiplyScalar(thrust);
 
   bodyVec.copy(state.linvel).applyQuaternion(invRot);
