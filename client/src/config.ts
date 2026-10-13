@@ -25,6 +25,17 @@ export interface QuadParams {
    * With little drag, this is what caps top speed and climb, as on a real quad.
    */
   pitchSpeed: number;
+  /**
+   * Rotor drag (ADR-0061): air crossing a spinning prop disc sideways tilts the blades back (flapping) and
+   * pushes against the motion, in proportion to thrust and to the crossing speed over the blade tip speed.
+   * This is what makes a real quad's velocity follow where it points instead of sliding.
+   */
+  rotorDrag: {
+    /** Blade flapping gain: in-plane force = flapping * thrust * (crossing speed / tip speed). */
+    flapping: number;
+    /** Blade tip speed at full thrust (m/s); tip speed goes with the square root of thrust. */
+    tipSpeed: number;
+  };
   /** Present for 3D mode: throttle center is zero thrust, below center reverses the motors. */
   threeD?: {
     /** Reverse thrust as a fraction of forward (symmetric 3D props are less efficient). */
@@ -49,30 +60,19 @@ export interface QuadParams {
 }
 
 /**
- * Air resistance from shape (ADR-0042): drag = 1/2 * air density * Cd * projected area * v^2, per body axis.
- * Areas are measured off each body's real-size model (client/src/render/droneModel.ts): frame, stack,
- * battery, camera, motors, and prop blades (an idling prop is mostly air, so only its blades count).
+ * Air resistance (ADR-0042, ADR-0061): drag = 1/2 * air density * CdA * v^2, per body axis, at full strength.
+ * The 5" freestyle's drag areas (CdA, m^2) are those of a real 5"; every other quad scales
+ * them by its own projected areas (QUAD_AREAS, measured off client/src/render/droneModel.ts).
  */
 export const AIR = {
   /** Sea-level air density (kg/m^3). */
   density: 1.225,
-  /** Drag coefficient of a flat plate face-on (the top of a quad falling flat). */
-  cdFlat: 1.17,
-  /** Drag coefficient of a blunt, boxy body side-on (front and side views). */
-  cdBluff: 1.05,
-  /**
-   * How much of the shape's drag the game applies (ADR-0052). The pilots found full drag floaty: drops
-   * stopped speeding up at ~19 m/s. At 0.35 a cut-throttle drop keeps accelerating to ~32 m/s.
-   */
-  dragScale: 0.35,
 } as const;
 
-/** Quadratic drag coefficient (N per (m/s)^2) for a projected area (m^2) and drag coefficient. */
-function airDrag(areaM2: number, cd: number): number {
-  return 0.5 * AIR.density * cd * areaM2 * AIR.dragScale;
-}
+/** The 5" freestyle's drag area (Cd x projected area, m^2) seen from the side (x), above (y) and front (z). */
+export const FREESTYLE_DRAG_AREA = { x: 0.0095, y: 0.019, z: 0.0085 } as const;
 
-/** Projected areas (m^2) of each quad from above (y), the front (z) and the side (x). */
+/** Projected areas (m^2) of each quad from above (y), the front (z) and the side (x). Only their ratios matter. */
 export const QUAD_AREAS = {
   /** 5" freestyle: crossed arms 0.011, stack and battery 0.0018 more, motors 0.002, 12 blades 0.0085. */
   freestyle: { top: 0.0233, front: 0.0068, side: 0.0085 },
@@ -84,9 +84,15 @@ export const QUAD_AREAS = {
   x8: { top: 0.06, front: 0.02, side: 0.023 },
 } as const;
 
-/** Drag coefficients for a body's areas. */
+/** Quadratic drag per body axis (N per (m/s)^2) for a body with these projected areas, based on the 5". */
 function shapeDrag(a: { top: number; front: number; side: number }): QuadParams['dragQuadratic'] {
-  return { x: airDrag(a.side, AIR.cdBluff), y: airDrag(a.top, AIR.cdFlat), z: airDrag(a.front, AIR.cdBluff) };
+  const f = QUAD_AREAS.freestyle;
+  const q = 0.5 * AIR.density;
+  return {
+    x: q * FREESTYLE_DRAG_AREA.x * (a.side / f.side),
+    y: q * FREESTYLE_DRAG_AREA.y * (a.top / f.top),
+    z: q * FREESTYLE_DRAG_AREA.z * (a.front / f.front),
+  };
 }
 
 /** A 5" freestyle quad, roughly. */
@@ -96,21 +102,26 @@ export const QUAD: QuadParams = {
   halfExtents: { x: 0.12, y: 0.035, z: 0.12 },
   /** Max static thrust divided by weight. */
   thrustToWeight: 8,
-  /** thrust = max * throttle^exponent. 1.5 puts hover near 25% throttle, like a real 5". */
-  throttleExponent: 1.5,
   /**
-   * Airmode idle thrust as a fraction of max, applied while armed.
-   * Real idle barely lifts anything: 0.006 is ~5% of weight, so zero throttle means dropping.
+   * thrust = max * throttle^exponent (ADR-0061). Thrust goes with rpm squared and rpm with throttle, so 2:
+   * hover sits near 35% throttle and the top half of the stick has the punch.
    */
-  idleThrust: 0.006,
+  throttleExponent: 2,
+  /**
+   * Airmode idle thrust as a fraction of max, applied while armed: 5.5% motor idle, squared.
+   * Real idle barely lifts anything (~2.5% of weight), so zero throttle means dropping.
+   */
+  idleThrust: 0.003,
   /** Motor spool time constant (seconds). Modern ESCs and motors spool in ~20 ms. */
   motorTau: 0.012,
   /** How fast the quad's rotation tracks the rate setpoint (seconds). Stands in for a tuned PID loop. */
   rateTau: 0.006,
   pitchSpeed: 62,
-  /** Quadratic drag per body axis (N per (m/s)^2), from the model's shape (ADR-0042). */
+  /** 5x4.5" tri-blades: flapping gain 2, tips at ~213 m/s (32,000 rpm) at full thrust. */
+  rotorDrag: { flapping: 2, tipSpeed: 213 },
+  /** Quadratic drag per body axis (N per (m/s)^2), from the model's shape (ADR-0042, ADR-0061). */
   dragQuadratic: shapeDrag(QUAD_AREAS.freestyle),
-  /** Linear drag (N per m/s): rotor drag, spinning props resisting sideways airflow. Small. */
+  /** Linear drag (N per m/s): idling props and the frame resisting airflow. Small; rotor drag does the rest. */
   dragLinear: 0.008,
   /** Prop wash: random torque shake when descending through your own disturbed air. */
   propWash: {

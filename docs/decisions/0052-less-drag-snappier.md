@@ -1,6 +1,6 @@
 # ADR-0052: Much less drag, snappier response, props fade at speed
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0061 (2026-10-13) for drag; the faster spool and rate response and the prop fade stand
 - **Date:** 2026-10-07
 - **Amends:** ADR-0042 (drag from shape), ADR-0008 (flight model tuning); brings back ADR-0040's prop pitch speed (on its own, without drawn-size collision)
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { cleanLoadout, DEFAULT_LOADOUTS, loadFactor, thrustToWeight } from '../../../shared/loadout';
 import { DEFAULT_RATES, QUAD, SIM, X8 } from '../config';
 import { agilityScore, flightParams, loadedParams, lookAngvel } from './drone';
-import { createFlightOutput, stepFlight } from './flightModel';
+import { createFlightOutput, hoverThrottle, stepFlight } from './flightModel';
 
 /** Integrate a rotation under lookAngvel and return the angle (deg) between the camera and the target. */
 function settle(start: Quaternion, target: Vector3, uptiltDeg: number, seconds: number): number {
@@ -119,7 +119,7 @@ describe('flight assist choice (ADR-0045)', () => {
   });
 });
 
-describe('not floaty (ADR-0052)', () => {
+describe('not floaty (ADR-0061)', () => {
   /** Vertical speed after `seconds` of a flat, throttle-cut drop. */
   function drop(seconds: number): number {
     const p = flightParams(DEFAULT_LOADOUTS.freestyle);
@@ -134,8 +134,23 @@ describe('not floaty (ADR-0052)', () => {
     return -state.linvel.y;
   }
 
-  it('a cut-throttle drop keeps speeding up past 30 m/s instead of parachuting at ~19', () => {
-    expect(drop(2)).toBeGreaterThan(16);
-    expect(drop(15)).toBeGreaterThan(30);
+  it('a cut-throttle drop falls close to free fall and settles near a real 5\'s ~23 m/s', () => {
+    expect(drop(2)).toBeGreaterThan(15);
+    expect(drop(15)).toBeGreaterThan(20);
+    expect(drop(15)).toBeLessThan(26);
+  });
+
+  it('carves instead of sliding: hovering through a 20 m/s sideways slide loses over 5 m/s in a second', () => {
+    const p = flightParams(DEFAULT_LOADOUTS.freestyle);
+    const throttle = hoverThrottle(p);
+    const state = { rotation: new Quaternion(), linvel: new Vector3(20, 0, 0), angvel: new Vector3(), motorOutput: throttle ** p.throttleExponent, time: 0 };
+    const out = createFlightOutput();
+    for (let i = 0; i < SIM.hz; i++) {
+      stepFlight({ throttle, roll: 0, pitch: 0, yaw: 0 }, state, DEFAULT_RATES, true, 1 / SIM.hz, out, p);
+      state.motorOutput = out.motorOutput;
+      state.linvel.addScaledVector(out.force, 1 / SIM.hz / p.massKg);
+      state.linvel.y -= SIM.gravity / SIM.hz;
+    }
+    expect(state.linvel.x).toBeLessThan(15);
   });
 });
