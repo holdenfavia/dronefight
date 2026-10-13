@@ -358,6 +358,10 @@ function outskirts(out: ArenaBox[], rand: Rand): void {
   centralPark(out);
   racetrack(out);
   megaproject(out);
+  suburb(out);
+  favela(out);
+  sportsPark(out);
+  airportSouth(out);
 }
 
 /** The river: water between two embankment walls, with a little pier and moored boats. */
@@ -1126,6 +1130,224 @@ function megaproject(out: ArenaBox[]): void {
   towerCrane(out, sx - 35, sz + 20, 162, 44, 1);
   // Site cabins: stacked containers.
   for (const [cx, cz, y] of [[-300, -110, 1.3], [-300, -102, 1.3], [-300, -106, 3.9]] as const) edged(out, [cx, y, cz], [6, 2.6, 2.4], 'orange');
+}
+
+// --- Filling the last bare asphalt (ADR-0056): a suburb, a favela hill, a sports park, the airport's south side.
+
+/**
+ * A house with a gable roof: walls, a 45° gable (a square prism turned on its long axis, its upper half above
+ * the walls), two roof slabs, sometimes a chimney. The ridge runs along X (or Z when `alongZ`).
+ */
+function house(out: ArenaBox[], x: number, z: number, w: number, d: number, h: number, wall: ArenaMaterial, roof: ArenaMaterial, alongZ: boolean, chimney: boolean): void {
+  // Footprint: `w` along the ridge, `d` across it.
+  const [sx, sz] = alongZ ? [d, w] : [w, d];
+  edged(out, [x, h / 2, z], [sx, h, sz], wall);
+  const g = d / Math.SQRT2;
+  edged(out, [x, h, z], alongZ ? [g, g, w] : [w, g, g], wall, alongZ ? [0, 0, 45] : [45, 0, 0]);
+  // Roof slabs over the two sloping faces, just proud of them, with a little overhang.
+  const slab = d / Math.SQRT2 + 0.6;
+  const off = d / 4 + 0.15 * Math.SQRT1_2;
+  for (const s of [-1, 1]) {
+    const y = h + d / 4 + 0.15 * Math.SQRT1_2;
+    if (alongZ) edged(out, [x + s * off, y, z], [slab, 0.3, w + 0.6], roof, [0, 0, -s * 45]);
+    else edged(out, [x, y, z + s * off], [w + 0.6, 0.3, slab], roof, [s * 45, 0, 0]);
+  }
+  if (chimney) out.push({ pos: alongZ ? [x + d * 0.2, h + d * 0.45, z + w * 0.3] : [x + w * 0.3, h + d * 0.45, z + d * 0.2], size: [0.9, d * 0.6, 0.9], mat: 'brick' });
+}
+
+/** A suburb between Central Park and the runway: three streets of family houses with yards, pools and cars. */
+function suburb(out: ArenaBox[]): void {
+  const rand = mulberry32(56);
+  const walls: ArenaMaterial[] = ['white', 'facade', 'brick', 'white', 'facade'];
+  const roofs: ArenaMaterial[] = ['roof', 'roof', 'orange'];
+  for (const street of [340, 420, 500]) {
+    // Street paint (decor) and a few lamps.
+    for (let x = 256; x <= 420; x += 8) DECOR.push({ pos: [x, 0.015, street], size: [3, 0.02, 0.25], mat: 'paint' });
+    for (let x = 262; x <= 420; x += 44) {
+      out.push({ pos: [x, 3, street - 6], size: [0.2, 6, 0.2], mat: 'steel' });
+      out.push({ pos: [x, 6, street - 5.4], size: [0.25, 0.2, 1.4], mat: 'steel' });
+    }
+    for (const side of [-1, 1]) {
+      const lz = street + side * 17.5;
+      for (let x = 262; x <= 418; x += 22) {
+        // Clear of the runway's north end and the taxiway.
+        if (lz < 345 && x > 355) continue;
+        // The lot: lawn, a driveway to the street, a fence along the back.
+        DECOR.push({ pos: [x, 0.025, lz], size: [20, 0.05, 25], mat: 'foliage' });
+        const dx = x + (rand() < 0.5 ? -6 : 6);
+        DECOR.push({ pos: [dx, 0.06, street + side * 8], size: [4, 0.04, 7], mat: 'concrete' });
+        const back = lz + side * 12.3;
+        out.push({ pos: [x, 0.7, back], size: [20.2, 1.4, 0.15], mat: 'white' });
+        for (const fs of [-1, 1]) out.push({ pos: [x + fs * 10.1, 0.7, lz + side * 6], size: [0.15, 1.4, 12.6], mat: 'white' });
+        // The house, set back from the street.
+        const w = 9 + rand() * 4;
+        const dd = 7 + rand() * 2;
+        const floors = rand() < 0.35 ? 2 : 1;
+        house(out, x + (dx > x ? -2.5 : 2.5), lz - side * 1.5, w, dd, floors * 3.2, walls[Math.floor(rand() * walls.length)]!, roofs[Math.floor(rand() * roofs.length)]!, false, rand() < 0.4);
+        if (rand() < 0.6) EXPLOSIVES.push({ kind: 'car', pos: [dx, 0.83, street + side * 8.5], size: [2, 1.5, 4.4], color: CAR_COLORS[Math.floor(rand() * CAR_COLORS.length)] });
+        // Backyard: a pool (with a concrete edge) or a tree.
+        if (rand() < 0.3) {
+          const pz = lz + side * 8.2;
+          const px = x + (rand() - 0.5) * 6;
+          water(out, px, pz, 5, 3);
+          for (const es of [-1, 1]) {
+            out.push({ pos: [px, 0.12, pz + es * 1.75], size: [6, 0.24, 0.5], mat: 'concrete' });
+            out.push({ pos: [px + es * 2.75, 0.12, pz], size: [0.5, 0.24, 3], mat: 'concrete' });
+          }
+        } else tree(out, x + (rand() - 0.5) * 12, lz + side * 9, 7 + rand() * 4);
+      }
+    }
+  }
+}
+
+/**
+ * A favela on a terraced hill against the west edge: ten steps up to 30 m, packed with small brick and painted
+ * houses (alleys about a metre wide between them), blue water tanks and bare rebar on the roofs, stairways up.
+ */
+function favela(out: ArenaBox[]): void {
+  const rand = mulberry32(57);
+  const Z0 = -195;
+  const Z1 = 135;
+  const STEP = 13.5;
+  const mats: ArenaMaterial[] = ['brick', 'brick', 'brick', 'brick', 'concrete', 'white', 'facade', 'orange', 'gridBlue', 'gridYellow', 'gridGreen'];
+  const stairs = (z: number) => Math.abs(((z - Z0) % 66) - 33) < 3.5;
+  for (let k = 0; k < 10; k++) {
+    const x1 = -425 - STEP * k;
+    const x0 = x1 - STEP;
+    const top = 3 * (k + 1);
+    // The terrace: a solid step of hillside with a concrete retaining wall.
+    out.push({ pos: [(x0 + x1) / 2, top / 2, (Z0 + Z1) / 2], size: [STEP, top, Z1 - Z0], mat: 'concrete' });
+    // A stair up to the next terrace every 66 m.
+    if (k < 9) for (let z = Z0 + 33; z < Z1; z += 66) beam(out, [x0 + 4, top, z], [x0 - 4, top + 3, z], 0.5, 'concrete', 3);
+    // Houses on a 7 m grid, two columns per terrace.
+    for (const cx of [x0 + 3.5, x0 + 10]) {
+      for (let z = Z0 + 3.5; z < Z1 - 3; z += 7) {
+        if (stairs(z) || rand() < 0.22) continue;
+        const w = 5.2 + rand() * 1.1;
+        const d = 5.2 + rand() * 1.1;
+        const floors = 1 + Math.floor(rand() * 3);
+        const h = floors * 3;
+        const x = cx + (rand() - 0.5) * 0.6;
+        const zz = z + (rand() - 0.5) * 0.6;
+        out.push({ pos: [x, top + h / 2, zz], size: [w, h, d], mat: mats[Math.floor(rand() * mats.length)]! });
+        const roofY = top + h;
+        const r = rand();
+        if (r < 0.35) out.push({ pos: [x + (rand() - 0.5) * 2, roofY + 0.7, zz + (rand() - 0.5) * 2], size: [1.4, 1.4, 1.4], mat: 'gridBlue' });
+        else if (r < 0.6) for (const [px, pz] of [[-1, -1], [1, 1], [1, -1]] as const) out.push({ pos: [x + px * (w / 2 - 0.4), roofY + 0.6, zz + pz * (d / 2 - 0.4)], size: [0.12, 1.2, 0.12], mat: 'steel' });
+      }
+    }
+    // A few trees growing out of the gaps.
+    for (let t = 0; t < 3; t++) {
+      const z = Z0 + 10 + rand() * (Z1 - Z0 - 20);
+      if (stairs(z)) continue;
+      tree(out, x0 + 6.75, z + 3.5, 5 + rand() * 3);
+    }
+  }
+}
+
+/** East of the stadium: a lit soccer pitch with bleachers, a skatepark and two tennis courts. */
+function sportsPark(out: ArenaBox[]): void {
+  // --- Soccer pitch.
+  const fx = 222;
+  const fz = -148;
+  const L = 90;
+  const W = 56;
+  DECOR.push({ pos: [fx, 0.02, fz], size: [L + 8, 0.04, W + 8], mat: 'foliage' });
+  for (const s of [-1, 1]) {
+    DECOR.push({ pos: [fx, 0.05, fz + s * (W / 2)], size: [L, 0.02, 0.3], mat: 'paint' });
+    DECOR.push({ pos: [fx + s * (L / 2), 0.05, fz], size: [0.3, 0.02, W], mat: 'paint' });
+    // Penalty boxes and goals.
+    DECOR.push({ pos: [fx + s * (L / 2 - 8), 0.05, fz], size: [0.3, 0.02, 30], mat: 'paint' });
+    for (const t of [-1, 1]) DECOR.push({ pos: [fx + s * (L / 2 - 4), 0.05, fz + t * 15], size: [8, 0.02, 0.3], mat: 'paint' });
+    for (const t of [-1, 1]) out.push({ pos: [fx + s * (L / 2), 1.2, fz + t * 3.6], size: [0.2, 2.4, 0.2], mat: 'white' });
+    out.push({ pos: [fx + s * (L / 2), 2.45, fz], size: [0.22, 0.2, 7.6], mat: 'white' });
+  }
+  DECOR.push({ pos: [fx, 0.05, fz], size: [0.3, 0.02, W], mat: 'paint' });
+  const circle: V3[] = [];
+  for (let i = 0; i <= 16; i++) circle.push([fx + Math.cos((i / 16) * Math.PI * 2) * 9, 0.05, fz + Math.sin((i / 16) * Math.PI * 2) * 9]);
+  for (let i = 0; i < 16; i++) beam(DECOR, circle[i]!, circle[i + 1]!, 0.02, 'paint', 0.3);
+  // Bleachers along the north touchline, and light towers at the corners.
+  for (const [dz, h] of [[0, 0.8], [2, 1.6], [4, 2.4]] as const) edged(out, [fx, h / 2, fz + W / 2 + 6 + dz], [60, h, 2], 'concrete');
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    out.push({ pos: [fx + sx * (L / 2 + 4), 13, fz + sz * (W / 2 + 4)], size: [0.8, 26, 0.8], mat: 'steel' });
+    edged(out, [fx + sx * (L / 2 + 4), 26.5, fz + sz * (W / 2 + 4)], [4, 2, 1], 'white');
+  }
+
+  // --- Skatepark: a half-pipe, a funbox with ramps, rails and a quarter pipe on a concrete pad.
+  const kx = 217;
+  const kz = 15;
+  DECOR.push({ pos: [kx, 0.02, kz], size: [50, 0.04, 40], mat: 'concrete' });
+  const hp = kx - 12;
+  for (const s of [-1, 1]) {
+    // A quarter circle of 4 m radius rising away from the middle, 14 m long, with a deck on top.
+    const pts: V3[] = [];
+    for (let i = 0; i <= 6; i++) {
+      const a = (i / 6) * (Math.PI / 2);
+      pts.push([hp, 4 - Math.cos(a) * 4 + 0.2, kz + s * (3 + Math.sin(a) * 4)]);
+    }
+    for (let i = 0; i < 6; i++) beam(out, pts[i]!, pts[i + 1]!, 0.4, 'concrete', 14);
+    edged(out, [hp, 4, kz + s * 9], [14, 0.4, 3.6], 'concrete');
+    for (const ex of [-1, 1]) out.push({ pos: [hp + ex * 6.8, 2, kz + s * 10.6], size: [0.3, 4, 0.3], mat: 'steel' });
+  }
+  edged(out, [kx + 12, 0.6, kz - 8], [6, 1.2, 6], 'concrete');
+  for (const s of [-1, 1]) beam(out, [kx + 12 + s * 3, 1.2, kz - 8], [kx + 12 + s * 7, 0.1, kz - 8], 0.3, 'concrete', 6);
+  for (const rz of [kz + 4, kz + 10]) {
+    out.push({ pos: [kx + 10, 0.9, rz], size: [10, 0.12, 0.12], mat: 'steel' });
+    for (const ex of [-1, 1]) out.push({ pos: [kx + 10 + ex * 4.5, 0.45, rz], size: [0.12, 0.9, 0.12], mat: 'steel' });
+  }
+  const qp: V3[] = [];
+  for (let i = 0; i <= 6; i++) {
+    const a = (i / 6) * (Math.PI / 2);
+    qp.push([kx + 22 + Math.sin(a) * 3, 3 - Math.cos(a) * 3 + 0.2, kz]);
+  }
+  for (let i = 0; i < 6; i++) beam(out, qp[i]!, qp[i + 1]!, 0.4, 'concrete', 20);
+
+  // --- Two tennis courts, long side north-south, with nets.
+  for (const cx of [253, 271]) {
+    const cz = 20;
+    DECOR.push({ pos: [cx, 0.03, cz], size: [14, 0.05, 30], mat: 'gridGreen' });
+    for (const s of [-1, 1]) {
+      DECOR.push({ pos: [cx + s * 5.5, 0.07, cz], size: [0.12, 0.02, 23.8], mat: 'paint' });
+      DECOR.push({ pos: [cx, 0.07, cz + s * 11.9], size: [11, 0.02, 0.12], mat: 'paint' });
+    }
+    out.push({ pos: [cx, 0.5, cz], size: [12, 1, 0.05], mat: 'white' });
+    for (const s of [-1, 1]) out.push({ pos: [cx + s * 6.1, 0.55, cz], size: [0.15, 1.1, 0.15], mat: 'steel' });
+  }
+}
+
+/** South of the hangars: a car park with a rental canopy, a cargo terminal and containers, fuel tankers, a cargo jet. */
+function airportSouth(out: ArenaBox[]): void {
+  const rand = mulberry32(58);
+  // Car park: stall lines (decor) and parked cars that blow up.
+  for (const row of [-548, -535, -505, -492]) {
+    for (let x = 272; x <= 330; x += 3.2) {
+      DECOR.push({ pos: [x - 1.6, 0.015, row], size: [0.15, 0.02, 5], mat: 'paint' });
+      if (rand() < 0.45) EXPLOSIVES.push({ kind: 'car', pos: [x, 0.75, row], size: [2, 1.5, 4.4], color: CAR_COLORS[Math.floor(rand() * CAR_COLORS.length)] });
+    }
+  }
+  // A rental-car canopy over one row.
+  for (let x = 272; x <= 332; x += 15) for (const s of [-1, 1]) out.push({ pos: [x, 1.8, -505 + s * 3.4], size: [0.3, 3.6, 0.3], mat: 'steel' });
+  edged(out, [302, 3.75, -505], [64, 0.3, 8], 'white');
+  // Cargo terminal with dock doors on its west face.
+  edged(out, [345, 6, -400], [40, 12, 30], 'white');
+  edged(out, [345, 12.3, -400], [41, 0.6, 31], 'orange');
+  for (let z = -410; z <= -390; z += 6) DECOR.push({ pos: [324.95, 2.5, z], size: [0.1, 5, 4], mat: 'roof' });
+  // Container stacks, one to three high, with gaps between the stacks to fly down.
+  const boxes: ArenaMaterial[] = ['orange', 'steel', 'white', 'gridBlue'];
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < 3; j++) {
+      const n = 1 + Math.floor(rand() * 3);
+      for (let k = 0; k < n; k++) out.push({ pos: [292 + i * 9, 1.3 + k * 2.6, -445 + j * 6], size: [6, 2.6, 2.4], mat: boxes[Math.floor(rand() * boxes.length)]! });
+    }
+  }
+  // Fuel tankers: their tanks blow up (ADR-0023).
+  for (const tz of [-360, -368, -376]) {
+    out.push({ pos: [300, 0.9, tz], size: [10, 1, 2.6], mat: 'white' });
+    edged(out, [306.4, 1.7, tz], [2.6, 2.6, 2.4], 'orange');
+    EXPLOSIVES.push({ kind: 'propane', pos: [299, 2.62, tz], size: [2.4, 2.4, 6], yawDeg: 90 });
+  }
+  // A cargo jet parked by the terminal.
+  parkedAirliner(out, 350, -460, 'steel');
 }
 
 /** Lane dashes: drawn, never collided with. */
