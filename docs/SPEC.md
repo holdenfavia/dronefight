@@ -88,7 +88,7 @@ These must never be broken without a superseding decision:
 1. **No growing delay.** Remote players are never shown more than **250 ms** behind real time (at normal ping). No code path may queue and replay a backlog of snapshots.
 2. **Frame rate first.** A steady 60+ FPS on a mid-range laptop. Visual features that break this are off by default.
 3. **Input goes through calibration.** Game code never reads raw gamepad axes directly.
-4. **No copied assets or branding.** Nothing from Flight Division or any other game.
+4. **No copied assets or branding.** No art, models, sounds, UI or branding from Flight Division or any other game. Exception: Flight Division's flight-model code and tuning may be used, with the owner's permission (ADR-0062).
 5. **No install, no account needed to play.** Sign-in is optional and only saves progress.
 
 ## Out of scope (for now)
