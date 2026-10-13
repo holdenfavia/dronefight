@@ -107,16 +107,16 @@ export const QUAD: QuadParams = {
   massKg: 0.65,
   /** Collision box half-extents in metres (x = right, y = up, z = forward). */
   halfExtents: { x: 0.12, y: 0.035, z: 0.12 },
-  /** Max static thrust divided by weight. */
-  thrustToWeight: 8,
+  /** Max static thrust divided by weight: 10, a 6S 1950 kV 5" on 5x4.5" tri-blades (ADR-0061). */
+  thrustToWeight: 10,
   /**
    * thrust = max * throttle^exponent (ADR-0061). Thrust goes with rpm squared and rpm with throttle, so 2:
-   * hover sits near 35% throttle and the top half of the stick has the punch.
+   * hover sits near 32% throttle and the top half of the stick has the punch.
    */
   throttleExponent: 2,
   /**
    * Airmode idle thrust as a fraction of max, applied while armed: 5.5% motor idle, squared.
-   * Real idle barely lifts anything (~2.5% of weight), so zero throttle means dropping.
+   * Real idle barely lifts anything (~3% of weight), so zero throttle means dropping.
    */
   idleThrust: 0.003,
   /** Motor spool time constant (seconds). Modern ESCs and motors spool in ~20 ms. */

@@ -60,6 +60,8 @@ export interface HudInfo {
   source: InputSource;
   uncalibratedId: string | null;
   fps: number;
+  /** Debug: smoothed physics and whole-frame CPU time (ms), and the last frame's draw calls and triangles. */
+  perf: { simMs: number; cpuMs: number; drawCalls: number; triangles: number };
   backend: string;
   showDebug: boolean;
   autoResetIn: number | null;
@@ -240,7 +242,10 @@ export class Hud {
     let debug = '';
     if (info.showDebug) {
       const src = info.source === 'keyboard' && info.uncalibratedId ? 'keyboard (controller needs setup)' : info.source;
-      debug = `${Math.round(info.fps)} FPS · ${info.backend} · input: ${src}`;
+      const p = info.perf;
+      debug =
+        `${Math.round(info.fps)} FPS · ${info.backend} · input: ${src} · ` +
+        `physics ${p.simMs.toFixed(1)} ms · frame CPU ${p.cpuMs.toFixed(1)} ms · ${p.drawCalls} draws · ${(p.triangles / 1e6).toFixed(1)}M tris`;
     }
     this.set(this.el.debug, debug);
 
