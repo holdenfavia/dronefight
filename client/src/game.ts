@@ -577,6 +577,11 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   let last = performance.now();
   let accumulator = 0;
   let fps = 60;
+  // Debug readout: where each frame's time goes (physics, the whole frame on the CPU) and draw calls.
+  let simMs = 0;
+  let cpuMs = 0;
+  let drawCalls = 0;
+  let triangles = 0;
   let wasArmed = false;
   let wasCrashed = false;
   const camForwardA = new THREE.Vector3();
@@ -633,6 +638,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       drone.autoHover = watching;
       drone.hoverLook = watching && drone.classId !== 'wing' ? watchLook : null;
       accumulator += frameDt;
+      const simStart = performance.now();
       arenaColliders.near(drone.currPos.x, drone.currPos.z);
       while (accumulator >= STEP) {
         drone.preStep(control, settings.rates, STEP);
@@ -640,6 +646,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
         drone.postStep(STEP);
         accumulator -= STEP;
       }
+      simMs += (performance.now() - simStart - simMs) * 0.05;
     }
 
     const alpha = paused ? 1 : accumulator / STEP;
@@ -723,6 +730,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       source: input.source,
       uncalibratedId: input.uncalibratedId,
       fps,
+      perf: { simMs, cpuMs, drawCalls, triangles },
       backend: backendName,
       showDebug: settings.graphics.showDebug,
       autoResetIn: drone.crashed && !combat.inMatch ? Math.max(0, CRASH.autoResetSeconds - drone.crashTime) : null,
@@ -741,8 +749,11 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     });
 
     renderer.render(world.scene, rig.camera);
+    drawCalls = renderer.info.render.drawCalls;
+    triangles = renderer.info.render.triangles;
     // The Loadout screen's 3D preview, drawn over the paused view (ADR-0033).
     loadoutPreview.update(menu.previewLoadout, combat.myColor, frameDt, menu.previewAnchor(), menu.previewLoadout ? menu.previewLook : undefined);
     loadoutPreview.render(renderer);
+    cpuMs += (performance.now() - now - cpuMs) * 0.05;
   });
 }
