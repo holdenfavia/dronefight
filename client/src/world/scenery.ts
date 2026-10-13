@@ -178,19 +178,85 @@ function wobble(x: number, z: number, seed: number): number {
   );
 }
 
+/** Lattice value noise in [0, 1], smoothly interpolated: deterministic, irregular (unlike sines). */
+function noise2(x: number, z: number): number {
+  const xi = Math.floor(x);
+  const zi = Math.floor(z);
+  const fx = x - xi;
+  const fz = z - zi;
+  const hash = (a: number, b: number) => {
+    const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+    return h - Math.floor(h);
+  };
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fz * fz * (3 - 2 * fz);
+  const a = hash(xi, zi);
+  const b = hash(xi + 1, zi);
+  const c = hash(xi, zi + 1);
+  const d = hash(xi + 1, zi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+
+/** Ridged multi-octave noise in about [0, 1]: sharp crests and gullies, like eroded hillsides. */
+function ridges(x: number, z: number, octaves = 4): number {
+  let sum = 0;
+  let amp = 0.5;
+  let f = 1;
+  let norm = 0;
+  for (let o = 0; o < octaves; o++) {
+    const n = 1 - Math.abs(noise2(x * f + o * 17.3, z * f - o * 9.1) * 2 - 1);
+    sum += n * n * amp;
+    norm += amp;
+    amp *= 0.5;
+    f *= 2.1;
+  }
+  return sum / norm;
+}
+
+/** Forest colors (ADR-0057): darker in gullies and on shaded slopes, lighter on crests; rock where it's steep. */
+function terrainColor(c: THREE.Color, x: number, y: number, z: number, ny: number, crest: number, rocky: number): void {
+  const patch = noise2(x / 45, z / 45);
+  c.copy(GREENS[Math.min(3, Math.floor(patch * 4))]!);
+  // Crests and sunlit tops lighter, gullies darker.
+  c.multiplyScalar(0.78 + 0.38 * crest + 0.1 * noise2(x / 9, z / 9));
+  // Bare rock on steep faces (and more of it on granite domes).
+  // Forest clings to all but near-vertical faces (Rio's morros are green to the top).
+  const steep = Math.min(1, Math.max(0, (0.42 + rocky * 0.3 - ny) / 0.18));
+  if (steep > 0) c.lerp(CLIFF, steep);
+  // Sand and rock at the waterline.
+  if (y < 2.5 && x > shoreX(z) - 20) c.copy(SAND);
+}
+
+/** Colors for an indexed terrain mesh from its own normals (computed here). */
+function paintTerrain(geo: THREE.BufferGeometry, crestOf: (x: number, z: number) => number, rocky: number): void {
+  geo.computeVertexNormals();
+  const pos = geo.getAttribute('position');
+  const nor = geo.getAttribute('normal');
+  const colors = new Float32Array(pos.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    terrainColor(c, x, pos.getY(i), z, nor.getY(i), crestOf(x, z), rocky);
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+}
+
 /** Rolling, forested land around the map down to sandy beaches; dips under the sea past the shore. */
 function coastLand(): THREE.Mesh {
-  const step = 20;
+  const step = 12;
   const n = Math.round((LAND_R * 2) / step);
   const positions: number[] = [];
-  const colors: number[] = [];
   const index: number[] = [];
-  const c = new THREE.Color();
   const height = (x: number, z: number) => {
     const fromEdge = Math.max(Math.abs(x), Math.abs(z)) - EDGE;
     const shore = shoreX(z) - x;
     const inland = Math.min(1, Math.max(0, fromEdge / 120));
-    const hills = 3 + 22 * inland * (0.5 + 0.5 * wobble(x, z, 1));
+    // Rolling ground with ridged detail on top.
+    const hills = 3 + inland * (18 * (0.5 + 0.5 * wobble(x, z, 1)) + 10 * ridges(x / 70, z / 70, 3));
     // Toward the shore: down to a beach at about sea level, then under the water.
     const beach = Math.min(1, Math.max(0, (shore - 25) / 90));
     return shore < 0 ? -2 + Math.max(-4, shore * 0.1) : 0.3 + Math.min(shore, 25) * 0.04 + (hills - 1.3) * beach;
@@ -200,12 +266,7 @@ function coastLand(): THREE.Mesh {
       const x = -LAND_R + i * step;
       const z = -LAND_R + j * step;
       // At the map's edge the land meets its ground; past the shore it dips under the sea.
-      const y = Math.max(Math.abs(x), Math.abs(z)) <= EDGE ? 0.15 : height(x, z);
-      positions.push(x, y, z);
-      const shore = shoreX(z) - x;
-      if (shore < 30) c.copy(SAND);
-      else c.copy(GREENS[Math.floor((wobble(x, z, 7) * 0.5 + 0.5) * 3.99)]!).multiplyScalar(0.92 + 0.12 * wobble(x * 3, z * 3, 3));
-      colors.push(c.r, c.g, c.b);
+      positions.push(x, Math.max(Math.abs(x), Math.abs(z)) <= EDGE ? 0.15 : height(x, z), z);
     }
   }
   const v = (i: number, j: number) => i * (n + 1) + j;
@@ -222,9 +283,8 @@ function coastLand(): THREE.Mesh {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.setIndex(index);
-  geo.computeVertexNormals();
+  paintTerrain(geo, (x, z) => ridges(x / 70, z / 70, 3), 0);
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
   mesh.frustumCulled = false;
   return mesh;
@@ -241,15 +301,21 @@ interface HillSpec {
   seed: number;
 }
 
-/** One hill: rings of vertices around a peak, forested, bare rock where it's steep, sand at the waterline. */
+/**
+ * One hill (ADR-0057): dense rings of vertices around a peak. The dome profile is carved by ridged noise in
+ * world space (spurs and gullies running down the slopes, a rough skyline), so neighbouring hills read as one
+ * range. Forested, with bare rock on steep faces and sand at the waterline.
+ */
 function hill(spec: HillSpec): THREE.BufferGeometry {
-  const rings = 14;
-  const segs = 40;
+  const rings = 30;
+  const segs = 96;
   const positions: number[] = [];
-  const colors: number[] = [];
   const index: number[] = [];
-  const c = new THREE.Color();
   const profile = (rho: number) => Math.pow(Math.max(0, 1 - Math.pow(rho, spec.steep)), 0.9);
+  // Detail scale follows the hill's size: big mountains get big spurs.
+  const scale = Math.max(40, spec.r * 0.35);
+  // Granite domes stay smooth; forested morros get deeply carved.
+  const carve = spec.steep > 4 ? 0.06 : 0.22;
   for (let ri = 0; ri <= rings; ri++) {
     const rho = ri / rings;
     for (let si = 0; si <= segs; si++) {
@@ -259,13 +325,11 @@ function hill(spec: HillSpec): THREE.BufferGeometry {
       const r = spec.r * rho * wob;
       const x = spec.x + Math.cos(a) * r;
       const z = spec.z + Math.sin(a) * r;
-      const y = spec.h * profile(rho) * (1 + 0.05 * Math.sin(5 * a + s * 3) * rho) - (ri === rings ? 6 : 0);
-      positions.push(x, y, z);
-      // Steepness from the profile's slope between neighbouring rings.
-      const slope = (spec.h * (profile(Math.max(0, rho - 0.04)) - profile(Math.min(1, rho + 0.04)))) / (spec.r * 0.08);
-      if (y < 2.5 && x > shoreX(z) - 20) c.copy(SAND);
-      else c.copy(GREENS[Math.floor((wobble(x * 2.5, z * 2.5, s) * 0.5 + 0.5) * 3.99)]!).lerp(CLIFF, Math.min(1, Math.max(0, (slope - 1.4) / 0.8)));
-      colors.push(c.r, c.g, c.b);
+      const base = spec.h * profile(rho);
+      // Ridges and gullies, strongest on the mid-slopes, plus fine roughness.
+      const mid = Math.sin(Math.PI * Math.min(1, rho * 1.1));
+      const carved = base * (1 + carve * (ridges(x / scale, z / scale) - 0.45) * (0.4 + mid)) + spec.h * 0.015 * (noise2(x / 8, z / 8) - 0.5);
+      positions.push(x, Math.max(-6, carved) - (ri === rings ? 6 : 0), z);
     }
   }
   const stride = segs + 1;
@@ -278,8 +342,8 @@ function hill(spec: HillSpec): THREE.BufferGeometry {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.setIndex(index);
+  paintTerrain(geo, (x, z) => ridges(x / scale, z / scale), spec.steep > 4 ? 1 : 0);
   return geo;
 }
 
@@ -321,7 +385,6 @@ function coastHills(): THREE.Mesh {
     specs.push({ x, z, r: fr, h, steep: 1.4 + rand() * 1.4, seed: k * 1.7 });
   }
   const geo = mergeGeometries(specs.map(hill))!;
-  geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   mesh.frustumCulled = false;
   return mesh;

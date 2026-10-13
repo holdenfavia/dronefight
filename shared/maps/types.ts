@@ -44,7 +44,7 @@ export interface ArenaBox {
   /** Euler rotation in degrees, XYZ order. */
   rot?: [number, number, number];
   mat: ArenaMaterial;
-  /** Draw a dark outline along its edges (detailed buildings, the Detail test map). */
+  /** Draw a dark outline along its edges (detailed buildings). */
   edge?: boolean;
 }
 
@@ -67,7 +67,7 @@ export interface ExplosiveDef {
   color?: string;
 }
 
-export type MapId = 'downtown' | 'yard' | 'playground' | 'cavern' | 'training' | 'lab';
+export type MapId = 'downtown' | 'yard' | 'playground' | 'cavern' | 'training';
 
 export interface MapDef {
   id: MapId;

@@ -1,6 +1,5 @@
 import { CAVERN } from './cavern.js';
 import { DOWNTOWN } from './downtown.js';
-import { LAB } from './lab.js';
 import type { MapDef, MapId, SpawnPoint } from './types.js';
 import { PLAYGROUND } from './playground.js';
 import { TRAINING } from './training.js';
@@ -11,9 +10,8 @@ export type { MoverDef, MoverKind } from './movers.js';
 export { moverPose } from './movers.js';
 export { groundRects, inHole, type GroundHole } from './ground.js';
 
-export const MAPS: Record<MapId, MapDef> = { downtown: DOWNTOWN, yard: YARD, playground: PLAYGROUND, cavern: CAVERN, training: TRAINING, lab: LAB };
-/** 'lab' is the temporary Detail test map (one detailed building), for judging 3D building detail. */
-export const MAP_ORDER: readonly MapId[] = ['downtown', 'yard', 'playground', 'cavern', 'training', 'lab'];
+export const MAPS: Record<MapId, MapDef> = { downtown: DOWNTOWN, yard: YARD, playground: PLAYGROUND, cavern: CAVERN, training: TRAINING };
+export const MAP_ORDER: readonly MapId[] = ['downtown', 'yard', 'playground', 'cavern', 'training'];
 export const DEFAULT_MAP: MapId = 'downtown';
 
 export function isMapId(x: unknown): x is MapId {

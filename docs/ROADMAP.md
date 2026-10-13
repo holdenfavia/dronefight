@@ -143,7 +143,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Maps 3x the area with landmarks (ADR-0049)
 - [ ] Fly the bigger maps together; fill any empty stretches; tune spawns
 - [x] Downtown buildings at level-3 detail; spatial collider grid; grid textures default (ADR-0053)
-- [ ] Remove the Detail test map when done comparing
+- [x] Remove the Detail test map; detailed coastal hills (ADR-0057)
 - [x] Fill Downtown's empty outer areas: airport, Central Park, racetrack, megaproject pit; coastal backdrop (ADR-0054)
 - [x] Racetrack recreated as the Circuit of the Americas; reversed depth buffer fixes far flicker (ADR-0055)
 - [x] Fill Downtown's last bare asphalt: suburb, favela hill, sports park, airport south; no shared faces on any map (ADR-0055, ADR-0056)
