@@ -1,6 +1,6 @@
 # ADR-0063: The 5" flies a physical model ported from Flight Division
 
-- **Status:** Accepted
+- **Status:** Accepted (other bodies on the simple model superseded by ADR-0064, 2026-10-14)
 - **Date:** 2026-10-14
 - **Amends:** ADR-0008 (flight model), ADR-0061 (5" tuning)
 

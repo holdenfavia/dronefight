@@ -145,7 +145,7 @@ export const QUAD: QuadParams = {
 export const QUAD_3D: QuadParams = {
   ...QUAD,
   massKg: 0.6,
-  thrustToWeight: 7,
+  thrustToWeight: 7.14,
   // Reversing a motor takes longer than spooling one way.
   motorTau: 0.024,
   dragQuadratic: shapeDrag(QUAD_AREAS.quad3d),
@@ -161,7 +161,7 @@ export const RACER: QuadParams = {
   ...QUAD,
   massKg: 0.35,
   halfExtents: { x: 0.08, y: 0.03, z: 0.08 },
-  thrustToWeight: 8,
+  thrustToWeight: 7.8,
   motorTau: 0.009,
   rateTau: 0.004,
   dragQuadratic: shapeDrag(QUAD_AREAS.racer),
@@ -173,7 +173,7 @@ export const X8: QuadParams = {
   ...QUAD,
   massKg: 1.6,
   halfExtents: { x: 0.2, y: 0.06, z: 0.2 },
-  thrustToWeight: 4,
+  thrustToWeight: 4.09,
   motorTau: 0.028,
   rateTau: 0.02,
   dragQuadratic: shapeDrag(QUAD_AREAS.x8),
@@ -304,6 +304,11 @@ export interface PhysicalQuadSpec {
     battery: { mass: number; size: V3; at: V3 };
     /** Total arm mass (kg), as four rods from the centre to the motors. */
     arms: number;
+    /**
+     * Coaxial pairs (the X8): a second motor and prop under each arm end, this far (m) below the top one,
+     * spinning the other way and working in the top prop's wake.
+     */
+    coaxialGap?: number;
     other: readonly { name: string; mass: number; at: V3; size: V3 }[];
   };
   aero: { dragArea: V3; pressureCentre: V3 };
@@ -331,6 +336,11 @@ export interface PhysicalQuadSpec {
   loopHz: number;
   /** Motor rpm treated as 100% for sound. */
   maxRpm: number;
+  /**
+   * 3D mode (the 3D quad): motors and symmetric props run both ways. Stick centre is zero thrust, below it
+   * is reverse; `deadband` is the fraction of each half-stick around centre that commands nothing.
+   */
+  reversible?: { deadband: number };
 }
 
 const BASE_TUNE: PidTune = {
@@ -425,8 +435,126 @@ export const PHYSICAL_QUAD: PhysicalQuadSpec = {
   maxRpm: 32000,
 };
 
+/** Blade-element numbers every prop shares unless it says otherwise (Flight Division's defaults). */
+const PROP_BASE = { zeroLift: 0.05, maxLoading: 0.2, flapping: 2, inducedFactor: 1.3, duct: 1, wakeNoise: 0.18 } as const;
+
 /**
- * The physical 5" hovers at this stick throttle at this static thrust-to-weight (measured; guarded by
- * physicalQuad.test.ts). Hover throttle goes with sqrt(weight / thrust) from there, for the Loadout screen.
+ * The 3" racer as real parts (ADR-0064): a 140 mm 6S 3" with 1505-class 2450 kV motors and 3x3" tri-blades,
+ * 0.35 kg with its pack. Built the way Flight Division builds its quads (motor and prop from its 3" cinewhoop,
+ * open props instead of ducts); tune from its racer.
  */
-export const PHYSICAL_HOVER = { throttle: 0.2, thrustToWeight: 9.13 } as const;
+export const PHYSICAL_RACER: PhysicalQuadSpec = {
+  layout: {
+    reachX: 0.14 / Math.sqrt(8),
+    reachZ: 0.14 / Math.sqrt(8),
+    motorY: 0.01,
+    propY: 0.022,
+    motor: { mass: 0.02, radius: 0.0115, height: 0.016 },
+    prop: { mass: 0.0022, radius: 0.0381 },
+    battery: { mass: 0.11, size: [0.03, 0.028, 0.06], at: [0, 0.034, 0.004] },
+    arms: 0.03,
+    other: [
+      { name: 'plates', mass: 0.03, at: [0, 0.004, 0], size: [0.04, 0.005, 0.09] },
+      { name: 'stack', mass: 0.012, at: [0, 0.012, 0], size: [0.026, 0.01, 0.026] },
+      { name: 'HD camera and vtx', mass: 0.045, at: [0, 0.018, -0.02], size: [0.03, 0.02, 0.05] },
+      { name: 'receiver, antennas, hardware', mass: 0.0344, at: [0, 0.014, 0.02], size: [0.04, 0.02, 0.05] },
+    ],
+  },
+  aero: { dragArea: [0.0045, 0.0085, 0.0037], pressureCentre: [0, 0.01, 0] },
+  prop: { ...PROP_BASE, radius: 0.0381, blades: 3, chord: 0.0085, pitch: 0.0889, liftSlope: 2.4, profileDrag: 0.07, wakeNoise: 0.15 },
+  motor: { kv: 3000, resistance: 0.11, noLoadCurrent: 0.9, currentLimit: 50, brakeLimit: 30, rotorInertia: 1e-6 },
+  battery: { cells: 6, cellVoltage: 3.95, resistance: 0.06, polarisation: 0.025, polarisationTau: 2 },
+  tune: {
+    ...BASE_TUNE,
+    p: [48, 50, 45],
+    d: [50, 56, 0],
+    dMin: [45, 50, 0],
+    f: [90, 93, 55],
+    itermRelaxYaw: true,
+    tpaRate: 0.3,
+    tpaBreakpoint: 0.5,
+    dynIdleMinRpm: 40,
+  },
+  throttleExpo: 0.1,
+  throttleMid: 0.5,
+  loopHz: 960,
+  maxRpm: 50000,
+};
+
+/**
+ * The 3D quad as real parts (ADR-0064): the 5"'s frame and motors on a 3D ESC, with symmetric 5x3" 3D
+ * tri-blades that push the same either way, and a lighter 0.2 kg pack (0.6 kg all-up).
+ */
+export const PHYSICAL_QUAD_3D: PhysicalQuadSpec = {
+  ...PHYSICAL_QUAD,
+  layout: { ...PHYSICAL_QUAD.layout, battery: { ...PHYSICAL_QUAD.layout.battery, mass: 0.2 } },
+  aero: { dragArea: [0.0121, 0.019, 0.0099], pressureCentre: [0, 0.012, 0] },
+  // A symmetric section has no lift at zero pitch, and makes more profile drag than a cambered one.
+  prop: { ...PHYSICAL_QUAD.prop, pitch: 0.0889, zeroLift: 0, liftSlope: 2.4, profileDrag: 0.06 },
+  tune: { ...PHYSICAL_QUAD.tune, motorIdle: 0.03, dynIdleMinRpm: 0 },
+  // Linear throttle: centre stick is zero, and each half runs the full range one way.
+  throttleExpo: 0,
+  reversible: { deadband: 0.04 },
+};
+
+/**
+ * The X8 heavy lifter as real parts (ADR-0064): four 0.5 m arms with a coaxial pair at each end, eight
+ * 2806-class 1280 kV motors on 7" bi-blades and a big 6S pack, ~2 kg all-up. Motors, props and tune from
+ * Flight Division's 7" long-range quad.
+ */
+export const PHYSICAL_X8: PhysicalQuadSpec = {
+  layout: {
+    reachX: 0.5 / Math.sqrt(8),
+    reachZ: 0.5 / Math.sqrt(8),
+    motorY: 0.015,
+    propY: 0.04,
+    coaxialGap: 0.06,
+    motor: { mass: 0.058, radius: 0.0175, height: 0.026 },
+    prop: { mass: 0.009, radius: 0.0889 },
+    battery: { mass: 0.6, size: [0.05, 0.045, 0.15], at: [0, 0.045, 0] },
+    arms: 0.28,
+    other: [
+      { name: 'plates', mass: 0.2, at: [0, 0.01, 0], size: [0.12, 0.02, 0.2] },
+      { name: 'stack and GPS', mass: 0.05, at: [0, 0.025, 0.03], size: [0.04, 0.02, 0.05] },
+      { name: 'camera', mass: 0.04, at: [0, 0.03, -0.09], size: [0.03, 0.03, 0.03] },
+      { name: 'hardpoint rails', mass: 0.2, at: [0, -0.03, 0], size: [0.2, 0.03, 0.2] },
+      { name: 'vtx, antennas, hardware', mass: 0.094, at: [0, 0.03, 0.06], size: [0.06, 0.03, 0.1] },
+    ],
+  },
+  aero: { dragArea: [0.0257, 0.049, 0.025], pressureCentre: [0, 0.01, 0] },
+  prop: { ...PROP_BASE, radius: 0.0889, blades: 2, chord: 0.018, pitch: 0.1016, liftSlope: 3.65, profileDrag: 0.027 },
+  motor: { kv: 975, resistance: 0.07, noLoadCurrent: 1.4, currentLimit: 60, brakeLimit: 40, rotorInertia: 22e-6 },
+  battery: { cells: 6, cellVoltage: 3.95, resistance: 0.03, polarisation: 0.02, polarisationTau: 3 },
+  tune: {
+    ...BASE_TUNE,
+    // Higher P and quicker I-term relax than the 7": the eight big rotors spool slowly, so I would wind up.
+    p: [55, 58, 40],
+    d: [60, 70, 0],
+    dMin: [50, 60, 0],
+    f: [70, 70, 80],
+    itermRelaxCutoff: 8,
+    itermRelaxYaw: true,
+    tpaRate: 0.3,
+    tpaBreakpoint: 0.5,
+    dynIdleMinRpm: 28,
+  },
+  throttleExpo: 0.1,
+  throttleMid: 0.5,
+  loopHz: 960,
+  maxRpm: 23000,
+};
+
+/** The physical model's spec for each quad body (ADR-0063, ADR-0064). */
+export const PHYSICAL_SPECS = { freestyle: PHYSICAL_QUAD, quad3d: PHYSICAL_QUAD_3D, racer: PHYSICAL_RACER, x8: PHYSICAL_X8 } as const;
+
+/**
+ * Each physical quad hovers at this throttle at its default build's static thrust-to-weight (measured; guarded
+ * by physicalQuad.test.ts). For the 3D quad it is the fraction of the upper half-stick. Hover throttle goes
+ * with sqrt(weight / thrust) from there, for the Loadout screen.
+ */
+export const PHYSICAL_HOVER: Record<keyof typeof PHYSICAL_SPECS, { throttle: number; thrustToWeight: number }> = {
+  freestyle: { throttle: 0.2, thrustToWeight: 9.13 },
+  quad3d: { throttle: 0.31, thrustToWeight: 7.14 },
+  racer: { throttle: 0.21, thrustToWeight: 7.8 },
+  x8: { throttle: 0.36, thrustToWeight: 4.09 },
+};

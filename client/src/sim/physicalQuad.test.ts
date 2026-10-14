@@ -1,17 +1,27 @@
-import { Quaternion } from 'three';
+import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RATES, SIM } from '../config';
+import { DRONE_CLASSES } from '../../../shared/drones';
+import { DEFAULT_LOADOUTS, thrustToWeight } from '../../../shared/loadout';
+import { DEFAULT_RATES, PHYSICAL_HOVER, PHYSICAL_SPECS, SIM } from '../config';
 import type { ControlState } from '../input/inputManager';
 import { Drone } from './drone';
 import { createPhysics, type Physics } from './physics';
 import { physicalHardware, thrustStand } from './physicalQuad';
 import { maxRate } from './rates';
 
-async function armedDrone(): Promise<{ physics: Physics; drone: Drone }> {
+type Body = keyof typeof PHYSICAL_SPECS;
+
+async function armedDrone(body: Body = 'freestyle'): Promise<{ physics: Physics; drone: Drone }> {
   const physics = await createPhysics();
   const drone = new Drone(physics, { pos: [0, 100, 0], yawDeg: 0 } as never);
+  if (body !== 'freestyle') drone.setLoadout(DEFAULT_LOADOUTS[body]);
   drone.armed = true;
   return { physics, drone };
+}
+
+/** Stick throttle for a fraction of full thrust: the 3D quad's forward thrust is the upper half-stick. */
+function stick(body: Body, fraction: number): number {
+  return body === 'quad3d' ? 0.5 + fraction / 2 : fraction;
 }
 
 function fly(physics: Physics, drone: Drone, control: Partial<ControlState>, seconds: number): void {
@@ -66,5 +76,63 @@ describe('physical 5" (ADR-0063)', () => {
     fly(physics, drone, { throttle: 0 }, 8);
     expect(-drone.state.linvel.y).toBeGreaterThan(20);
     expect(-drone.state.linvel.y).toBeLessThan(27);
+  });
+});
+
+describe('physical 3", 3D quad and X8 (ADR-0064)', () => {
+  const others = ['racer', 'quad3d', 'x8'] as const;
+
+  it('weigh what the Loadout screen says, with the thrust it shows', () => {
+    for (const body of others) {
+      expect(physicalHardware(PHYSICAL_SPECS[body]).mass).toBeCloseTo(DRONE_CLASSES[body].frameKg, 2);
+      const tw = thrustStand(PHYSICAL_SPECS[body]).thrustToWeight;
+      expect(tw).toBeCloseTo(PHYSICAL_HOVER[body].thrustToWeight, 1);
+      expect(thrustToWeight(DEFAULT_LOADOUTS[body])).toBeCloseTo(PHYSICAL_HOVER[body].thrustToWeight, 2);
+    }
+  });
+
+  it('hover where the Loadout screen says', async () => {
+    for (const body of others) {
+      const h = PHYSICAL_HOVER[body].throttle;
+      const low = await armedDrone(body);
+      fly(low.physics, low.drone, { throttle: stick(body, h - 0.04) }, 2);
+      expect(low.drone.state.linvel.y).toBeLessThan(0);
+      const high = await armedDrone(body);
+      fly(high.physics, high.drone, { throttle: stick(body, h + 0.04) }, 2);
+      expect(high.drone.state.linvel.y).toBeGreaterThan(0);
+    }
+  });
+
+  it('roll and pitch at the max rate, the X8 a little slower', async () => {
+    const target = maxRate(DEFAULT_RATES.roll);
+    for (const body of others) {
+      for (const [axis, control] of [['z', { roll: 1 }], ['x', { pitch: 1 }]] as const) {
+        const { physics, drone } = await armedDrone(body);
+        const h = stick(body, PHYSICAL_HOVER[body].throttle);
+        fly(physics, drone, { throttle: h }, 0.3);
+        fly(physics, drone, { throttle: h, ...control }, body === 'x8' ? 0.3 : 0.25);
+        const rate = bodyRate(drone)[axis];
+        expect(rate).toBeLessThan(-0.9 * target);
+        expect(rate).toBeGreaterThan(-1.15 * target);
+      }
+    }
+  });
+
+  it('the 3D quad hangs upside down on reversed props, and centre stick is zero thrust', async () => {
+    const h = PHYSICAL_HOVER.quad3d.throttle;
+    const flip = (d: Drone) => {
+      d.body.setRotation(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), Math.PI), true);
+    };
+    const up = await armedDrone('quad3d');
+    flip(up.drone);
+    fly(up.physics, up.drone, { throttle: 0.5 - (h + 0.06) / 2 }, 1.5);
+    expect(up.drone.state.linvel.y).toBeGreaterThan(0);
+    const down = await armedDrone('quad3d');
+    flip(down.drone);
+    fly(down.physics, down.drone, { throttle: 0.5 - (h - 0.06) / 2 }, 1.5);
+    expect(down.drone.state.linvel.y).toBeLessThan(0);
+    const centre = await armedDrone('quad3d');
+    fly(centre.physics, centre.drone, { throttle: 0.5 }, 1);
+    expect(centre.drone.state.linvel.y).toBeLessThan(-0.8 * SIM.gravity);
   });
 });

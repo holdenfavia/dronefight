@@ -75,21 +75,55 @@ function massProperties(parts: readonly Part[]): { mass: number; centre: [number
 /** Motor corners in (x, z): front right, front left, rear right, rear left. */
 const CORNERS = [[1, -1], [-1, -1], [1, 1], [-1, 1]] as const;
 /**
- * Prop spin direction per motor (props-out): the reaction to each motor's torque yaws the body. Motors 1 and 2
+ * Prop spin direction per corner (props-out): the reaction to each motor's torque yaws the body. Motors 1 and 2
  * spin up for a nose-right yaw command (see `mix`), so their reaction must turn the nose right.
  */
 const PROP_SPIN = [-1, 1, 1, -1] as const;
+/** Quad-X mixer per corner: how much roll (right +), pitch (nose up +) and yaw (nose right +) each motor takes. */
+const CORNER_MIX = [[-1, 1, -1], [1, 1, 1], [-1, -1, 1], [1, -1, -1]] as const;
+
+/** One motor and prop: where it sits (x, z and the prop's height), which way it spins and how it mixes. */
+interface RotorPlace {
+  x: number;
+  y: number;
+  z: number;
+  spin: number;
+  mix: readonly [number, number, number];
+  /** Index of the prop directly above, whose wake this one works in (coaxial lower props); -1 for none. */
+  under: number;
+}
+
+/** Every rotor of the layout: four corners, plus a lower, counter-spinning prop under each for coaxial pairs. */
+function rotorPlaces(spec: PhysicalQuadSpec): RotorPlace[] {
+  const l = spec.layout;
+  const places: RotorPlace[] = CORNERS.map(([sx, sz], i) => ({
+    x: sx * l.reachX,
+    y: l.propY,
+    z: sz * l.reachZ,
+    spin: PROP_SPIN[i]!,
+    mix: CORNER_MIX[i]!,
+    under: -1,
+  }));
+  if (l.coaxialGap !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const top = places[i]!;
+      const [r, p, y] = top.mix;
+      places.push({ x: top.x, y: top.y - l.coaxialGap, z: top.z, spin: -top.spin, mix: [r, p, -y], under: i });
+    }
+  }
+  return places;
+}
 
 function quadParts(spec: PhysicalQuadSpec): Part[] {
   const l = spec.layout;
   const parts: Part[] = [];
-  for (const [sx, sz] of CORNERS) {
-    const x = sx * l.reachX, z = sz * l.reachZ;
-    const mr = l.motor.radius * Math.sqrt(3);
-    parts.push({ mass: l.motor.mass, at: [x, l.motorY, z], size: [mr, l.motor.height, mr] });
-    parts.push({ mass: l.prop.mass, at: [x, l.propY, z], size: [1.1 * l.prop.radius, 0, 1.1 * l.prop.radius] });
-    parts.push({ mass: l.arms / 4, from: [0, 0, 0], to: [x, 0, z] });
+  const mr = l.motor.radius * Math.sqrt(3);
+  for (const r of rotorPlaces(spec)) {
+    const lower = r.under >= 0 ? l.coaxialGap! : 0;
+    parts.push({ mass: l.motor.mass, at: [r.x, l.motorY - lower, r.z], size: [mr, l.motor.height, mr] });
+    parts.push({ mass: l.prop.mass, at: [r.x, r.y, r.z], size: [1.1 * l.prop.radius, 0, 1.1 * l.prop.radius] });
   }
+  for (const [sx, sz] of CORNERS) parts.push({ mass: l.arms / 4, from: [0, 0, 0], to: [sx * l.reachX, 0, sz * l.reachZ] });
   parts.push({ mass: l.battery.mass, at: l.battery.at, size: l.battery.size });
   for (const o of l.other) parts.push({ mass: o.mass, at: o.at, size: o.size });
   return parts;
@@ -238,15 +272,25 @@ export function groundEffect(height: number, radius: number): number {
 
 // --- Motors and battery ---------------------------------------------------------------------------------
 
-/** Four motors on one battery: back EMF, winding resistance, current limits, sag, and rotor spin-up. */
+/**
+ * The motors on one battery: back EMF, winding resistance, current limits, sag, and rotor spin-up. Reversible
+ * motors (3D mode) take negative duty and spin either way; the others only ever spin forward.
+ */
 export class Powertrain {
-  readonly omega = new Float64Array(4);
-  readonly drive = new Float64Array(4);
-  private readonly current = new Float64Array(4);
-  private readonly backEmf = new Float64Array(4);
+  readonly omega: Float64Array;
+  readonly drive: Float64Array;
+  private readonly current: Float64Array;
+  private readonly backEmf: Float64Array;
   private polarisation = 0;
   /** Battery voltage under load over its resting voltage. */
   sag = 1;
+
+  constructor(readonly count = 4, private readonly reversible = false) {
+    this.omega = new Float64Array(count);
+    this.drive = new Float64Array(count);
+    this.current = new Float64Array(count);
+    this.backEmf = new Float64Array(count);
+  }
 
   reset(): void {
     this.omega.fill(0);
@@ -261,11 +305,14 @@ export class Powertrain {
     const kt = 1 / kw;
     const rest = battery.cells * battery.cellVoltage;
     const open = rest - this.polarisation;
+    const n = this.count;
+    // A 3D ESC drives full current either way; a normal one only brakes against its spin.
+    const lowLimit = this.reversible ? -motor.currentLimit : -motor.brakeLimit;
     let bus = 0;
     let volts = open;
     if (armed) {
       let g = 0, e = 0;
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < n; i++) {
         const emf = this.omega[i]! / kw;
         this.backEmf[i] = emf;
         const d = duty[i]!;
@@ -275,13 +322,13 @@ export class Powertrain {
       const rb = battery.resistance;
       volts = (open + rb * e) / (1 + rb * g);
       let limited = false;
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < n; i++) {
         let amps = (duty[i]! * volts - this.backEmf[i]!) / motor.resistance;
         if (amps > motor.currentLimit) {
           amps = motor.currentLimit;
           limited = true;
-        } else if (amps < -motor.brakeLimit) {
-          amps = -motor.brakeLimit;
+        } else if (amps < lowLimit) {
+          amps = lowLimit;
           limited = true;
         }
         this.current[i] = amps;
@@ -295,33 +342,38 @@ export class Powertrain {
     this.polarisation += (battery.polarisation * bus - this.polarisation) * (1 - Math.exp(-dt / battery.polarisationTau));
     const friction = kt * motor.noLoadCurrent;
     const inertia = motor.rotorInertia * inertiaScale;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < n; i++) {
       const w = this.omega[i]!;
-      const lowSpeed = w > 50 ? 1 : w / 50;
+      const speed = Math.abs(w);
+      // Bearing friction opposes the spin, fading in over the first 50 rad/s.
+      const lowSpeed = w > 50 ? 1 : w < -50 ? -1 : w / 50;
       const amps = this.current[i]!;
       const torque = kt * amps - friction * lowSpeed;
       this.drive[i] = torque;
       // Implicit damping from the electrical and aerodynamic slopes keeps the spin-up stable at large dt.
-      const damping = (armed && amps < motor.currentLimit && amps > -motor.brakeLimit ? (kt * kt) / motor.resistance : 0) + (w > 1 ? (2 * Math.abs(load[i]!)) / w : 0);
+      const damping = (armed && amps < motor.currentLimit && amps > lowLimit ? (kt * kt) / motor.resistance : 0) + (speed > 1 ? (2 * Math.abs(load[i]!)) / speed : 0);
       const next = w + (dt * (torque - load[i]!)) / (inertia + dt * damping);
-      this.omega[i] = next > 0 ? next : 0;
+      this.omega[i] = this.reversible || next > 0 ? next : 0;
     }
   }
 }
 
 // --- Prop-wake turbulence -------------------------------------------------------------------------------
 
-/** Four band-limited noise channels (a resonant 2-pole filter on white noise), one per prop. */
+/** Band-limited noise channels (a resonant 2-pole filter on white noise), one per prop. */
 class Turbulence {
-  private readonly filter = new Float64Array(8);
+  private readonly filter: Float64Array;
   private seed = 0x9e3779b9;
   private dt = 0;
   private b0 = 0;
   private a1 = 0;
   private a2 = 0;
-  readonly value = new Float64Array(4);
+  readonly value: Float64Array;
 
-  constructor(private readonly hz = 22, private readonly q = 0.9) {}
+  constructor(private readonly count = 4, private readonly hz = 22, private readonly q = 0.9) {
+    this.filter = new Float64Array(2 * count);
+    this.value = new Float64Array(count);
+  }
 
   reset(): void {
     this.filter.fill(0);
@@ -346,7 +398,7 @@ class Turbulence {
       this.b0 = 1 / Math.sqrt((1 - this.a2) / ((1 + this.a2) * ((1 - this.a2) * (1 - this.a2) - this.a1 * this.a1)));
       this.dt = dt;
     }
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < this.count; i++) {
       const white = (this.next() + this.next()) * 1.2247;
       const j = 2 * i;
       const y = this.b0 * white + this.a1 * this.filter[j]! + this.a2 * this.filter[j + 1]!;
@@ -378,6 +430,8 @@ const RC_FRAME = 1 / 60;
 export interface PidFlags {
   armed: boolean;
   airmode: boolean;
+  /** Thrust direction: 1 forward, -1 reversed (3D mode). */
+  direction: number;
 }
 
 /**
@@ -386,7 +440,7 @@ export interface PidFlags {
  * Gyro and setpoints are in Betaflight's axes and units: roll (right +), pitch (nose up +), yaw (nose right +), deg/s.
  */
 class RatePid {
-  readonly motors = new Float64Array(4);
+  readonly motors: Float64Array;
   throttle = 0;
   private readonly setpoint = new Float64Array(3);
   private readonly gyro = new Float64Array(3);
@@ -395,7 +449,10 @@ class RatePid {
   /** Raw and smoothed signals, filter states, I-terms (see `step`). */
   private readonly s = new Float64Array(55);
 
-  constructor(public tune: PidTune) {}
+  /** `mixer` holds roll, pitch, yaw factors per motor. */
+  constructor(public tune: PidTune, private readonly mixer: Float64Array) {
+    this.motors = new Float64Array(mixer.length / 3);
+  }
 
   reset(): void {
     this.s.fill(0);
@@ -526,7 +583,7 @@ class RatePid {
       x[54] = it;
       idle += Math.min(b.dynIdleMaxIncrease, Math.max(0, it + 2e-5 * err));
     }
-    x[52] = mix(this.motors, throttle, this.sum[0]! / 1000, this.sum[1]! / 1000, this.sum[2]! / 1000, airmode, idle, b.motorOutputLimit);
+    x[52] = mix(this.motors, this.mixer, throttle, this.sum[0]! / 1000, this.sum[1]! / 1000, this.sum[2]! / 1000, airmode, idle, b.motorOutputLimit, flags.direction);
     return this.motors;
   }
 }
@@ -547,29 +604,31 @@ function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
-/** Quad-X mixer with airmode: returns how far the roll/pitch/yaw mix spans (for I-term windup). */
-function mix(out: Float64Array, throttle: number, roll: number, pitch: number, yaw: number, airmode: boolean, idle: number, limit: number): number {
-  let m0 = -roll + pitch - yaw;
-  let m1 = roll + pitch + yaw;
-  let m2 = -roll - pitch + yaw;
-  let m3 = roll - pitch - yaw;
-  let hi = Math.max(m0, m1, m2, m3);
-  let lo = Math.min(m0, m1, m2, m3);
-  const range = hi - lo;
-  if (range > 1) {
-    const s = 1 / range;
-    m0 *= s; m1 *= s; m2 *= s; m3 *= s; hi *= s; lo *= s;
+/**
+ * Multirotor mixer with airmode: returns how far the roll/pitch/yaw mix spans (for I-term windup). `throttle`
+ * is the thrust magnitude; reversed (direction -1), each motor's output and its mix flip together, like
+ * Betaflight's 3D mode, so a roll command still rolls the same way.
+ */
+function mix(out: Float64Array, mixer: Float64Array, throttle: number, roll: number, pitch: number, yaw: number, airmode: boolean, idle: number, limit: number, direction: number): number {
+  const n = out.length;
+  let hi = -Infinity, lo = Infinity;
+  for (let i = 0; i < n; i++) {
+    const m = direction * (mixer[3 * i]! * roll + mixer[3 * i + 1]! * pitch + mixer[3 * i + 2]! * yaw);
+    out[i] = m;
+    if (m > hi) hi = m;
+    if (m < lo) lo = m;
   }
+  const range = hi - lo;
+  const s = range > 1 ? 1 / range : 1;
+  hi *= s;
+  lo *= s;
   let t = clamp01(throttle);
   if (airmode) {
     if (t < -lo) t = -lo;
     if (t > 1 - hi) t = 1 - hi;
   }
   const span = limit - idle;
-  out[0] = idle + span * clamp01(t + m0);
-  out[1] = idle + span * clamp01(t + m1);
-  out[2] = idle + span * clamp01(t + m2);
-  out[3] = idle + span * clamp01(t + m3);
+  for (let i = 0; i < n; i++) out[i] = direction * (idle + span * clamp01(t + out[i]! * s));
   return range;
 }
 
@@ -590,6 +649,12 @@ export interface PhysicalHardware {
   rotor: RotorModel;
   /** Each hub's position from the centre of mass. */
   hubs: [number, number, number][];
+  /** Each prop's spin direction (props-out, see PROP_SPIN). */
+  spin: number[];
+  /** Roll, pitch, yaw mixer factors per motor. */
+  mixer: Float64Array;
+  /** For each prop, the prop whose wake it sits in (coaxial lower props), or -1. */
+  under: number[];
   /** Centre of pressure from the centre of mass. */
   pressure: [number, number, number];
 }
@@ -597,31 +662,41 @@ export interface PhysicalHardware {
 export function physicalHardware(spec: PhysicalQuadSpec = PHYSICAL_QUAD): PhysicalHardware {
   const m = massProperties(quadParts(spec));
   const [cx, cy, cz] = m.centre;
-  const l = spec.layout;
   const [px, py, pz] = spec.aero.pressureCentre;
+  const places = rotorPlaces(spec);
   return {
     ...m,
     rotor: rotorModel(spec.prop),
-    hubs: CORNERS.map(([sx, sz]) => [sx * l.reachX - cx, l.propY - cy, sz * l.reachZ - cz] as [number, number, number]),
+    hubs: places.map((r) => [r.x - cx, r.y - cy, r.z - cz] as [number, number, number]),
+    spin: places.map((r) => r.spin),
+    mixer: Float64Array.from(places.flatMap((r) => r.mix)),
+    under: places.map((r) => r.under),
     pressure: [px - cx, py - cy, pz - cz],
   };
 }
 
-/** Static thrust-to-weight on a test stand: all four motors at full duty for 0.5 s. */
+/** Static thrust-to-weight on a test stand: every motor at full duty for 0.5 s (lower coaxial props in the upper ones' wake). */
 export function thrustStand(spec: PhysicalQuadSpec = PHYSICAL_QUAD): { thrustToWeight: number; rpm: number } {
   const hw = physicalHardware(spec);
-  const pt = new Powertrain();
+  const n = hw.hubs.length;
+  const pt = new Powertrain(n);
   const loads: RotorLoads = { thrust: 0, hx: 0, hz: 0, torque: 0, induced: 0, wake: 0 };
-  const duty = [1, 1, 1, 1];
-  const torque = [0, 0, 0, 0];
-  let induced = 0;
-  for (let i = 0; i < 480; i++) {
-    rotorLoads(loads, hw.rotor, pt.omega[0]!, 0, 0, 0, induced, 1);
-    induced = loads.induced;
-    torque[0] = torque[1] = torque[2] = torque[3] = loads.torque;
+  const duty = new Array<number>(n).fill(1);
+  const torque = new Array<number>(n).fill(0);
+  const induced = new Array<number>(n).fill(0);
+  let thrust = 0;
+  for (let step = 0; step < 480; step++) {
+    thrust = 0;
+    for (let i = 0; i < n; i++) {
+      const u = hw.under[i]!;
+      rotorLoads(loads, hw.rotor, pt.omega[i]!, 0, u >= 0 ? induced[u]! : 0, 0, induced[i]!, 1);
+      induced[i] = loads.induced;
+      torque[i] = loads.torque;
+      thrust += loads.thrust;
+    }
     pt.step(1 / 960, spec.motor, spec.battery, duty, true, torque, 1);
   }
-  return { thrustToWeight: (4 * loads.thrust) / (9.81 * hw.mass), rpm: pt.omega[0]! * RPM_PER_RAD_S };
+  return { thrustToWeight: thrust / (9.81 * hw.mass), rpm: pt.omega[0]! * RPM_PER_RAD_S };
 }
 
 export interface PhysicalStepInput {
@@ -658,23 +733,28 @@ const v3 = new Vector3();
  */
 export class PhysicalQuad {
   readonly hw: PhysicalHardware;
-  readonly power = new Powertrain();
+  readonly power: Powertrain;
   readonly force = new Vector3();
   readonly torque = new Vector3();
   /** Mean motor speed as a fraction of max rpm, squared: roughly the thrust fraction, for sound. */
   motorOutput = 0;
   private readonly pid: RatePid;
-  private readonly turbulence = new Turbulence();
-  private readonly induced = new Float64Array(4);
-  private readonly aero = new Float64Array(4);
+  private readonly turbulence: Turbulence;
+  private readonly induced: Float64Array;
+  private readonly aero: Float64Array;
   private readonly loads: RotorLoads = { thrust: 0, hx: 0, hz: 0, torque: 0, induced: 0, wake: 0 };
   private readonly sp = new Float64Array(3);
   private readonly sticks = new Float64Array(3);
-  private readonly flags: PidFlags = { armed: false, airmode: true };
+  private readonly flags: PidFlags = { armed: false, airmode: true, direction: 1 };
 
   constructor(readonly spec: PhysicalQuadSpec = PHYSICAL_QUAD) {
     this.hw = physicalHardware(spec);
-    this.pid = new RatePid(spec.tune);
+    const n = this.hw.hubs.length;
+    this.power = new Powertrain(n, !!spec.reversible);
+    this.turbulence = new Turbulence(n);
+    this.induced = new Float64Array(n);
+    this.aero = new Float64Array(n);
+    this.pid = new RatePid(spec.tune, this.hw.mixer);
   }
 
   reset(): void {
@@ -682,7 +762,23 @@ export class PhysicalQuad {
     this.induced.fill(0);
     this.turbulence.reset();
     this.pid.reset();
+    this.flags.direction = 1;
     this.motorOutput = 0;
+  }
+
+  /**
+   * Stick throttle to thrust magnitude through the throttle curve; in 3D mode the stick's lower half reverses
+   * (sets `flags.direction`) and a deadband around centre commands nothing, keeping the last direction.
+   */
+  private thrustCommand(stick: number): number {
+    const spec = this.spec;
+    const rev = spec.reversible;
+    if (!rev) return throttleCurve(stick, spec.throttleExpo, spec.throttleMid);
+    const t = 2 * clamp01(stick) - 1;
+    const a = Math.abs(t);
+    if (a <= rev.deadband) return 0;
+    this.flags.direction = t < 0 ? -1 : 1;
+    return throttleCurve((a - rev.deadband) / (1 - rev.deadband), spec.throttleExpo, spec.throttleMid);
   }
 
   step(dt: number, rotation: Quaternion, linvel: Vector3, angvel: Vector3, input: PhysicalStepInput, opt: PhysicalOptions): void {
@@ -698,7 +794,7 @@ export class PhysicalQuad {
     v3.copy(linvel).applyQuaternion(invQ);
     const vx = v3.x, vy = v3.y, vz = v3.z;
     const speed = linvel.length();
-    const throttle = throttleCurve(input.throttle, spec.throttleExpo, spec.throttleMid);
+    const throttle = this.thrustCommand(input.throttle);
     this.flags.armed = input.armed;
     this.flags.airmode = true;
     const ground = upY > 0.5 ? groundEffect(input.agl + spec.layout.propY, hw.rotor.radius) : 1;
@@ -722,22 +818,31 @@ export class PhysicalQuad {
     const thrustScale = ground * opt.thrust;
     let fx = 0, fy = 0, fz = 0, tx = 0, ty = 0, tz = 0, sx = 0, sy = 0, sz = 0;
     const pt = this.power;
+    const count = pt.count;
     for (let step = 0; step < n; step++) {
-      const minRpm = Math.min(pt.omega[0]!, pt.omega[1]!, pt.omega[2]!, pt.omega[3]!) * RPM_PER_RAD_S;
+      let minOmega = Infinity;
+      for (let i = 0; i < count; i++) minOmega = Math.min(minOmega, Math.abs(pt.omega[i]!));
+      const minRpm = minOmega * RPM_PER_RAD_S;
       const duty = this.pid.step(h, this.sp, this.sticks, throttle, -wz * DEG_PER_RAD, wx * DEG_PER_RAD, -wy * DEG_PER_RAD, this.flags, minRpm);
       this.turbulence.step(h);
       let ax = dx, ay = dy, az = dz, mx = dtx, my = dty, mz = dtz;
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < count; i++) {
         const [hx, hy, hz] = hw.hubs[i]!;
         // Hub airspeed: body airspeed plus rotation (v + w x r).
         const ux = vx + wy * hz - wz * hy;
-        const uy = vy + wz * hx - wx * hz;
+        let uy = vy + wz * hx - wx * hz;
         const uz = vz + wx * hy - wy * hx;
-        rotorLoads(this.loads, hw.rotor, pt.omega[i]!, ux, uy, uz, this.induced[i]!, thrustScale);
+        // A lower coaxial prop already has the upper one's wake coming down through it.
+        const above = hw.under[i]!;
+        if (above >= 0) uy += this.induced[above]!;
+        // A reversed prop (3D mode) is the same rotor upside down: solve it in its own frame, then flip back.
+        const w = pt.omega[i]!;
+        const dir = w < 0 ? -1 : 1;
+        rotorLoads(this.loads, hw.rotor, w * dir, ux, uy * dir, uz, this.induced[i]!, thrustScale);
         this.induced[i] = this.loads.induced;
         const gust = 1 + spec.prop.wakeNoise * this.loads.wake * this.turbulence.value[i]!;
-        const t = this.loads.thrust * gust;
-        this.aero[i] = this.loads.torque * gust;
+        const t = this.loads.thrust * gust * dir;
+        this.aero[i] = this.loads.torque * gust * dir;
         ax += this.loads.hx;
         ay += t;
         az += this.loads.hz;
@@ -748,9 +853,9 @@ export class PhysicalQuad {
       pt.step(h, spec.motor, spec.battery, duty, input.armed, this.aero, opt.spool);
       // Motor reaction torques yaw the body; spinning rotors add gyroscopic torque.
       let spin = 0;
-      for (let i = 0; i < 4; i++) {
-        my -= PROP_SPIN[i]! * pt.drive[i]!;
-        spin += PROP_SPIN[i]! * pt.omega[i]!;
+      for (let i = 0; i < count; i++) {
+        my -= hw.spin[i]! * pt.drive[i]!;
+        spin += hw.spin[i]! * pt.omega[i]!;
       }
       spin *= rotorInertia;
       mx += wz * spin;
@@ -773,8 +878,8 @@ export class PhysicalQuad {
     this.force.set(fx * inv, fy * inv, fz * inv).applyQuaternion(midQ);
     this.torque.set(tx * inv, ty * inv, tz * inv).applyQuaternion(midQ);
     let rpm = 0;
-    for (let i = 0; i < 4; i++) rpm += pt.omega[i]! * RPM_PER_RAD_S;
-    const frac = Math.min(1, rpm / 4 / spec.maxRpm);
+    for (let i = 0; i < count; i++) rpm += Math.abs(pt.omega[i]!) * RPM_PER_RAD_S;
+    const frac = Math.min(1, rpm / count / spec.maxRpm);
     this.motorOutput = frac * frac;
   }
 
