@@ -14,8 +14,9 @@ describe('loadouts (ADR-0033)', () => {
 
   it('defaults keep the tuned thrust-to-weight', () => {
     expect(thrustToWeight(DEFAULT_LOADOUTS.freestyle)).toBeCloseTo(9.13, 2);
-    expect(thrustToWeight(DEFAULT_LOADOUTS.quad3d)).toBeCloseTo(7, 5);
-    expect(thrustToWeight(DEFAULT_LOADOUTS.x8)).toBeCloseTo(4, 5);
+    expect(thrustToWeight(DEFAULT_LOADOUTS.quad3d)).toBeCloseTo(7.14, 5);
+    expect(thrustToWeight(DEFAULT_LOADOUTS.racer)).toBeCloseTo(7.8, 5);
+    expect(thrustToWeight(DEFAULT_LOADOUTS.x8)).toBeCloseTo(4.09, 5);
   });
 
   it('weight adds up and makes builds heavier; four rail guns ground an X8', () => {

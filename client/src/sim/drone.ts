@@ -2,7 +2,7 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { Euler, Quaternion, Vector3 } from 'three';
 import type { DroneClassId } from '../../../shared/drones';
 import type { SpawnPoint } from '../../../shared/maps';
-import { CRASH, FLIGHT_ASSIST, INPUT, QUAD, QUAD_3D, RACER, SIM, X8, type FlightAssist, type QuadParams, type Rates } from '../config';
+import { CRASH, FLIGHT_ASSIST, INPUT, PHYSICAL_SPECS, QUAD, QUAD_3D, RACER, SIM, X8, type FlightAssist, type QuadParams, type Rates } from '../config';
 import { defaultLoadout, loadFactor, type Loadout } from '../../../shared/loadout';
 import { AFTERBURNER } from '../../../shared/specials';
 import { PROPELLERS } from '../../../shared/propellers';
@@ -155,8 +155,8 @@ export class Drone {
   private boosted: QuadParams = QUAD;
   /** The pilot's flight assist (ADR-0045). */
   private assist: FlightAssist = 'acro';
-  /** The 5" flies the physical model (ADR-0063): real motors, props, battery and a PID loop. */
-  private readonly physical = new PhysicalQuad();
+  /** Quads fly the physical model (ADR-0063, ADR-0064): real motors, props, battery and a PID loop. */
+  private physical = new PhysicalQuad();
   private readonly physicalIn: PhysicalStepInput = { throttle: 0, setpoint: new Vector3(), roll: 0, pitch: 0, yaw: 0, armed: false, agl: Infinity };
   private readonly physicalOpt: PhysicalOptions = { load: 1, thrust: 1, spool: 1 };
   private groundRay: RAPIER.Ray | null = null;
@@ -205,6 +205,8 @@ export class Drone {
     const mass = id === 'wing' ? WING.massKg * k : this.params.massKg;
     const desc = rapier.ColliderDesc.cuboid(e.x, e.y, e.z).setRestitution(0.2).setFriction(0.6);
     if (this.isPhysical) {
+      const spec = PHYSICAL_SPECS[id as keyof typeof PHYSICAL_SPECS];
+      if (this.physical.spec !== spec) this.physical = new PhysicalQuad(spec);
       // Real mass, centre of mass and inertia from the parts (ADR-0063), scaled by the loadout's weight.
       const hw = this.physical.hw;
       desc.setMassProperties(hw.mass * k, { x: hw.centre[0], y: hw.centre[1], z: hw.centre[2] }, { x: hw.inertia[0] * k, y: hw.inertia[1] * k, z: hw.inertia[2] * k }, { x: 0, y: 0, z: 0, w: 1 });
@@ -224,9 +226,9 @@ export class Drone {
     this.setLoadout(this.loadoutNow);
   }
 
-  /** Bodies flown by the physical model (ADR-0063): the 5" freestyle. */
+  /** Bodies flown by the physical model (ADR-0063, ADR-0064): every quad. The wing has its own model. */
   private get isPhysical(): boolean {
-    return this.droneClass === 'freestyle';
+    return this.droneClass !== 'wing';
   }
 
   /** The 3D quad's throttle rests at center; everything else at the bottom. */

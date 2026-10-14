@@ -4,7 +4,7 @@ import { cleanLoadout, gunDps, handling, launchers, missilePods, thrustKg, thrus
 import { SPECIAL_ORDER, SPECIALS, specialFits, type SpecialId } from '../../../shared/specials';
 import { WEAPON_ORDER, WEAPONS, type WeaponId } from '../../../shared/weapons';
 import { saveSettings, type Settings } from '../settings';
-import { PHYSICAL_HOVER, QUAD } from '../config';
+import { PHYSICAL_HOVER } from '../config';
 import { agilityScore, speedScore } from '../sim/drone';
 import { PROPELLER_ORDER, PROPELLERS, propellerFits } from '../../../shared/propellers';
 import { BODY_ICONS, EMPTY_ICON, finishSwatch, paintSwatch, PROPELLER_ICONS, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
@@ -127,8 +127,9 @@ export class LoadoutScreen {
     const hover = (l: Loadout) => {
       const t = tw(l);
       if (droneClass(l.body).flight === 'wing' || t <= 1) return null;
-      // The 5" flies the physical model (ADR-0063); the other quads the simple one.
-      return l.body === 'freestyle' ? Math.min(1, PHYSICAL_HOVER.throttle * Math.sqrt(PHYSICAL_HOVER.thrustToWeight / t)) : Math.pow(1 / t, 1 / QUAD.throttleExponent);
+      // Every quad flies the physical model (ADR-0063, ADR-0064).
+      const h = PHYSICAL_HOVER[l.body as keyof typeof PHYSICAL_HOVER];
+      return Math.min(1, h.throttle * Math.sqrt(h.thrustToWeight / t));
     };
     const hv = hover(b);
     const heavy = (l: Loadout) => {
