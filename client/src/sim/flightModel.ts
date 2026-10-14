@@ -126,6 +126,20 @@ export function horizonBlend(input: FlightInput, rotation: Quaternion, h: NonNul
 }
 
 /**
+ * The rotation rate the sticks ask for, in the body frame (rad/s): Betaflight rates, blended with
+ * self-levelling in horizon/angle (ADR-0037, ADR-0045). Positive stick turns about the negative body axis.
+ */
+export function rateSetpoint(input: FlightInput, rotation: Quaternion, rates: Rates, p: QuadParams, out: Vector3): Vector3 {
+  out.set(
+    -betaflightRate(input.pitch, rates.pitch) * DEG,
+    -betaflightRate(input.yaw, rates.yaw) * DEG,
+    -betaflightRate(input.roll, rates.roll) * DEG,
+  );
+  if (p.horizon) horizonBlend(input, rotation, p.horizon, out);
+  return out;
+}
+
+/**
  * Fraction of static thrust left with `inflow` m/s of air coming into the props (ADR-0052). The props' pitch
  * speed scales with their rpm, which goes with the square root of `motor` output (ADR-0061): at part throttle
  * the thrust fades at much lower airspeeds, so the quad stays tied to the throttle instead of coasting.
@@ -155,12 +169,7 @@ export function stepFlight(
   // --- Rotation: track the Betaflight rate setpoint, like a well-tuned PID loop.
   if (armed) {
     // Positive stick = negative rotation about the body axis (see frame note above).
-    targetBody.set(
-      -betaflightRate(input.pitch, rates.pitch) * DEG,
-      -betaflightRate(input.yaw, rates.yaw) * DEG,
-      -betaflightRate(input.roll, rates.roll) * DEG,
-    );
-    if (p.horizon) horizonBlend(input, state.rotation, p.horizon, targetBody);
+    rateSetpoint(input, state.rotation, rates, p, targetBody);
 
     // Prop wash: descending into your own disturbed air shakes the quad.
     const descent = -state.linvel.dot(up);

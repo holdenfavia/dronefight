@@ -33,8 +33,8 @@ export const DRONE_CLASSES: Record<DroneClassId, DroneClass> = {
     flight: 'quad',
     maxHp: 100,
     frameKg: 0.65,
-    // Default loadout (gun + missile pod, 1.02 kg) at the tuned thrust-to-weight of 10 (ADR-0061).
-    thrustKg: 10.2,
+    // Default loadout (gun + missile pod, 1.02 kg) at the physical 5"'s static thrust-to-weight of 9.1 (ADR-0063).
+    thrustKg: 9.3126,
     hardpoints: 2,
     // Drawn at real size (~0.31 m, ADR-0043), hit at 2.25 m radius (ADR-0029): bigger than the drone, on purpose.
     hitRadius: 2.25,

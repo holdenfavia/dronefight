@@ -7,7 +7,8 @@ import { defaultLoadout, loadFactor, type Loadout } from '../../../shared/loadou
 import { AFTERBURNER } from '../../../shared/specials';
 import { PROPELLERS } from '../../../shared/propellers';
 import type { ControlState } from '../input/inputManager';
-import { createFlightOutput, stepFlight, throttleSafeToArm, type FlightState } from './flightModel';
+import { createFlightOutput, rateSetpoint, stepFlight, throttleSafeToArm, type FlightState } from './flightModel';
+import { PhysicalQuad, type PhysicalOptions, type PhysicalStepInput } from './physicalQuad';
 import type { Physics } from './physics';
 import { stepWing, WING } from './wingModel';
 
@@ -32,6 +33,8 @@ const HOVER_QE = new Quaternion();
 const HOVER_QI = new Quaternion();
 const HOVER_E = new Euler();
 const HOVER_DIR = new Vector3();
+/** How far below the drone to look for ground for ground effect (m). */
+const GROUND_EFFECT_RAY = 1.2;
 
 /**
  * Angular velocity (world frame) that turns a quad with rotation `rot` at `from` so its FPV camera,
@@ -152,6 +155,11 @@ export class Drone {
   private boosted: QuadParams = QUAD;
   /** The pilot's flight assist (ADR-0045). */
   private assist: FlightAssist = 'acro';
+  /** The 5" flies the physical model (ADR-0063): real motors, props, battery and a PID loop. */
+  private readonly physical = new PhysicalQuad();
+  private readonly physicalIn: PhysicalStepInput = { throttle: 0, setpoint: new Vector3(), roll: 0, pitch: 0, yaw: 0, armed: false, agl: Infinity };
+  private readonly physicalOpt: PhysicalOptions = { load: 1, thrust: 1, spool: 1 };
+  private groundRay: RAPIER.Ray | null = null;
 
 
   constructor(
@@ -195,7 +203,17 @@ export class Drone {
     if (this.collider) world.removeCollider(this.collider, false);
     const e = id === 'wing' ? WING.halfExtents : QUAD_PARAMS[id].halfExtents;
     const mass = id === 'wing' ? WING.massKg * k : this.params.massKg;
-    const desc = rapier.ColliderDesc.cuboid(e.x, e.y, e.z).setMass(mass).setRestitution(0.2).setFriction(0.6);
+    const desc = rapier.ColliderDesc.cuboid(e.x, e.y, e.z).setRestitution(0.2).setFriction(0.6);
+    if (this.isPhysical) {
+      // Real mass, centre of mass and inertia from the parts (ADR-0063), scaled by the loadout's weight.
+      const hw = this.physical.hw;
+      desc.setMassProperties(hw.mass * k, { x: hw.centre[0], y: hw.centre[1], z: hw.centre[2] }, { x: hw.inertia[0] * k, y: hw.inertia[1] * k, z: hw.inertia[2] * k }, { x: 0, y: 0, z: 0, w: 1 });
+      this.physicalOpt.load = k;
+    } else {
+      desc.setMass(mass);
+    }
+    // The physical model turns the body with torques, so nothing may damp its rotation; the others set it directly.
+    this.body.setAngularDamping(this.isPhysical ? 0 : 0.3);
     this.collider = world.createCollider(desc, this.body);
   }
 
@@ -204,6 +222,11 @@ export class Drone {
     if (assist === this.assist) return;
     this.assist = assist;
     this.setLoadout(this.loadoutNow);
+  }
+
+  /** Bodies flown by the physical model (ADR-0063): the 5" freestyle. */
+  private get isPhysical(): boolean {
+    return this.droneClass === 'freestyle';
   }
 
   /** The 3D quad's throttle rests at center; everything else at the bottom. */
@@ -246,6 +269,7 @@ export class Drone {
     this.afterburnerActive = false;
     this.afterburnerFuel = 1;
     this.state.motorOutput = 0;
+    this.physical.reset();
     this.readBody();
     this.prevPos.copy(this.currPos);
     this.prevRot.copy(this.currRot);
@@ -301,6 +325,7 @@ export class Drone {
     this.prevRot.copy(this.currRot);
 
     this.body.resetForces(true);
+    this.body.resetTorques(true);
     if (this.crashed) {
       this.state.motorOutput = 0;
       return;
@@ -314,6 +339,10 @@ export class Drone {
     this.afterburnerFuel = burning
       ? Math.max(0, this.afterburnerFuel - dt / AFTERBURNER.fuelSeconds)
       : Math.min(1, this.afterburnerFuel + dt / AFTERBURNER.refillSeconds);
+    if (this.isPhysical) {
+      this.stepPhysical(control, rates, dt, burning);
+      return;
+    }
     const out =
       this.droneClass === 'wing'
         ? stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive, this.wingProp.thrust * (burning ? 1 + AFTERBURNER.thrustBoost : 1), this.wingProp)
@@ -322,6 +351,37 @@ export class Drone {
     this.state.time += dt;
     this.body.setAngvel(out.angvel, true);
     this.body.addForce(out.force, true);
+  }
+
+  /** The physical model (ADR-0063): it returns a force and a torque, and Rapier turns and moves the body. */
+  private stepPhysical(control: ControlState, rates: Rates, dt: number, burning: boolean): void {
+    const inp = this.physicalIn;
+    inp.throttle = control.throttle;
+    inp.roll = control.roll;
+    inp.pitch = control.pitch;
+    inp.yaw = control.yaw;
+    inp.armed = this.armed;
+    rateSetpoint(control, this.state.rotation, rates, this.params, inp.setpoint);
+    inp.agl = this.groundBelow();
+    const prop = PROPELLERS[this.loadoutNow.propeller];
+    this.physicalOpt.thrust = prop.thrust * (burning ? 1 + AFTERBURNER.thrustBoost : 1);
+    this.physicalOpt.spool = prop.spool;
+    const q = this.physical;
+    q.step(dt, this.state.rotation, this.state.linvel, this.state.angvel, inp, this.physicalOpt);
+    this.state.motorOutput = q.motorOutput;
+    this.state.time += dt;
+    this.body.addForce(q.force, true);
+    this.body.addTorque(q.torque, true);
+  }
+
+  /** Distance to whatever is just below the drone, for ground effect; Infinity when nothing is within reach. */
+  private groundBelow(): number {
+    const { rapier, world } = this.physics;
+    const p = this.currPos;
+    this.groundRay ??= new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+    this.groundRay.origin = { x: p.x, y: p.y, z: p.z };
+    const hit = world.castRay(this.groundRay, GROUND_EFFECT_RAY, true, undefined, undefined, undefined, this.body);
+    return hit ? hit.timeOfImpact : Infinity;
   }
 
   /**

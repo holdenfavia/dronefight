@@ -15,7 +15,7 @@ A browser FPV dogfighting game that **feels like real acro flying**. Friends ope
 
 - Acro (rate) mode by default: sticks command rotation rates, no self-levelling. Pilots can turn on a **flight assist** for quads in Settings: Horizon or Angle (ADR-0045); everyone, touch included, starts in Acro (ADR-0050). The X8 is always Horizon (ADR-0037).
 - Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable. Adjustable FPV uptilt and FOV (default 105°, ADR-0040/0041).
-- A custom flight model computes thrust (fading toward the props' pitch speed), drag (from each quad's real-size shape at full strength; ADR-0042, ADR-0061), rotor drag that grows with thrust so quads carve instead of sliding (ADR-0061), prop wash and rate commands; Rapier applies the forces with real gravity and handles motion and collisions (ADR-0008). Physics and drawing are real size (a 5" is ~0.3 m) so tight gaps stay flyable; only hit spheres are enlarged (ADR-0041, ADR-0043).
+- A custom flight model computes thrust (fading toward the props' pitch speed), drag (from each quad's real-size shape at full strength; ADR-0042, ADR-0061), rotor drag that grows with thrust so quads carve instead of sliding (ADR-0061), prop wash and rate commands; Rapier applies the forces with real gravity and handles motion and collisions (ADR-0008). The 5" instead flies a physical model ported from Flight Division: real props, motors, battery and a Betaflight-style PID turning it with torques (ADR-0063). Physics and drawing are real size (a 5" is ~0.3 m) so tight gaps stay flyable; only hit spheres are enlarged (ADR-0041, ADR-0043).
 - Crash = an impact over a speed-change threshold. Ducted props raise it (ADR-0035).
 
 ## Drones and loadouts (ADR-0033)

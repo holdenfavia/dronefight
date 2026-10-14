@@ -107,8 +107,8 @@ export const QUAD: QuadParams = {
   massKg: 0.65,
   /** Collision box half-extents in metres (x = right, y = up, z = forward). */
   halfExtents: { x: 0.12, y: 0.035, z: 0.12 },
-  /** Max static thrust divided by weight: 10, a 6S 1950 kV 5" on 5x4.5" tri-blades (ADR-0061). */
-  thrustToWeight: 10,
+  /** Max static thrust divided by weight: the physical 5"'s thrust stand (ADR-0063), so both models agree. */
+  thrustToWeight: 9.13,
   /**
    * thrust = max * throttle^exponent (ADR-0061). Thrust goes with rpm squared and rpm with throttle, so 2:
    * hover sits near 32% throttle and the top half of the stick has the punch.
@@ -251,3 +251,182 @@ export const INPUT = {
   /** Keyboard throttle change per second while a key is held. */
   keyboardThrottlePerSec: 0.6,
 } as const;
+
+/** Betaflight-style PID tune for the physical quad (ADR-0063). Per-axis arrays are [roll, pitch, yaw]. */
+export interface PidTune {
+  p: readonly number[];
+  i: readonly number[];
+  d: readonly number[];
+  f: readonly number[];
+  dMin: readonly number[];
+  dMinGain: number;
+  dMinAdvance: number;
+  itermRelaxCutoff: number;
+  itermRelaxYaw: boolean;
+  itermLimit: number;
+  itermWindup: number;
+  antiGravityGain: number;
+  antiGravityCutoff: number;
+  tpaRate: number;
+  tpaBreakpoint: number;
+  pidSumLimit: number;
+  pidSumLimitYaw: number;
+  yawLowpass: number;
+  gyroLowpassMin: number;
+  gyroLowpassMax: number;
+  dtermLowpassMin: number;
+  dtermLowpassMax: number;
+  dtermLowpass2: number;
+  feedforwardBoost: number;
+  feedforwardMaxRateLimit: number;
+  rcSmoothingSetpoint: number;
+  rcSmoothingFeedforward: number;
+  rcSmoothingThrottle: number;
+  motorIdle: number;
+  dynIdleMinRpm: number;
+  dynIdleMaxIncrease: number;
+  airmodeStartThrottle: number;
+  motorOutputLimit: number;
+}
+
+type V3 = readonly [number, number, number];
+
+/** A quad described by its real parts (ADR-0063): layout and masses, drag, props, motors, battery and tune. */
+export interface PhysicalQuadSpec {
+  layout: {
+    /** Motor positions from the centre (m), sideways and fore-aft. */
+    reachX: number;
+    reachZ: number;
+    motorY: number;
+    propY: number;
+    motor: { mass: number; radius: number; height: number };
+    prop: { mass: number; radius: number };
+    battery: { mass: number; size: V3; at: V3 };
+    /** Total arm mass (kg), as four rods from the centre to the motors. */
+    arms: number;
+    other: readonly { name: string; mass: number; at: V3; size: V3 }[];
+  };
+  aero: { dragArea: V3; pressureCentre: V3 };
+  prop: {
+    radius: number;
+    blades: number;
+    chord: number;
+    pitch: number;
+    liftSlope: number;
+    profileDrag: number;
+    zeroLift: number;
+    maxLoading: number;
+    flapping: number;
+    inducedFactor: number;
+    duct: number;
+    wakeNoise: number;
+  };
+  motor: { kv: number; resistance: number; noLoadCurrent: number; currentLimit: number; brakeLimit: number; rotorInertia: number };
+  battery: { cells: number; cellVoltage: number; resistance: number; polarisation: number; polarisationTau: number };
+  tune: PidTune;
+  /** Betaflight throttle expo and its mid point. */
+  throttleExpo: number;
+  throttleMid: number;
+  /** Flight-controller loop rate (Hz); the physics step runs this many substeps per second. */
+  loopHz: number;
+  /** Motor rpm treated as 100% for sound. */
+  maxRpm: number;
+}
+
+const BASE_TUNE: PidTune = {
+  p: [45, 47, 45],
+  i: [80, 84, 80],
+  d: [40, 46, 0],
+  f: [120, 125, 120],
+  dMin: [30, 32, 0],
+  dMinGain: 37,
+  dMinAdvance: 20,
+  itermRelaxCutoff: 15,
+  itermRelaxYaw: false,
+  itermLimit: 400,
+  itermWindup: 85,
+  antiGravityGain: 80,
+  antiGravityCutoff: 5,
+  tpaRate: 0.65,
+  tpaBreakpoint: 0.35,
+  pidSumLimit: 500,
+  pidSumLimitYaw: 400,
+  yawLowpass: 100,
+  gyroLowpassMin: 250,
+  gyroLowpassMax: 500,
+  dtermLowpassMin: 75,
+  dtermLowpassMax: 150,
+  dtermLowpass2: 150,
+  feedforwardBoost: 15,
+  feedforwardMaxRateLimit: 90,
+  rcSmoothingSetpoint: 40,
+  rcSmoothingFeedforward: 40,
+  rcSmoothingThrottle: 40,
+  motorIdle: 0.055,
+  dynIdleMinRpm: 0,
+  dynIdleMaxIncrease: 0.15,
+  airmodeStartThrottle: 0.25,
+  motorOutputLimit: 1,
+};
+
+/**
+ * The 5" freestyle as real parts (ADR-0063): numbers from the Flight Division sim's freestyle profile
+ * (ADR-0062). 6S 1950 kV 2207-class motors on 5x4.5" tri-blades, a 0.25 kg pack, ~0.6 kg all-up.
+ */
+export const PHYSICAL_QUAD: PhysicalQuadSpec = {
+  layout: {
+    reachX: 0.087,
+    reachZ: 0.087,
+    motorY: 0.012,
+    propY: 0.03,
+    motor: { mass: 0.033, radius: 0.0135, height: 0.022 },
+    prop: { mass: 0.0045, radius: 0.0635 },
+    battery: { mass: 0.25, size: [0.038, 0.035, 0.075], at: [0, 0.04, 0.005] },
+    arms: 0.07,
+    other: [
+      { name: 'bottom plate', mass: 0.03, at: [0, -0.002, 0], size: [0.06, 0.004, 0.13] },
+      { name: 'top plate', mass: 0.015, at: [0, 0.024, 0], size: [0.045, 0.002, 0.1] },
+      { name: 'stack', mass: 0.022, at: [0, 0.012, 0], size: [0.036, 0.015, 0.036] },
+      { name: 'camera', mass: 0.012, at: [0, 0.018, -0.045], size: [0.019, 0.019, 0.02] },
+      { name: 'vtx and receiver', mass: 0.03, at: [0, 0.012, 0.035], size: [0.03, 0.01, 0.04] },
+      { name: 'mount, straps, hardware', mass: 0.071, at: [0, 0.018, -0.005], size: [0.08, 0.03, 0.1] },
+    ],
+  },
+  aero: { dragArea: [0.0095, 0.019, 0.0085], pressureCentre: [0, 0.012, 0] },
+  prop: {
+    radius: 0.0635,
+    blades: 3,
+    chord: 0.011,
+    pitch: 0.1143,
+    liftSlope: 2.56,
+    profileDrag: 0.048,
+    zeroLift: 0.05,
+    maxLoading: 0.2,
+    flapping: 2,
+    inducedFactor: 1.3,
+    duct: 1,
+    wakeNoise: 0.18,
+  },
+  motor: { kv: 1950, resistance: 0.085, noLoadCurrent: 1.6, currentLimit: 70, brakeLimit: 50, rotorInertia: 55e-7 },
+  battery: { cells: 6, cellVoltage: 3.95, resistance: 0.026, polarisation: 0.012, polarisationTau: 2 },
+  tune: {
+    ...BASE_TUNE,
+    d: [46, 52, 0],
+    dMin: [42, 47, 0],
+    f: [90, 93, 85],
+    itermRelaxYaw: true,
+    tpaRate: 0.3,
+    tpaBreakpoint: 0.5,
+    dynIdleMinRpm: 30,
+  },
+  throttleExpo: 0.1,
+  throttleMid: 0.5,
+  loopHz: 960,
+  maxRpm: 32000,
+};
+
+/**
+ * The physical 5" hovers at this stick throttle at this static thrust-to-weight (measured; guarded by
+ * physicalQuad.test.ts). Hover throttle goes with sqrt(weight / thrust) from there, for the Loadout screen.
+ */
+export const PHYSICAL_HOVER = { throttle: 0.2, thrustToWeight: 9.13 } as const;
