@@ -66,3 +66,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0060](0060-honest-materials.md) | Materials match what things are made of: bare brick, house walls, roofing, road, bark, wood, corrugated steel, painted colors, court; windowed walls' tops draw as roof | Accepted |
 | [0061](0061-real-drag-and-rotor-drag.md) | Fly like a real 5": full body drag (5" CdA 0.0095/0.019/0.0085 m²), thrust-scaled rotor drag from blade flapping, thrust ∝ throttle² (hover ~35%) | Accepted |
 | [0062](0062-flight-division-flight-code-allowed.md) | Flight Division's flight-model code and tuning may be used (owner has permission); its art, sounds, UI and branding still may not (Hard rule 4) | Accepted |
+| [0063](0063-physical-5in-flight-model.md) | The 5" flies a physical model ported from Flight Division: blade-element rotors, electrical motors and battery, Betaflight-style PID at 960 Hz, real inertia; other bodies stay on the simple model | Accepted |
