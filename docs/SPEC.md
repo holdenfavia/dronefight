@@ -14,13 +14,13 @@ A browser FPV dogfighting game that **feels like real acro flying**. Friends ope
 ## Flight
 
 - Acro (rate) mode by default: sticks command rotation rates, no self-levelling. Pilots can turn on a **flight assist** for quads in Settings: Horizon or Angle (ADR-0045); everyone, touch included, starts in Acro (ADR-0050). The X8 is always Horizon (ADR-0037).
-- Betaflight-style rates (RC rate, super rate, expo) per axis, user-adjustable. Adjustable FPV uptilt and FOV (default 105°, ADR-0040/0041).
-- A custom flight model computes thrust (fading toward the props' pitch speed), drag (from each quad's real-size shape at full strength; ADR-0042, ADR-0061), rotor drag that grows with thrust so quads carve instead of sliding (ADR-0061), prop wash and rate commands; Rapier applies the forces with real gravity and handles motion and collisions (ADR-0008). Every quad instead flies a physical model ported from Flight Division: real props, motors, battery and a Betaflight-style PID turning it with torques (ADR-0063); the 3", 3D quad (reversible motors) and X8 (coaxial pairs) are built from real parts the same way (ADR-0064). Physics and drawing are real size (a 5" is ~0.3 m) so tight gaps stay flyable; only hit spheres are enlarged (ADR-0041, ADR-0043).
+- Betaflight, Actual or Quick rates per axis, user-adjustable, with a CLI paste box (ADR-0068). Adjustable FPV uptilt and FOV (default 105°, ADR-0040/0041).
+- **Every quad flies a physical model** ported from Flight Division and built from real parts: blade-element props, electrical motors and battery, a Betaflight-style PID turning it with torques (ADR-0063, ADR-0064). Propellers are real props on that model (ADR-0065). The FPV wing flies its own fixed-wing model. Rapier applies the forces with real gravity and handles motion and collisions (ADR-0008). Physics and drawing are real size (a 5" is ~0.3 m) so tight gaps stay flyable; only hit spheres are enlarged (ADR-0041, ADR-0043).
 - Crash = an impact over a speed-change threshold. Ducted props raise it (ADR-0035).
 
 ## Drones and loadouts (ADR-0033)
 
-A loadout = **body** + one **weapon per hardpoint** + one **special** + **propulsion**. Everything has weight; total weight against thrust sets how it flies. Overloading is allowed and physical (T/W ≤ 1 can't take off). Each body's default build flies exactly as originally tuned. Everything is unlocked for now.
+A loadout = **body** + one **weapon per hardpoint** + one **special** + **propulsion**. Each body is a bare drone built from its parts; every weapon, special and prop adds its real weight, and total weight against thrust sets how it flies (ADR-0066). Overloading is allowed and physical (T/W ≤ 1 can't take off). Everything is unlocked for now.
 
 | Body | HP | Hardpoints | Drawn size / hit radius | Notes |
 |---|---|---|---|---|
@@ -33,13 +33,13 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 - **Weapons** (numbers in `shared/weapons.ts`): gun (34/hit, 3-hit kill on a 5", ADR-0028), choked shotgun (8 pellets), rotary cannon (50/s), rail gun (75, near-instant, very heavy), burst rifle (3-round bursts), missile pod (you fly the missile; one-shot within 5 m, ADR-0025/0027), grenade launcher (bouncing grenades, Fire again detonates, 12 m blast, ADR-0034).
 - **Fire groups:** Fire shoots all guns together. Missile pods and grenade launchers are a second group; Switch weapon (Q / mapped button) changes group, and so does Special when the special slot is empty.
 - **Specials:** maneuver mode (wing only, ADR-0022), smoke trail (stealth, ADR-0024), afterburner (hold, limited fuel), shield (absorbs 40 for 3 s) (ADR-0033).
-- **Propulsion:** propellers for every body (tri stock, bi, quad, heavy-lift, ducted for quads, ADR-0035); jets for the wing only (micro turbine, pulse jet, ramjet, ADR-0038).
+- **Propulsion:** propellers for every body (tri stock, bi, quad, heavy-lift, ducted for quads; real props on the physical model, ADR-0065); jets for the wing only (micro turbine, pulse jet, ramjet, ADR-0038).
 - Built on the Loadout screen (Play or pause menu). In a match a new build applies at your next respawn.
 
 ## Controls
 
 - Real radios through the browser Gamepad API, always behind mapping and calibration (ADR-0006). Primary test device: **DJI FPV Remote Controller 2** over USB-C. Also Xbox/PlayStation/Logitech gamepads (guessed layouts), touch on iPad/iPhone that flies like a radio (fixed sticks, throttle stays put, corner triggers, second-finger fire; no help unless turned on, ADR-0044, ADR-0050), and keyboard (testing only).
-- Inputs: sticks, arm, Fire, Special, Switch weapon. Settings persist per browser. F fullscreen, M mute, Esc or the menu button (top middle, every input) opens the pause menu.
+- Inputs: sticks, arm, Fire, Special, Switch weapon, Menu. Every menu is driven by the sticks and switches too (ADR-0068). Settings persist per browser. F fullscreen, M mute, Esc, the Menu input or the menu button (top middle) opens the pause menu.
 - Near the map edge an orange grid fades in on the invisible boundary wall.
 
 ## Multiplayer and hosting
@@ -54,12 +54,12 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 - Each hardpoint fires from its own screen corner (1 upper-left, 2 upper-right, 3 lower-left, 4 lower-right), converging ~40 m ahead along the FPV view. Each weapon has its own projectile look (ADR-0033). Rounds stop at walls.
 - Drones are drawn at real size; hit spheres are much bigger on purpose (ADR-0043). Other pilots get a War Thunder-style name tag (name, level, distance, health) while on screen, edge arrows when off screen, plus a glow, a fading trail and a lead indicator (ADR-0011, ADR-0043); smoke hides all but the frame (ADR-0024).
 - Crash = death; the kill goes to whoever damaged you in the last 5 s. Respawn after 3 s at one of 8 spawns away from other pilots (ADR-0012).
-- **Free-for-all** or **Teams** (Orange vs Lime, no friendly fire, team kill totals; ADR-0047), first to 10 kills by default. A **pre-match menu** gathers everyone (pick team, ready up); the host starts each match, and everyone returns to it after the results (ADR-0047). The room's host sets kills to win, a time limit, the map, flight assist and the allowed drones, weapons and specials (Room settings, ADR-0046). Solo has no combat except Training bots (ADR-0017).
+- **Free-for-all** or **Teams** (Orange vs Lime, no friendly fire, team kill totals; ADR-0047), first to 10 kills by default. A **pre-match menu** gathers everyone (pick team, ready up); the host starts each match, and everyone returns to it after the results (ADR-0047). The room's host sets kills to win, a time limit, the map, flight assist and the allowed drones, weapons and specials (Room settings, ADR-0046). Solo runs the same match rules in the page; Training adds practice bots, and hosts can add bots to any room (no XP from bots; ADR-0017, ADR-0067).
 - Rounds that miss splash where they land, matched to the surface: dirt only on dirt, dust and chips on concrete, sparks on steel.
 
 ## Maps (ADR-0012)
 
-- **Downtown** (default and the main map, 1,120 m; river, bridges, stadium, elevated highway, rail viaduct, plus an airport with a touch-and-go airliner, Central Park, the Circuit of the Americas with its observation tower and race cars (ADR-0055), a megaproject with a 24 m deep pit (ADR-0054), a suburb, a favela hill, a sports park and the airport's cargo side (ADR-0056); tree-lined boulevards and a sculpture garden link it all, and no ground is left bare (ADR-0058); it sits on rolling SF/Rio-style hills, flat only where it must be, with street trees in every block (ADR-0059)), **Yard** (industrial; harbor with a container ship, cooling towers, rail yard, wind farm), **Playground** (giant solid-color park with a fairground: drop tower, Ferris wheel, hedge maze; ADR-0019), **Cavern** (one huge cave with tunnels, an underground lake and an old mine; ADR-0048), **Training** (solo, with bots, ADR-0017). Each is 3x its original area, filled with one-of-a-kind landmarks (ADR-0049). The room creator picks.
+- **Downtown** (default and the main map, 1,120 m of rolling city on a Rio-like coast with an airport, Central Park, the Circuit of the Americas, a megaproject pit and more; ADR-0054 to ADR-0059), **Yard** (industrial; harbor with a container ship, cooling towers, rail yard, wind farm), **Playground** (giant solid-color park with a fairground: drop tower, Ferris wheel, hedge maze; ADR-0019), **Cavern** (one huge cave with tunnels, an underground lake and an old mine; ADR-0048), **Training** (solo, with bots, ADR-0017). Each is 3x its original area, filled with one-of-a-kind landmarks (ADR-0049). The room creator picks.
 - Moving props from a shared clock: Downtown traffic, Playground coaster, Yard tractor (ADR-0020). Destructible props explode when shot, chain, hurt pilots in matches, and return after 30 s (ADR-0023).
 - Grid textures (flat colors with grids) are the default look; Settings can switch to realistic textures (ADR-0053). Downtown buildings have real 3D detail you can land on: ledges, colonnades, balconies, rooftops (ADR-0053). Distant mountains, clouds and sun glow everywhere (in the Cavern, through the roof holes); Downtown instead sits on a Rio-like coast: forested hills, a bay and the sea to the east with the sun setting over it (ADR-0054).
 
