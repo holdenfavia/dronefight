@@ -311,6 +311,10 @@
   font-size: 24px;
 }
 
+.osd-item {
+  white-space: nowrap;
+}
+
 .osd-item[hidden] {
   display: none;
 }
