@@ -11,7 +11,7 @@ The spec and the decision index below are loaded every session. They are the sou
 
 1. Read `docs/ROADMAP.md` and work on the **Current focus** unless the user says otherwise.
 2. Read the full decision file for any decision the task touches (e.g. networking work → `docs/decisions/0004-*.md`).
-3. For how to run, test or deploy, use `docs/RUNBOOK.md`.
+3. For how to run, test or deploy, use `docs/RUNBOOK.md`. For how the code fits together, see `docs/ARCHITECTURE.md`.
 
 ## Conflict rule (most important)
 
