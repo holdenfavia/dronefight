@@ -55,12 +55,10 @@ export class Missiles {
     // A little grace: the client's pod mirror and ours tick on slightly different clocks.
     if (pilot.missiles < 1 - POD_GRACE) return false;
     pilot.missiles = Math.max(0, pilot.missiles - 1);
-    for (let i = this.list.length - 1; i >= 0; i--) {
-      const old = this.list[i]!;
-      if (old.shooter !== pilot.id) continue;
-      this.list.splice(i, 1);
-      this.explode(old.shooter, old.rid, [old.p[0], old.p[1], old.p[2]], now);
-    }
+    // One in flight per pilot: the old one blows up. Take them out first, since a blast can end the match and clear the list.
+    const old = this.list.filter((m) => m.shooter === pilot.id);
+    if (old.length) this.list = this.list.filter((m) => m.shooter !== pilot.id);
+    for (const m of old) this.explode(m.shooter, m.rid, [m.p[0], m.p[1], m.p[2]], now);
     return true;
   }
 
