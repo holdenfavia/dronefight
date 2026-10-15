@@ -11,7 +11,7 @@ import { interceptTime } from '../../shared/lead.js';
 import { MAPS, SPAWN_SAFE_DISTANCE } from '../../shared/maps/index.js';
 import { mapProps, PROPS } from '../../shared/props.js';
 import { Match, sampleHistory, takeRound } from './match.js';
-import { defaultRoomOptions, type RoomOptions } from '../../shared/roomOptions.js';
+import { defaultRoomOptions, TIME_LIMITS, type RoomOptions } from '../../shared/roomOptions.js';
 
 function droneAt(p: Vec3, v: Vec3 = [0, 0, 0], crashed = false): DroneState {
   return { ts: 0, p, v, q: [0, 0, 0, 1], m: 0.3, armed: true, crashed };
@@ -979,5 +979,98 @@ describe('teams and the pre-match menu (ADR-0047)', () => {
     match.tick(5 * 60_000 + COMBAT.resultsMs + 10);
     expect(latest(log).phase).toBe('waiting');
     expect(latest(log).players.every((p) => !p.ready)).toBe(true);
+  });
+});
+
+describe('practice bots (ADR-0067)', () => {
+  /** You alone on a map, ticking at 60 Hz with your state; returns helpers. */
+  function solo(map: 'training' | 'yard', lobby = false) {
+    const log: ServerMessage[] = [];
+    const progress: [string, string][] = [];
+    const match = new Match(map, (msg) => log.push(msg), Math.random, (id, e) => progress.push([id, e]), lobby);
+    let now = 10_000;
+    const me: Vec3 = [0, 20, 100];
+    match.addPlayer('me', now);
+    const advance = (ms: number) => {
+      const end = now + ms;
+      while (now < end) {
+        now += 1000 / 60;
+        match.onState('me', droneAt(me), now);
+        match.tick(now);
+      }
+    };
+    const bots = () => match.state().players.filter((p) => p.bot);
+    return { match, log, progress, advance, bots, me, now: () => now };
+  }
+
+  it('the Training range brings its bots, fills the room to 10, and is live at once', () => {
+    const t = solo('training');
+    expect(t.bots().length).toBe(9);
+    expect(t.match.state().players.length).toBe(10);
+    expect(t.match.phase).toBe('playing');
+    expect(new Set(t.bots().map((b) => b.bot))).toEqual(new Set(['stationary', 'path', 'random', 'evasive']));
+  });
+
+  it('a person joining a full range bumps a bot', () => {
+    const t = solo('training');
+    t.match.addPlayer('friend', t.now());
+    expect(t.match.state().players.length).toBe(10);
+    expect(t.bots().length).toBe(8);
+  });
+
+  it('bots fly: their positions go out as snapshots, like anyone else\'s', () => {
+    const t = solo('training');
+    t.advance(1000);
+    const snaps = t.log.filter((m) => m.t === 'snap');
+    const ids = new Set(snaps.map((m) => (m as { id: string }).id));
+    expect(ids.size).toBe(9);
+    // ~30 Hz each.
+    expect(snaps.length / 9).toBeGreaterThan(20);
+    expect(snaps.length / 9).toBeLessThan(40);
+  });
+
+  it('shooting a bot down scores, respawns it, and earns no XP; the range never ends', () => {
+    const t = solo('training');
+    t.advance(200);
+    const target = t.bots().find((b) => b.bot === 'stationary')!;
+    for (let i = 0; i < 40; i++) {
+      const last = [...t.log].reverse().find((m) => m.t === 'snap' && m.id === target.id) as { s: DroneState } | undefined;
+      const p = last!.s.p;
+      const d: Vec3 = [p[0] - t.me[0], p[1] - t.me[1], p[2] - t.me[2]];
+      const len = Math.hypot(...d);
+      t.match.onShot('me', { ts: t.now(), p: t.me, d: [d[0] / len, d[1] / len, d[2] / len], w: 'gun' }, t.now());
+      t.advance(300);
+    }
+    expect(t.match.state().players.find((p) => p.id === 'me')!.score).toBeGreaterThanOrEqual(3);
+    expect(t.match.phase).toBe('playing');
+    expect(t.progress.filter(([, e]) => e === 'kill')).toEqual([]);
+    t.advance(COMBAT.respawnMs + 100);
+    expect(t.match.state().players.find((p) => p.id === target.id)!.alive).toBe(true);
+  });
+
+  it('the host adds and removes bots in any room, up to 10 pilots; bots count toward starting', () => {
+    const t = solo('yard', true);
+    expect(t.match.canStart).toBe(false);
+    t.match.onBot('me', true, t.now());
+    expect(t.bots().length).toBe(1);
+    expect(t.match.canStart).toBe(true);
+    for (let i = 0; i < 12; i++) t.match.onBot('me', true, t.now());
+    expect(t.match.state().players.length).toBe(10);
+    t.match.addPlayer('guest', t.now());
+    t.match.onBot('guest', false, t.now());
+    expect(t.bots().length).toBe(8);
+    t.match.onBot('me', false, t.now());
+    expect(t.bots().length).toBe(7);
+  });
+
+  it('a match won against bots gives no finish or win XP', () => {
+    const t = solo('yard', true);
+    t.match.onBot('me', true, t.now());
+    t.match.onStart('me', t.now());
+    expect(t.match.phase).toBe('playing');
+    t.match.setOptions('me', { ...defaultRoomOptions('yard'), timeLimitMin: TIME_LIMITS[1] }, t.now());
+    t.advance(TIME_LIMITS[1] * 60_000 + 1000);
+    expect(t.match.phase).toBe('ended');
+    expect(t.progress.filter(([, e]) => e === 'finish' || e === 'win')).toEqual([]);
   });
 });

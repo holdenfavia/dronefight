@@ -15,6 +15,7 @@ import {
   type Shot,
 } from '../../../shared/protocol';
 import { ClockSync } from './clockSync';
+import { localSocket, SOCKET_CONNECTING, SOCKET_OPEN, type SocketLike } from './localServer';
 import { SnapshotBuffer } from './snapshotBuffer';
 
 /**
@@ -68,7 +69,9 @@ export class NetClient {
   private authToken: string | null = null;
   readonly remoteShots: RemoteShot[] = [];
 
-  private socket: WebSocket | null = null;
+  private socket: SocketLike | null = null;
+  /** Connected to the room server in this page (solo, ADR-0067) instead of the online one. */
+  local = false;
   private sendAccumulator = 0;
   private pingTimer = 0;
   private pingId = 0;
@@ -86,6 +89,28 @@ export class NetClient {
     return this.status === 'in-room';
   }
 
+  /** In a room on the online server, with other people (not solo). */
+  get online(): boolean {
+    return this.inRoom && !this.local;
+  }
+
+  /** Fly solo (ADR-0067): a private room on the server in this page, on this map and settings. */
+  startSolo(map: MapId, options?: RoomOptions): void {
+    if (this.local && this.inRoom) {
+      if (options) this.sendOptions({ ...options, map });
+      return;
+    }
+    this.useServer(true);
+    this.createRoom(map, options);
+  }
+
+  /** Switch between the online server and the one in this page; leaves the current room. */
+  private useServer(local: boolean): void {
+    if (this.local === local) return;
+    if (this.socket) this.leave();
+    this.local = local;
+  }
+
   /** Server time in ms, estimated from ping/pong. */
   serverNow(): number {
     return this.clock.serverNow(performance.now());
@@ -93,6 +118,7 @@ export class NetClient {
 
   /** Create a room with these match settings (ADR-0046). */
   createRoom(map: MapId, options?: RoomOptions): void {
+    if (this.wantRoom?.kind !== 'create' || !this.local) this.useServer(false);
     this.wantRoom = options ? { kind: 'create', map, options } : { kind: 'create', map };
     this.ensureConnected();
   }
@@ -108,6 +134,7 @@ export class NetClient {
   }
 
   joinRoom(code: string): void {
+    this.useServer(false);
     this.wantRoom = { kind: 'join', code: normalizeRoomCode(code) };
     this.ensureConnected();
   }
@@ -199,7 +226,7 @@ export class NetClient {
 
   /** Call once per frame. Sends local state at NET.sendHz and pings for clock sync. */
   update(frameDt: number, getState: () => DroneState): void {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    if (!this.socket || this.socket.readyState !== SOCKET_OPEN) return;
     const now = performance.now();
 
     if (now - this.pingTimer >= NET.pingIntervalMs) {
@@ -218,11 +245,11 @@ export class NetClient {
   }
 
   private ensureConnected(): void {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+    if (this.socket && this.socket.readyState === SOCKET_OPEN) {
       this.requestRoom();
       return;
     }
-    if (this.socket && this.socket.readyState === WebSocket.CONNECTING) return;
+    if (this.socket && this.socket.readyState === SOCKET_CONNECTING) return;
     this.open();
   }
 
@@ -230,7 +257,7 @@ export class NetClient {
     this.clearReconnect();
     this.error = null;
     this.setStatus(this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
-    const socket = new WebSocket(this.url);
+    const socket: SocketLike = this.local ? localSocket() : (new WebSocket(this.url) as unknown as SocketLike);
     this.socket = socket;
 
     socket.onopen = () => {
@@ -376,7 +403,7 @@ export class NetClient {
 
   private send(msg: ClientMessage): void {
     const socket = this.socket;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (!socket || socket.readyState !== SOCKET_OPEN) return;
     // Latest state wins on the way out too: if the socket is backed up, skip this message.
     if (msg.t === 'state' && socket.bufferedAmount > NET.maxBufferedBytes) return;
     socket.send(JSON.stringify(msg));

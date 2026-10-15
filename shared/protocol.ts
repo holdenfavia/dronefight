@@ -1,6 +1,7 @@
 import type { DroneClassId } from './drones.js';
 import { cleanLoadout, type Loadout } from './loadout.js';
 import { isNetworkedSpecial, type NetworkedSpecialId } from './specials.js';
+import type { BotKind } from './bots.js';
 import { isWeaponId, type WeaponId } from './weapons.js';
 import type { XpReason } from './progression.js';
 import { isMapId, type MapId } from './maps/index.js';
@@ -116,6 +117,8 @@ export interface MatchPlayer {
   side?: 0 | 1;
   /** Ready in the pre-match menu (ADR-0047). */
   ready?: boolean;
+  /** A practice bot flown by the server (ADR-0067), and how it flies. */
+  bot?: BotKind;
 }
 
 export interface MatchState {
@@ -147,6 +150,8 @@ export type ClientMessage =
   | { t: 'side'; side: 0 | 1 }
   | { t: 'ready'; ready: boolean }
   | { t: 'start' }
+  /** The host adds or removes a practice bot (ADR-0067). */
+  | { t: 'bot'; add: boolean }
   /** The host changes the room's match settings (ADR-0046): the match restarts with them. */
   | { t: 'options'; options: RoomOptions }
   /** `map` only when rejoining after a dropped connection: recreate the room with this code if it's gone (e.g. a server restart). */
@@ -254,6 +259,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return typeof m.ready === 'boolean' ? { t: 'ready', ready: m.ready } : null;
     case 'start':
       return { t: 'start' };
+    case 'bot':
+      return typeof m.add === 'boolean' ? { t: 'bot', add: m.add } : null;
     case 'options':
       return typeof m.options === 'object' && m.options !== null ? { t: 'options', options: cleanRoomOptions(m.options) } : null;
     case 'leave':

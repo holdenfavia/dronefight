@@ -10,6 +10,7 @@ import type { DroneLook } from '../../shared/cosmetics.js';
 import {
   NET,
   type DroneState,
+  type Quat,
   type MatchPhase,
   type MatchState,
   type ServerMessage,
@@ -20,6 +21,7 @@ import { buildColliders, raycastArena, segmentPointDistance } from '../../shared
 import { blastDamage, PropField, type Blast } from '../../shared/props.js';
 import { grenadeDamage, launchGrenade, stepGrenade, type GrenadeState } from '../../shared/grenade.js';
 import type { ProgressEvent } from './progression.js';
+import { botAttitude, resetBot, roamingBot, stepBot, trainingBots, type Bot } from '../../shared/bots.js';
 
 /**
  * One room's combat (ADR-0009). The server is the referee: it decides hits, damage, deaths and score.
@@ -39,6 +41,13 @@ const MIN_PILOTS = 2;
 /** Spawn offsets: a pilot already within `SPAWN_TAKEN_M` of a spawn means the next goes beside it, on rings this far apart. */
 const SPAWN_TAKEN_M = 3;
 const SPAWN_RING_M = 4;
+/** Practice bots (ADR-0067): how often their positions go out (ms), and how close to someone's crosshair counts as aimed at. */
+const BOT_SEND_MS = 1000 / NET.sendHz;
+const BOT_AIMED_COS = Math.cos((5 * Math.PI) / 180);
+/** Bots show this much motor in their snapshots (for their sound and props). */
+const BOT_MOTOR = 0.4;
+/** Finish and win XP need at least this many human pilots in the match (ADR-0067). */
+const MIN_HUMANS_FOR_XP = 2;
 
 interface HistoryEntry {
   st: number;
@@ -83,6 +92,10 @@ interface Pilot {
   /** Index of the last spawn used, so the next one differs (ADR-0012). */
   lastSpawn: number | null;
   history: HistoryEntry[];
+  /** Where they look (their last reported attitude), for bots to know they're being aimed at. */
+  q: readonly number[];
+  /** A practice bot the server flies (ADR-0067), or null for a person. */
+  bot: Bot | null;
 }
 
 /**
@@ -149,6 +162,10 @@ export class Match {
   private endsAt: number | null = null;
   /** Teams mode: the team that won the last match (ADR-0047). */
   private winnerSide: Side | null = null;
+  /** Practice bots (ADR-0067): numbering, when they were last stepped and last sent. */
+  private botCount = 0;
+  private botClock = 0;
+  private botSent = 0;
 
   constructor(
     mapOrOptions: MapId | RoomOptions,
@@ -166,6 +183,7 @@ export class Match {
     this.map = getMap(this.options.map);
     this.colliders = buildColliders(this.map.boxes, this.map.holes, this.map.terrain);
     this.props = new PropField(this.map);
+    this.trainingLineup(0);
   }
 
   /** The room's map (it can change with the settings). */
@@ -188,6 +206,8 @@ export class Match {
       this.bullets = [];
       this.missiles = [];
       this.grenades = [];
+      this.options = options;
+      this.trainingLineup(now);
     }
     const modeChanged = options.mode !== this.options.mode;
     this.options = options;
@@ -207,11 +227,16 @@ export class Match {
     }
   }
 
-  addPlayer(id: string, now: number, choice: Loadout | DroneClassId = DEFAULT_DRONE): void {
+  addPlayer(id: string, now: number, choice: Loadout | DroneClassId = DEFAULT_DRONE, bot: Bot | null = null): void {
     const loadout = restrictLoadout(asLoadout(choice), this.options);
-    // The first pilot in (the room's creator) sets the rules (ADR-0046).
-    if (this.host === null || !this.pilots.has(this.host)) this.host = id;
+    // The first person in (the room's creator) sets the rules (ADR-0046).
+    if (!bot && (this.host === null || !this.pilots.has(this.host))) this.host = id;
     this.now = now;
+    // A room holds 10 pilots: a person joining a full Training range bumps a bot (ADR-0067).
+    if (!bot && this.pilots.size >= NET.maxPlayersPerRoom) {
+      const last = [...this.pilots.values()].reverse().find((p) => p.bot);
+      if (last) this.dropPilot(last.id);
+    }
     // Each pilot gets the lowest free color slot (ADR-0026); in Teams, the smaller team and its color (ADR-0047).
     const side = this.smallerSide();
     const team = this.options.mode === 'teams' ? side : this.freeSlot();
@@ -242,23 +267,24 @@ export class Match {
       missilesAt: now,
       smokeReadyAt: 0,
       lastSpawn: null,
-      history: [],
+      history: bot ? [{ st: now, p: [...bot.pos], v: [0, 0, 0] }] : [],
+      q: [0, 0, 0, 1],
+      bot,
     });
     const pilot = this.pilots.get(id)!;
-    if (!this.lobby && this.pilots.size >= MIN_PILOTS && this.phase === 'waiting') this.startMatch(now);
+    // The Training range is always live: shoot the bots from the moment you arrive (ADR-0067).
+    if (this.training && !bot && this.phase === 'waiting') this.startMatch(now);
+    else if (!this.lobby && this.pilots.size >= MIN_PILOTS && this.phase === 'waiting' && this.humans > 0) this.startMatch(now);
     else if (this.phase !== 'waiting') this.respawn(pilot, now); // joining a running match
     else this.broadcastState();
   }
 
   removePlayer(id: string, now: number): void {
     this.now = now;
-    this.pilots.delete(id);
-    // The host left: the next pilot in charge of the settings.
-    if (this.host === id) this.host = this.pilots.keys().next().value ?? null;
-    this.bullets = this.bullets.filter((b) => b.shooter !== id);
-    this.missiles = this.missiles.filter((m) => m.shooter !== id);
-    this.grenades = this.grenades.filter((g) => g.shooter !== id);
-    if (this.pilots.size < MIN_PILOTS) {
+    this.dropPilot(id);
+    // The host left: the next person is in charge of the settings.
+    if (this.host === id) this.host = [...this.pilots.values()].find((p) => !p.bot)?.id ?? null;
+    if (this.pilots.size < MIN_PILOTS || this.humans === 0) {
       this.phase = 'waiting';
       this.winner = null;
       this.bullets = [];
@@ -273,6 +299,99 @@ export class Match {
       }
     }
     this.broadcastState();
+  }
+
+  /** Take a pilot out, with anything they had in the air. */
+  private dropPilot(id: string): void {
+    this.pilots.delete(id);
+    this.bullets = this.bullets.filter((b) => b.shooter !== id);
+    this.missiles = this.missiles.filter((m) => m.shooter !== id);
+    this.grenades = this.grenades.filter((g) => g.shooter !== id);
+  }
+
+  // --- Practice bots (ADR-0067)
+
+  private get training(): boolean {
+    return this.map.id === 'training';
+  }
+
+  /** People in the room (not bots). */
+  private get humans(): number {
+    let n = 0;
+    for (const p of this.pilots.values()) if (!p.bot) n++;
+    return n;
+  }
+
+  /** The Training map brings its own bots (as many as fit beside the people); other maps start with none. */
+  private trainingLineup(now: number): void {
+    for (const p of [...this.pilots.values()]) if (p.bot) this.dropPilot(p.id);
+    if (!this.training) return;
+    const room = NET.maxPlayersPerRoom - Math.max(1, this.humans);
+    for (const bot of trainingBots().slice(0, room)) this.addBotPilot(bot, now);
+  }
+
+  private addBotPilot(bot: Bot, now: number): void {
+    this.addPlayer(`bot${++this.botCount}`, now, 'freestyle', bot);
+  }
+
+  /** The host adds or removes a practice bot from the pre-match menu (ADR-0067), up to the room's 10 pilots. */
+  onBot(id: string, add: boolean, now: number): void {
+    if (id !== this.host) return;
+    this.now = now;
+    if (add) {
+      if (this.pilots.size >= NET.maxPlayersPerRoom) return;
+      const n = [...this.pilots.values()].filter((p) => p.bot).length;
+      this.addBotPilot(this.training ? (trainingBots()[n] ?? roamingBot(this.map, n)) : roamingBot(this.map, n), now);
+      return;
+    }
+    const last = [...this.pilots.values()].reverse().find((p) => p.bot);
+    if (last) this.removePlayer(last.id, now);
+  }
+
+  /** Fly the bots and send where they are, like anyone's snapshots (Hard rule 1). */
+  private stepBots(now: number): void {
+    const dt = Math.min(0.1, Math.max(0, (now - this.botClock) / 1000));
+    this.botClock = now;
+    const send = now - this.botSent >= BOT_SEND_MS;
+    if (send) this.botSent = now;
+    for (const p of this.pilots.values()) {
+      const bot = p.bot;
+      if (!bot || !p.alive) continue;
+      stepBot(bot, dt, this.aimedAt(bot.pos));
+      p.history.push({ st: now, p: [...bot.pos], v: [...bot.vel] });
+      while (p.history.length > 1 && (p.history[0]?.st ?? now) < now - HISTORY_MS) p.history.shift();
+      p.q = botAttitude(bot.vel, p.q);
+      if (!send) continue;
+      const r = (n: number) => Math.round(n * 100) / 100;
+      const s: DroneState = { ts: now, p: bot.pos.map(r) as Vec3, q: p.q as Quat, v: bot.vel.map(r) as Vec3, m: BOT_MOTOR, armed: true, crashed: false };
+      this.emit({ t: 'snap', id: p.id, st: now, s });
+    }
+  }
+
+  /** Someone's crosshair is on this spot: evasive bots jink harder. */
+  private aimedAt(at: Vec3): boolean {
+    for (const p of this.pilots.values()) {
+      if (p.bot || !p.alive) continue;
+      const last = p.history[p.history.length - 1];
+      if (!last) continue;
+      const [x, y, z, w] = p.q as [number, number, number, number];
+      // The nose (-Z) rotated by q.
+      const fx = -(2 * (x * z + w * y));
+      const fy = -(2 * (y * z - w * x));
+      const fz = -(1 - 2 * (x * x + y * y));
+      const dx = at[0] - last.p[0];
+      const dy = at[1] - last.p[1];
+      const dz = at[2] - last.p[2];
+      const d = Math.hypot(dx, dy, dz);
+      if (d > 0 && (fx * dx + fy * dy + fz * dz) / d > BOT_AIMED_COS) return true;
+    }
+    return false;
+  }
+
+  /** XP events (ADR-0032), never for bots or for killing one (ADR-0067). */
+  private progress(id: string, event: ProgressEvent): void {
+    const p = this.pilots.get(id);
+    if (p && !p.bot) this.onProgress(id, event);
   }
 
   /** A pilot's paint (ADR-0030), shown to everyone on the body they fly, and their callsign (ADR-0047). */
@@ -392,6 +511,7 @@ export class Match {
     if (!pilot) return;
     this.now = st;
     pilot.history.push({ st, p: s.p, v: s.v });
+    pilot.q = s.q;
     while (pilot.history.length > 1 && (pilot.history[0]?.st ?? st) < st - HISTORY_MS) pilot.history.shift();
     if (s.k) this.moveMissile(id, s.k, st);
 
@@ -657,6 +777,7 @@ export class Match {
         this.broadcastState();
       }
     }
+    this.stepBots(now);
     this.stepBullets(now);
     this.stepMissiles(now);
     this.stepGrenades(now);
@@ -674,7 +795,7 @@ export class Match {
   private propBlast(b: Blast, now: number): void {
     this.emit({ t: 'prop', i: b.i, p: b.p, by: b.by });
     if (this.phase !== 'playing') return;
-    if (b.by && this.pilots.has(b.by)) this.onProgress(b.by, 'prop');
+    if (b.by && this.pilots.has(b.by)) this.progress(b.by, 'prop');
     for (const target of [...this.pilots.values()]) {
       if (!target.alive || target.protectedUntil > now) continue;
       const pos = sampleHistory(target.history, now);
@@ -710,6 +831,7 @@ export class Match {
         ...(p.name ? { name: p.name } : {}),
         ...(this.teams ? { side: p.side } : {}),
         ...(p.ready ? { ready: true } : {}),
+        ...(p.bot ? { bot: p.bot.kind } : {}),
       })),
     };
   }
@@ -808,30 +930,34 @@ export class Match {
     this.emit({ t: 'death', id: pilot.id, killer: killerId, cause });
 
     // XP (ADR-0032): the kill, and assists for anyone else who hurt them recently.
-    if (this.phase === 'playing') {
-      this.onProgress(pilot.id, 'death');
-      if (killerId && this.pilots.has(killerId)) this.onProgress(killerId, 'kill');
+    if (this.phase === 'playing' && !pilot.bot) {
+      this.progress(pilot.id, 'death');
+      if (killerId && this.pilots.has(killerId)) this.progress(killerId, 'kill');
       for (const [id, at] of pilot.damagedBy) {
-        if (id !== killerId && id !== pilot.id && now - at <= COMBAT.killCreditMs && this.pilots.has(id)) this.onProgress(id, 'assist');
+        if (id !== killerId && id !== pilot.id && now - at <= COMBAT.killCreditMs && this.pilots.has(id)) this.progress(id, 'assist');
       }
     }
 
     const killer = killerId ? this.pilots.get(killerId) : undefined;
     if (killer && !this.teammates(killer, pilot)) {
       killer.score++;
-      if (this.teams ? this.sideScore(killer.side) >= this.options.killsToWin : killer.score >= this.options.killsToWin) this.endMatch(killer.id, now);
+      // The Training range never ends (ADR-0067).
+      if (!this.training && (this.teams ? this.sideScore(killer.side) >= this.options.killsToWin : killer.score >= this.options.killsToWin)) this.endMatch(killer.id, now);
     }
     this.broadcastState();
   }
 
   /** Match over (kill limit, or time, ADR-0046): everyone still here finished it; the winner (if any) won it. */
   private endMatch(winnerId: string | null, now: number, side: Side | null = null): void {
-    for (const p of this.pilots.values()) this.onProgress(p.id, 'finish');
     // Teams: the whole winning team wins (ADR-0047).
     const winSide = this.teams ? (side ?? (winnerId ? (this.pilots.get(winnerId)?.side ?? null) : null)) : null;
-    if (this.teams) {
-      for (const p of this.pilots.values()) if (winSide !== null && p.side === winSide) this.onProgress(p.id, 'win');
-    } else if (winnerId) this.onProgress(winnerId, 'win');
+    // Finishing and winning earn XP only against other people (ADR-0067).
+    if (this.humans >= MIN_HUMANS_FOR_XP) {
+      for (const p of this.pilots.values()) this.progress(p.id, 'finish');
+      if (this.teams) {
+        for (const p of this.pilots.values()) if (winSide !== null && p.side === winSide) this.progress(p.id, 'win');
+      } else if (winnerId) this.progress(winnerId, 'win');
+    }
     this.winnerSide = winSide;
     this.phase = 'ended';
     this.winner = winnerId;
@@ -860,6 +986,20 @@ export class Match {
   }
 
   private respawn(pilot: Pilot, now: number): void {
+    if (pilot.bot) {
+      // Bots come back where they started, shootable at once.
+      resetBot(pilot.bot);
+      pilot.history = [{ st: now, p: [...pilot.bot.pos], v: [0, 0, 0] }];
+      applyPending(pilot);
+      pilot.alive = true;
+      pilot.hp = droneClass(pilot.loadout.body).maxHp;
+      pilot.respawnAt = null;
+      pilot.protectedUntil = 0;
+      pilot.lastDamagedBy = null;
+      pilot.damagedBy.clear();
+      this.broadcastState();
+      return;
+    }
     // Anti spawn-camping (ADR-0012): random spawn away from every living opponent.
     const opponents = [...this.pilots.values()]
       .filter((p) => p !== pilot && p.alive && !this.teammates(p, pilot))
