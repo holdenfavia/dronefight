@@ -2,12 +2,13 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { Euler, Quaternion, Vector3 } from 'three';
 import type { DroneClassId } from '../../../shared/drones';
 import type { SpawnPoint } from '../../../shared/maps';
-import { CRASH, FLIGHT_ASSIST, INPUT, PHYSICAL_SPECS, QUAD, QUAD_3D, RACER, SIM, X8, type FlightAssist, type QuadParams, type Rates } from '../config';
-import { defaultLoadout, loadFactor, type Loadout } from '../../../shared/loadout';
+import { CRASH, FLIGHT_ASSIST, INPUT, SIM, type FlightAssist, type HorizonParams, type Rates } from '../config';
+import { defaultLoadout, totalKg, type Loadout } from '../../../shared/loadout';
 import { AFTERBURNER } from '../../../shared/specials';
 import { PROPELLERS } from '../../../shared/propellers';
 import type { ControlState } from '../input/inputManager';
-import { createFlightOutput, rateSetpoint, stepFlight, throttleSafeToArm, type FlightState } from './flightModel';
+import { payload, quadSpec } from './build';
+import { createFlightOutput, rateSetpoint, throttleSafeToArm, type FlightState } from './flightModel';
 import { PhysicalQuad, type PhysicalOptions, type PhysicalStepInput } from './physicalQuad';
 import type { Physics } from './physics';
 import { stepWing, WING } from './wingModel';
@@ -55,59 +56,6 @@ export function lookAngvel(rot: Quaternion, from: Vector3, target: Vector3, upti
   return out.set(HOVER_QE.x / s, HOVER_QE.y / s, HOVER_QE.z / s).multiplyScalar(Math.min(angle * HOVER.lookRate, HOVER.maxLookRate));
 }
 
-const QUAD_PARAMS: Record<Exclude<DroneClassId, 'wing'>, QuadParams> = { freestyle: QUAD, quad3d: QUAD_3D, racer: RACER, x8: X8 };
-
-/**
- * A quad build's flight parameters (ADR-0033, ADR-0035): its body's tuning, loaded by its weight, then
- * changed by its propellers (lift, response, spool, drag, prop wash).
- */
-export function flightParams(loadout: Loadout, assist: FlightAssist = 'acro'): QuadParams {
-  const base = loadedParams(QUAD_PARAMS[loadout.body === 'wing' ? 'freestyle' : loadout.body], loadFactor(loadout));
-  const p = PROPELLERS[loadout.propeller];
-  return {
-    ...base,
-    // The pilot's flight assist (ADR-0045); the X8 keeps its own horizon mode whatever is chosen (ADR-0037).
-    horizon: base.horizon ?? (assist === 'acro' ? undefined : FLIGHT_ASSIST[assist]),
-    thrustToWeight: base.thrustToWeight * p.thrust,
-    rateTau: base.rateTau * p.response,
-    motorTau: base.motorTau * p.spool,
-    dragQuadratic: { x: base.dragQuadratic.x * p.drag, y: base.dragQuadratic.y * p.drag, z: base.dragQuadratic.z * p.drag },
-    dragLinear: base.dragLinear * p.drag,
-    propWash: { ...base.propWash, maxDegPerSec: base.propWash.maxDegPerSec * p.wash },
-  };
-}
-
-/**
- * Rough top speed, 0..100, for the stat sheet (ADR-0035): flat-out speed goes with the square root of thrust
- * over drag. Scaled so a stock Freestyle reads 70.
- */
-export function speedScore(loadout: Loadout): number {
-  if (loadout.body === 'wing') return Math.round(Math.min(100, 85 * Math.sqrt(PROPELLERS[loadout.propeller].thrust / loadFactor(loadout))));
-  const p = flightParams(loadout);
-  const v = Math.sqrt((p.thrustToWeight * p.massKg) / p.dragQuadratic.z);
-  const ref = Math.sqrt((QUAD.thrustToWeight * QUAD.massKg) / QUAD.dragQuadratic.z);
-  return Math.round(Math.max(0, Math.min(100, (70 * v) / ref)));
-}
-
-/**
- * How snappy a build feels, 0..100, for the Loadout stat sheet (ADR-0033): the body's rate response, slowed
- * by load exactly as in flight (loadedParams). A 3" racer at its default build is 100.
- */
-export function agilityScore(loadout: Loadout): number {
-  const k = loadFactor(loadout);
-  if (loadout.body === 'wing') return Math.round(Math.min(100, 62 / Math.sqrt(k) / PROPELLERS[loadout.propeller].response));
-  const tau = flightParams(loadout).rateTau;
-  return Math.round(Math.max(0, Math.min(100, (100 * RACER.rateTau) / tau)));
-}
-
-/**
- * A quad's flight parameters for a loadout `k` times heavier than its tuned default (ADR-0033): more mass,
- * the same thrust (so a lower thrust-to-weight), and slower response as the load grows.
- */
-export function loadedParams(base: QuadParams, k: number): QuadParams {
-  return { ...base, massKg: base.massKg * k, thrustToWeight: base.thrustToWeight / k, rateTau: base.rateTau * Math.sqrt(k) };
-}
-
 /**
  * The local drone: a Rapier rigid body driven by its class's flight model (ADR-0008, ADR-0013).
  * Rapier integrates motion and resolves contacts; every force and rate command comes from the model.
@@ -149,16 +97,14 @@ export class Drone {
   private readonly spawnRot = new Quaternion();
   private collider: RAPIER.Collider | null = null;
   private droneClass: DroneClassId = 'freestyle';
-  /** The loadout and the flight parameters it gives (ADR-0033); boosted = with the afterburner lit. */
   private loadoutNow: Loadout = defaultLoadout('freestyle');
-  private params: QuadParams = QUAD;
-  private boosted: QuadParams = QUAD;
-  /** The pilot's flight assist (ADR-0045). */
+  /** The pilot's flight assist (ADR-0045), and the self-levelling in use (the X8 always has its own). */
   private assist: FlightAssist = 'acro';
+  private horizon: HorizonParams | undefined;
   /** Quads fly the physical model (ADR-0063, ADR-0064): real motors, props, battery and a PID loop. */
   private physical = new PhysicalQuad();
   private readonly physicalIn: PhysicalStepInput = { throttle: 0, setpoint: new Vector3(), roll: 0, pitch: 0, yaw: 0, armed: false, agl: Infinity };
-  private readonly physicalOpt: PhysicalOptions = { load: 1, thrust: 1, spool: 1 };
+  private readonly physicalOpt: PhysicalOptions = { thrust: 1 };
   private groundRay: RAPIER.Ray | null = null;
 
 
@@ -187,43 +133,40 @@ export class Drone {
   }
 
   /**
-   * Fly this loadout (ADR-0033): its body's flight model and collision shape, with mass scaled by how much
-   * heavier it is than the body's default. Takes effect immediately; callers respawn after.
+   * Fly this loadout (ADR-0033): quads get their parts, propeller (ADR-0065) and payload (ADR-0066) in the
+   * physical model; the wing its own model at its all-up weight. Takes effect immediately; callers respawn after.
    */
   setLoadout(loadout: Loadout): void {
     const id = loadout.body;
     this.loadoutNow = loadout;
     this.droneClass = id;
-    const k = loadFactor(loadout);
-    if (id !== 'wing') {
-      this.params = flightParams(loadout, this.assist);
-      this.boosted = { ...this.params, thrustToWeight: this.params.thrustToWeight * (1 + AFTERBURNER.thrustBoost) };
-    }
     const { rapier, world } = this.physics;
     if (this.collider) world.removeCollider(this.collider, false);
-    const e = id === 'wing' ? WING.halfExtents : QUAD_PARAMS[id].halfExtents;
-    const mass = id === 'wing' ? WING.massKg * k : this.params.massKg;
-    const desc = rapier.ColliderDesc.cuboid(e.x, e.y, e.z).setRestitution(0.2).setFriction(0.6);
-    if (this.isPhysical) {
-      const spec = PHYSICAL_SPECS[id as keyof typeof PHYSICAL_SPECS];
-      if (this.physical.spec !== spec) this.physical = new PhysicalQuad(spec);
-      // Real mass, centre of mass and inertia from the parts (ADR-0063), scaled by the loadout's weight.
-      const hw = this.physical.hw;
-      desc.setMassProperties(hw.mass * k, { x: hw.centre[0], y: hw.centre[1], z: hw.centre[2] }, { x: hw.inertia[0] * k, y: hw.inertia[1] * k, z: hw.inertia[2] * k }, { x: 0, y: 0, z: 0, w: 1 });
-      this.physicalOpt.load = k;
+    let desc: RAPIER.ColliderDesc;
+    if (id === 'wing') {
+      const e = WING.halfExtents;
+      this.horizon = undefined;
+      desc = rapier.ColliderDesc.cuboid(e.x, e.y, e.z).setMass(totalKg(loadout));
     } else {
-      desc.setMass(mass);
+      const spec = quadSpec(loadout);
+      this.physical = new PhysicalQuad(spec, payload(loadout, spec));
+      this.horizon = spec.horizon ?? (this.assist === 'acro' ? undefined : FLIGHT_ASSIST[this.assist]);
+      const [hx, hy, hz] = spec.hull;
+      // Real mass, centre of mass and inertia from the parts and what they carry (ADR-0063, ADR-0066).
+      const hw = this.physical.hw;
+      desc = rapier.ColliderDesc.cuboid(hx, hy, hz).setMassProperties(hw.mass, { x: hw.centre[0], y: hw.centre[1], z: hw.centre[2] }, { x: hw.inertia[0], y: hw.inertia[1], z: hw.inertia[2] }, { x: 0, y: 0, z: 0, w: 1 });
     }
-    // The physical model turns the body with torques, so nothing may damp its rotation; the others set it directly.
-    this.body.setAngularDamping(this.isPhysical ? 0 : 0.3);
+    desc.setRestitution(0.2).setFriction(0.6);
+    // The physical model turns the body with torques, so nothing may damp its rotation; the wing sets it directly.
+    this.body.setAngularDamping(id === 'wing' ? 0.3 : 0);
     this.collider = world.createCollider(desc, this.body);
   }
 
-  /** Choose a flight assist (ADR-0045). Rebuilds the flight parameters only when it changes. */
+  /** Choose a flight assist (ADR-0045). The X8 keeps its own horizon mode whatever is chosen (ADR-0037). */
   setAssist(assist: FlightAssist): void {
     if (assist === this.assist) return;
     this.assist = assist;
-    this.setLoadout(this.loadoutNow);
+    if (this.droneClass !== 'wing') this.horizon = this.physical.spec.horizon ?? (assist === 'acro' ? undefined : FLIGHT_ASSIST[assist]);
   }
 
   /** Bodies flown by the physical model (ADR-0063, ADR-0064): every quad. The wing has its own model. */
@@ -231,9 +174,9 @@ export class Drone {
     return this.droneClass !== 'wing';
   }
 
-  /** The 3D quad's throttle rests at center; everything else at the bottom. */
+  /** A reversible (3D) quad's throttle rests at center; everything else at the bottom. */
   get restingThrottle(): number {
-    return this.droneClass === 'quad3d' ? 0.5 : 0;
+    return this.droneClass !== 'wing' && this.physical.spec.reversible ? 0.5 : 0;
   }
 
   /** Respawn at a different pad (match spawns, ADR-0009). Later plain respawns use it too. */
@@ -257,7 +200,7 @@ export class Drone {
     const yawDeg = wing ? Math.round(this.spawn.yawDeg / 90) * 90 : this.spawn.yawDeg;
     this.spawnRot.setFromAxisAngle(new Vector3(0, 1, 0), (yawDeg * Math.PI) / 180);
     const r = this.spawnRot;
-    const lift = wing ? WING.launchHeight : QUAD.halfExtents.y + 0.01;
+    const lift = wing ? WING.launchHeight : this.physical.spec.hull[1] + 0.01;
     this.body.setTranslation({ x, y: y + lift, z }, true);
     this.body.setRotation({ x: r.x, y: r.y, z: r.z, w: r.w }, true);
     const launch = new Vector3(0, 0, wing ? -WING.launchSpeed : 0).applyQuaternion(r);
@@ -279,8 +222,8 @@ export class Drone {
 
   /** Arming rules, run once per frame. Throttle must be in its safe position to arm, like Betaflight. */
   updateArming(control: ControlState): void {
-    const params = this.droneClass === 'wing' ? QUAD : this.params;
-    const throttleLow = throttleSafeToArm(control.throttle, params, INPUT.armThrottleMax);
+    const reversible = this.droneClass !== 'wing' && !!this.physical.spec.reversible;
+    const throttleLow = throttleSafeToArm(control.throttle, reversible, INPUT.armThrottleMax);
     if (this.crashed) {
       this.armed = false;
       this.armBlocked = false;
@@ -345,10 +288,12 @@ export class Drone {
       this.stepPhysical(control, rates, dt, burning);
       return;
     }
-    const out =
-      this.droneClass === 'wing'
-        ? stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive, this.wingProp.thrust * (burning ? 1 + AFTERBURNER.thrustBoost : 1), this.wingProp)
-        : stepFlight(control, this.state, rates, this.armed, dt, this.out, burning ? this.boosted : this.params);
+    const prop = this.wingProp;
+    const out = stepWing(control, this.state, this.armed, dt, this.out, this.maneuverActive, prop.wing.thrust * (burning ? 1 + AFTERBURNER.thrustBoost : 1), {
+      id: prop.id,
+      spool: prop.wing.spool,
+      jet: prop.jet,
+    });
     this.state.motorOutput = out.motorOutput;
     this.state.time += dt;
     this.body.setAngvel(out.angvel, true);
@@ -363,11 +308,9 @@ export class Drone {
     inp.pitch = control.pitch;
     inp.yaw = control.yaw;
     inp.armed = this.armed;
-    rateSetpoint(control, this.state.rotation, rates, this.params, inp.setpoint);
+    rateSetpoint(control, this.state.rotation, rates, this.horizon, inp.setpoint);
     inp.agl = this.groundBelow();
-    const prop = PROPELLERS[this.loadoutNow.propeller];
-    this.physicalOpt.thrust = prop.thrust * (burning ? 1 + AFTERBURNER.thrustBoost : 1);
-    this.physicalOpt.spool = prop.spool;
+    this.physicalOpt.thrust = burning ? 1 + AFTERBURNER.thrustBoost : 1;
     const q = this.physical;
     q.step(dt, this.state.rotation, this.state.linvel, this.state.angvel, inp, this.physicalOpt);
     this.state.motorOutput = q.motorOutput;

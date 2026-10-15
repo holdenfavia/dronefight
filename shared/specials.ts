@@ -14,10 +14,10 @@ export interface Special {
 }
 
 export const SPECIALS: Record<SpecialId, Special> = {
-  smoke: { id: 'smoke', name: 'Smoke trail', blurb: 'Tap: 6 s where others see only your frame (ADR-0024)', kg: 0.15 },
+  smoke: { id: 'smoke', name: 'Smoke trail', blurb: 'Tap: 6 s where others see only your frame (ADR-0024)', kg: 0.06 },
   maneuver: { id: 'maneuver', name: 'Maneuver mode', blurb: 'Hold: way more pitch, easier to stall (ADR-0022)', kg: 0, bodies: ['wing'] },
-  afterburner: { id: 'afterburner', name: 'Afterburner', blurb: 'Hold: +60% thrust while the fuel lasts', kg: 0.25 },
-  shield: { id: 'shield', name: 'Shield', blurb: 'Tap: absorbs the next 40 damage for 3 s', kg: 0.4 },
+  afterburner: { id: 'afterburner', name: 'Afterburner', blurb: 'Hold: +60% thrust while the fuel lasts', kg: 0.1 },
+  shield: { id: 'shield', name: 'Shield', blurb: 'Tap: absorbs the next 40 damage for 3 s', kg: 0.16 },
 };
 
 export const SPECIAL_ORDER: readonly SpecialId[] = ['smoke', 'afterburner', 'shield', 'maneuver'];

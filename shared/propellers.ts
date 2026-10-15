@@ -5,23 +5,32 @@ import type { DroneClassId } from './drones.js';
 
 export type PropellerId = 'tri' | 'bi' | 'quad' | 'heavy' | 'ducted' | 'turbine' | 'pulsejet' | 'ramjet';
 
+/**
+ * A quad prop as changes to the body's stock prop in the physical model (ADR-0065). Multipliers are on the stock
+ * prop's numbers; the diameter stays the body's own. Absent fields keep the stock value.
+ */
+export interface BladeChange {
+  blades?: number;
+  pitch?: number;
+  chord?: number;
+  profileDrag?: number;
+  /** Duct thrust factor, and the body drag-area multiplier the ducts add. */
+  duct?: number;
+  dragArea?: number;
+}
+
 export interface Propeller {
   id: PropellerId;
   name: string;
   /** The real prop it's modeled on. */
   real: string;
   blurb: string;
-  /** Extra weight over the stock tri-blades (kg). */
+  /** Extra weight over the stock tri-blades (kg), for a 5"'s set of four; bigger props weigh more (ADR-0065). */
   kg: number;
-  /** Multipliers on the body's tuned values (1 = stock). */
-  thrust: number;
-  /** Rate-response and motor-spool time constants: below 1 is snappier. */
-  response: number;
-  spool: number;
-  /** Air drag: below 1 is a higher top speed. */
-  drag: number;
-  /** Prop wash wobble when dropping through your own air. */
-  wash: number;
+  /** On a quad: the prop in the physical model (ADR-0065). Absent: the stock prop (or the prop doesn't fit quads). */
+  blade?: BladeChange;
+  /** On the wing, which keeps its own model (ADR-0035, ADR-0038): thrust and spool multipliers (1 = stock). */
+  wing: { thrust: number; spool: number };
   /** Prop guards: hits that would crash you bounce off instead (this many times harder to crash). */
   crashTolerance: number;
   /** Bodies it fits; undefined = all. */
@@ -30,7 +39,7 @@ export interface Propeller {
   jet?: Jet;
 }
 
-/** Jet behavior (ADR-0038). `thrust` above is the jet's peak. */
+/** Jet behavior (ADR-0038). `wing.thrust` above is the jet's peak. */
 export interface Jet {
   kind: 'turbine' | 'pulsejet' | 'ramjet';
   /** Lowest output while armed (0..1): turbines idle, pulse jets barely throttle. */
@@ -48,11 +57,7 @@ export const PROPELLERS: Record<PropellerId, Propeller> = {
     real: '5×4.3×3',
     blurb: 'The all-rounder. Stock',
     kg: 0,
-    thrust: 1,
-    response: 1,
-    spool: 1,
-    drag: 1,
-    wash: 1,
+    wing: { thrust: 1, spool: 1 },
     crashTolerance: 1,
   },
   bi: {
@@ -61,24 +66,18 @@ export const PROPELLERS: Record<PropellerId, Propeller> = {
     real: '5×4.8×2',
     blurb: 'Snappy and fast in a line, but lifts less',
     kg: 0,
-    thrust: 0.85,
-    response: 0.75,
-    spool: 0.8,
-    drag: 0.9,
-    wash: 1.2,
+    blade: { blades: 2, pitch: 1.1, chord: 1.1 },
+    wing: { thrust: 0.85, spool: 0.8 },
     crashTolerance: 1,
   },
   quad: {
     id: 'quad',
     name: 'Quad-blade cinematic',
     real: '5×3×4',
-    blurb: 'More lift and smooth, but floaty and slow at the top end',
+    blurb: 'Smooth and grippy in turns, but slow at the top end',
     kg: 0.01,
-    thrust: 1.15,
-    response: 1.25,
-    spool: 1.15,
-    drag: 1.15,
-    wash: 0.6,
+    blade: { blades: 4, pitch: 0.85, chord: 0.95 },
+    wing: { thrust: 1.15, spool: 1.15 },
     crashTolerance: 1,
   },
   heavy: {
@@ -87,11 +86,8 @@ export const PROPELLERS: Record<PropellerId, Propeller> = {
     real: '5.1×5×3',
     blurb: 'Carries the big guns; rolls like a truck and washes out on drops',
     kg: 0.03,
-    thrust: 1.35,
-    response: 1.45,
-    spool: 1.3,
-    drag: 0.95,
-    wash: 1.5,
+    blade: { pitch: 1.1, chord: 1.35, profileDrag: 1.1 },
+    wing: { thrust: 1.35, spool: 1.3 },
     crashTolerance: 1,
   },
   ducted: {
@@ -100,27 +96,20 @@ export const PROPELLERS: Record<PropellerId, Propeller> = {
     real: 'cinewhoop ducts',
     blurb: "Bounce off walls instead of crashing. Less lift, more drag",
     kg: 0.12,
-    thrust: 0.8,
-    response: 1.05,
-    spool: 1,
-    drag: 1.3,
-    wash: 0.8,
+    blade: { duct: 0.9, dragArea: 1.5 },
+    wing: { thrust: 0.8, spool: 1 },
     crashTolerance: 2.5,
     // Ducts are a quad thing: a pusher wing has nothing to guard.
     bodies: ['freestyle', 'quad3d', 'racer', 'x8'],
   },
-  // Jets (ADR-0038): wing only. `spool` multiplies the wing's 0.08 s motor time constant.
+  // Jets (ADR-0038): wing only. `wing.spool` multiplies the wing's 0.08 s motor time constant.
   turbine: {
     id: 'turbine',
     name: 'Micro turbine',
     real: 'model jet turbine',
     blurb: 'Huge top speed, but ~1 s to spool up and it never fully idles. Heavy',
     kg: 0.35,
-    thrust: 1.7,
-    response: 1,
-    spool: 15,
-    drag: 1,
-    wash: 1,
+    wing: { thrust: 1.7, spool: 15 },
     crashTolerance: 1,
     bodies: ['wing'],
     jet: { kind: 'turbine', idle: 0.08 },
@@ -131,11 +120,7 @@ export const PROPELLERS: Record<PropellerId, Propeller> = {
     real: 'valved pulse jet',
     blurb: "Loud, light and punchy. Can't throttle below half, and it shakes your aim",
     kg: 0.2,
-    thrust: 1.35,
-    response: 1,
-    spool: 0.5,
-    drag: 1,
-    wash: 1,
+    wing: { thrust: 1.35, spool: 0.5 },
     crashTolerance: 1,
     bodies: ['wing'],
     jet: { kind: 'pulsejet', idle: 0.45, pulse: { hz: 48, depth: 0.35, shakeDegPerSec: 22 } },
@@ -146,11 +131,7 @@ export const PROPELLERS: Record<PropellerId, Propeller> = {
     real: 'ramjet with a booster',
     blurb: 'Weak until it rams air: dive past 22 m/s to light it, then it is the fastest thing in the sky',
     kg: 0.25,
-    thrust: 2.4,
-    response: 1,
-    spool: 3,
-    drag: 1,
-    wash: 1,
+    wing: { thrust: 2.4, spool: 3 },
     crashTolerance: 1,
     bodies: ['wing'],
     jet: { kind: 'ramjet', idle: 0, ram: { booster: 0.3, lightSpeed: 22, fullSpeed: 45 } },

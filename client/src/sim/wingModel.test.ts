@@ -135,11 +135,11 @@ describe('jets (ADR-0038)', () => {
     const state = flying(speed);
     const out = createFlightOutput();
     for (let i = 0; i < seconds * SIM.hz; i++) {
-      stepWing({ ...centered, throttle }, state, true, dt, out, false, p.thrust, p);
+      stepWing({ ...centered, throttle }, state, true, dt, out, false, p.wing.thrust, { id, spool: p.wing.spool, jet: p.jet });
       state.motorOutput = out.motorOutput;
       state.time += dt;
     }
-    return { motor: out.motorOutput, thrust: out.motorOutput * WING.maxThrustN * p.thrust * ramFactor(id, speed) };
+    return { motor: out.motorOutput, thrust: out.motorOutput * WING.maxThrustN * p.wing.thrust * ramFactor(id, speed) };
   }
 
   it('the turbine spools slowly but ends up far stronger', () => {

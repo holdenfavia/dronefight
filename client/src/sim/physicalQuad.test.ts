@@ -1,23 +1,29 @@
 import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { DRONE_CLASSES } from '../../../shared/drones';
-import { DEFAULT_LOADOUTS, thrustToWeight } from '../../../shared/loadout';
-import { DEFAULT_RATES, PHYSICAL_HOVER, PHYSICAL_SPECS, SIM } from '../config';
+import { cleanLoadout, DEFAULT_LOADOUTS, type Loadout } from '../../../shared/loadout';
+import { DEFAULT_RATES, FLIGHT_ASSIST, PHYSICAL_SPECS, SIM, type FlightAssist } from '../config';
 import type { ControlState } from '../input/inputManager';
 import { Drone } from './drone';
 import { createPhysics, type Physics } from './physics';
+import { buildStats, payload, quadSpec } from './build';
 import { physicalHardware, thrustStand } from './physicalQuad';
 import { maxRate } from './rates';
 
 type Body = keyof typeof PHYSICAL_SPECS;
 
-async function armedDrone(body: Body = 'freestyle'): Promise<{ physics: Physics; drone: Drone }> {
+async function armedDrone(body: Body | Loadout = 'freestyle', assist: FlightAssist = 'acro'): Promise<{ physics: Physics; drone: Drone }> {
   const physics = await createPhysics();
   const drone = new Drone(physics, { pos: [0, 100, 0], yawDeg: 0 } as never);
-  if (body !== 'freestyle') drone.setLoadout(DEFAULT_LOADOUTS[body]);
+  drone.setLoadout(typeof body === 'string' ? DEFAULT_LOADOUTS[body] : body);
+  drone.setAssist(assist);
+  drone.respawn();
   drone.armed = true;
   return { physics, drone };
 }
+
+/** Hover stick for a build, from the Loadout screen's stats. */
+const hoverOf = (l: Loadout) => buildStats(l).hover!;
 
 /** Stick throttle for a fraction of full thrust: the 3D quad's forward thrust is the upper half-stick. */
 function stick(body: Body, fraction: number): number {
@@ -47,12 +53,15 @@ describe('physical 5" (ADR-0063)', () => {
     expect(stand.thrustToWeight).toBeLessThan(10);
   });
 
-  it('hovers near 20% throttle and punches out hard', async () => {
+  it('hovers near 25% stick in its default build and punches out hard', async () => {
+    const h = hoverOf(DEFAULT_LOADOUTS.freestyle);
+    expect(h).toBeGreaterThan(0.2);
+    expect(h).toBeLessThan(0.3);
     const low = await armedDrone();
-    fly(low.physics, low.drone, { throttle: 0.17 }, 2);
+    fly(low.physics, low.drone, { throttle: h - 0.03 }, 2);
     expect(low.drone.state.linvel.y).toBeLessThan(0);
     const high = await armedDrone();
-    fly(high.physics, high.drone, { throttle: 0.24 }, 2);
+    fly(high.physics, high.drone, { throttle: h + 0.03 }, 2);
     expect(high.drone.state.linvel.y).toBeGreaterThan(0);
     const punch = await armedDrone();
     fly(punch.physics, punch.drone, { throttle: 1 }, 1);
@@ -63,8 +72,9 @@ describe('physical 5" (ADR-0063)', () => {
     const target = maxRate(DEFAULT_RATES.roll);
     for (const [axis, control] of [['z', { roll: 1 }], ['x', { pitch: 1 }], ['y', { yaw: 1 }]] as const) {
       const { physics, drone } = await armedDrone();
-      fly(physics, drone, { throttle: 0.2 }, 0.3);
-      fly(physics, drone, { throttle: 0.2, ...control }, 0.25);
+      const h = hoverOf(DEFAULT_LOADOUTS.freestyle);
+      fly(physics, drone, { throttle: h }, 0.3);
+      fly(physics, drone, { throttle: h, ...control }, 0.25);
       const rate = bodyRate(drone)[axis];
       expect(rate).toBeLessThan(-0.9 * target);
       expect(rate).toBeGreaterThan(-1.15 * target);
@@ -82,18 +92,19 @@ describe('physical 5" (ADR-0063)', () => {
 describe('physical 3", 3D quad and X8 (ADR-0064)', () => {
   const others = ['racer', 'quad3d', 'x8'] as const;
 
-  it('weigh what the Loadout screen says, with the thrust it shows', () => {
-    for (const body of others) {
+  it('weigh what the Loadout screen says, bare and loaded (ADR-0066)', () => {
+    for (const body of ['freestyle', ...others] as const) {
       expect(physicalHardware(PHYSICAL_SPECS[body]).mass).toBeCloseTo(DRONE_CLASSES[body].frameKg, 2);
-      const tw = thrustStand(PHYSICAL_SPECS[body]).thrustToWeight;
-      expect(tw).toBeCloseTo(PHYSICAL_HOVER[body].thrustToWeight, 1);
-      expect(thrustToWeight(DEFAULT_LOADOUTS[body])).toBeCloseTo(PHYSICAL_HOVER[body].thrustToWeight, 2);
+      const l = DEFAULT_LOADOUTS[body];
+      const spec = quadSpec(l);
+      const loaded = physicalHardware(spec, payload(l, spec)).mass;
+      expect(loaded).toBeCloseTo(buildStats(l).kg, 2);
     }
   });
 
   it('hover where the Loadout screen says', async () => {
     for (const body of others) {
-      const h = PHYSICAL_HOVER[body].throttle;
+      const h = hoverOf(DEFAULT_LOADOUTS[body]);
       const low = await armedDrone(body);
       fly(low.physics, low.drone, { throttle: stick(body, h - 0.04) }, 2);
       expect(low.drone.state.linvel.y).toBeLessThan(0);
@@ -108,7 +119,7 @@ describe('physical 3", 3D quad and X8 (ADR-0064)', () => {
     for (const body of others) {
       for (const [axis, control] of [['z', { roll: 1 }], ['x', { pitch: 1 }]] as const) {
         const { physics, drone } = await armedDrone(body);
-        const h = stick(body, PHYSICAL_HOVER[body].throttle);
+        const h = stick(body, hoverOf(DEFAULT_LOADOUTS[body]));
         fly(physics, drone, { throttle: h }, 0.3);
         fly(physics, drone, { throttle: h, ...control }, body === 'x8' ? 0.3 : 0.25);
         const rate = bodyRate(drone)[axis];
@@ -119,7 +130,7 @@ describe('physical 3", 3D quad and X8 (ADR-0064)', () => {
   });
 
   it('the 3D quad hangs upside down on reversed props, and centre stick is zero thrust', async () => {
-    const h = PHYSICAL_HOVER.quad3d.throttle;
+    const h = hoverOf(DEFAULT_LOADOUTS.quad3d);
     const flip = (d: Drone) => {
       d.body.setRotation(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), Math.PI), true);
     };
@@ -134,5 +145,81 @@ describe('physical 3", 3D quad and X8 (ADR-0064)', () => {
     const centre = await armedDrone('quad3d');
     fly(centre.physics, centre.drone, { throttle: 0.5 }, 1);
     expect(centre.drone.state.linvel.y).toBeLessThan(-0.8 * SIM.gravity);
+  });
+});
+
+describe('real weight on a bare frame (ADR-0066)', () => {
+  it('extra weight climbs slower, and the Loadout screen says so', async () => {
+    const heavy = cleanLoadout({ body: 'freestyle', weapons: ['rail', 'gun'], special: null });
+    expect(buildStats(heavy).thrustToWeight).toBeLessThan(buildStats(DEFAULT_LOADOUTS.freestyle).thrustToWeight / 2);
+    const a = await armedDrone();
+    const b = await armedDrone(heavy);
+    fly(a.physics, a.drone, { throttle: 1 }, 0.5);
+    fly(b.physics, b.drone, { throttle: 1 }, 0.5);
+    expect(b.drone.state.linvel.y).toBeLessThan(a.drone.state.linvel.y * 0.6);
+    expect(b.drone.state.linvel.y).toBeGreaterThan(0);
+  });
+
+  it('overloading reads honestly: a rail gun on a 3" barely flies', () => {
+    const racer = cleanLoadout({ body: 'racer', weapons: ['rail'], special: 'shield' });
+    expect(buildStats(racer).handling.level).toBe('pig');
+    expect(buildStats(DEFAULT_LOADOUTS.racer).handling.level).toBe('good');
+  });
+
+  it('a heavy payload slows the roll', () => {
+    const heavy = cleanLoadout({ body: 'freestyle', weapons: ['rail', 'rail'], special: null });
+    expect(buildStats(heavy).agility).toBeLessThan(buildStats(DEFAULT_LOADOUTS.freestyle).agility);
+  });
+});
+
+describe('propellers as real props (ADR-0065)', () => {
+  const base = DEFAULT_LOADOUTS.freestyle;
+  const stats = (propeller: Loadout['propeller']) => buildStats({ ...base, propeller });
+
+  it('heavy-lift props make the most thrust; ducts the least and are slowest', () => {
+    expect(stats('heavy').thrustKg).toBeGreaterThan(stats('tri').thrustKg);
+    expect(stats('ducted').thrustKg).toBeLessThan(stats('tri').thrustKg);
+    expect(stats('ducted').topSpeedKmh).toBeLessThan(stats('tri').topSpeedKmh);
+  });
+
+  it('quad-blades are slower at the top end than bi-blades', () => {
+    expect(stats('quad').topSpeedKmh).toBeLessThan(stats('bi').topSpeedKmh);
+  });
+
+  it('a different prop changes only the prop: same diameter, same frame', () => {
+    for (const id of ['bi', 'quad', 'heavy', 'ducted'] as const) {
+      const spec = quadSpec({ ...base, propeller: id });
+      expect(spec.prop.radius).toBe(PHYSICAL_SPECS.freestyle.prop.radius);
+      expect(spec.layout.reachX).toBe(PHYSICAL_SPECS.freestyle.layout.reachX);
+      expect(spec.layout.reachZ).toBe(PHYSICAL_SPECS.freestyle.layout.reachZ);
+    }
+  });
+});
+
+describe('flight assist on the physical model (ADR-0037, ADR-0045)', () => {
+  const tilt = (d: Drone) => new Vector3(0, 1, 0).applyQuaternion(d.state.rotation).angleTo(new Vector3(0, 1, 0)) / (Math.PI / 180);
+  const start = (d: Drone) => d.body.setRotation(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), 0.8), true);
+
+  it('Horizon and Angle level a quad when you let go; Acro holds the tilt', async () => {
+    for (const [assist, levels] of [['horizon', true], ['angle', true], ['acro', false]] as const) {
+      const { physics, drone } = await armedDrone('freestyle', assist);
+      start(drone);
+      fly(physics, drone, { throttle: hoverOf(DEFAULT_LOADOUTS.freestyle) }, 1.5);
+      if (levels) expect(tilt(drone)).toBeLessThan(8);
+      else expect(tilt(drone)).toBeGreaterThan(35);
+    }
+  });
+
+  it('Angle never flips: full stick holds its max lean', async () => {
+    const { physics, drone } = await armedDrone('freestyle', 'angle');
+    fly(physics, drone, { throttle: hoverOf(DEFAULT_LOADOUTS.freestyle), roll: 1 }, 1.5);
+    expect(tilt(drone)).toBeLessThan(FLIGHT_ASSIST.angle.maxAngleDeg + 8);
+  });
+
+  it('the X8 is always Horizon, even in Acro', async () => {
+    const { physics, drone } = await armedDrone('x8', 'acro');
+    start(drone);
+    fly(physics, drone, { throttle: hoverOf(DEFAULT_LOADOUTS.x8) }, 2);
+    expect(tilt(drone)).toBeLessThan(8);
   });
 });
