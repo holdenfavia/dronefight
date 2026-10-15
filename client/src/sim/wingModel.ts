@@ -51,8 +51,6 @@ export const WING = {
   weathervane: 3,
   /** Stick expo so small corrections are gentle. */
   expo: 0.35,
-  /** Camera uptilt for the wing (deg): wings fly nose-forward. */
-  cameraUptiltDeg: 6,
   /** Hand-launch: spawn this high and this fast (ADR-0013). */
   launchHeight: 14,
   launchSpeed: 20,

@@ -1,6 +1,6 @@
 # ADR-0035: Propellers
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0065 (2026-10-15) for quads; the wing keeps these multipliers
 - **Date:** 2026-10-04
 - **Extends:** ADR-0033 (a propeller slot on every loadout)
 

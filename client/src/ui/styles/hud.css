@@ -1,0 +1,486 @@
+/* In-flight HUD: OSD, name tags, missile camera, XP pop-up and the menu button. Keeps its own look (ADR-0039). */
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-shadow:
+    0 0 2px #000,
+    0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.osd-debug {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.osd-net {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.osd-net.warn {
+  color: var(--orange);
+}
+
+.osd-marker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: -9px 0 0 -30px;
+  width: 60px;
+  will-change: transform;
+}
+
+.osd-marker[hidden] {
+  display: none;
+}
+
+.osd-marker-diamond {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  transform: rotate(45deg);
+  box-shadow: 0 0 2px #000;
+}
+
+.osd-markers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Each pilot's marker takes their color (ADR-0026). */
+.osd-marker .osd-marker-diamond {
+  border-color: var(--pilot, #fff);
+}
+
+.osd-marker.edge .osd-marker-diamond {
+  border-color: var(--pilot, var(--orange));
+  background: color-mix(in srgb, var(--pilot, #ff6a13) 35%, transparent);
+}
+
+.osd-marker-label {
+  font-size: 13px;
+}
+
+/* Name tags (ADR-0043), War Thunder style: a small bracket on the pilot, their name above it, distance and a
+   health bar below, all in their color so you can pick them out at range. Edge arrows hide the tag parts. */
+.osd-tag-name,
+.osd-tag-hp {
+  display: none;
+}
+.osd-marker.named {
+  width: 120px;
+  margin: -34px 0 0 -60px;
+  gap: 1px;
+}
+.osd-marker.named .osd-tag-name {
+  display: block;
+  order: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pilot, #fff);
+  text-shadow: 0 0 3px #000, 0 0 1px #000;
+  white-space: nowrap;
+}
+.osd-marker.named .osd-marker-diamond {
+  order: 1;
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+  border-color: var(--pilot, #fff);
+  opacity: 0.85;
+}
+.osd-marker.named .osd-marker-label {
+  order: 2;
+  font-size: 11px;
+  opacity: 0.9;
+  text-shadow: 0 0 3px #000;
+}
+.osd-marker.named .osd-tag-hp:not([hidden]) {
+  display: block;
+  order: 3;
+  width: 36px;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 2px #000;
+}
+.osd-tag-hp span {
+  display: block;
+  height: 100%;
+  background: var(--pilot, #fff);
+  transform-origin: left;
+}
+
+.osd-score {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 18px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.osd-score[hidden],
+.osd-hp[hidden] {
+  display: none;
+}
+
+.osd-hp {
+  position: absolute;
+  bottom: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+}
+
+.osd-hp-bar {
+  width: 180px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-radius: 3px;
+  box-shadow: 0 0 2px #000;
+  overflow: hidden;
+}
+
+.osd-hp-fill {
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  transform-origin: left;
+}
+
+.osd-hp.low .osd-hp-fill {
+  background: var(--orange);
+}
+
+.osd-lead {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow:
+    0 0 2px #000,
+    inset 0 0 2px #000;
+  will-change: transform;
+}
+
+.osd-lead::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.osd-lead[hidden] {
+  display: none;
+}
+
+.osd-hitmark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  opacity: 0;
+  background:
+    linear-gradient(45deg, transparent 45%, #fff 45%, #fff 55%, transparent 55%),
+    linear-gradient(-45deg, transparent 45%, #fff 45%, #fff 55%, transparent 55%);
+  -webkit-mask: radial-gradient(circle, transparent 7px, #000 8px);
+  mask: radial-gradient(circle, transparent 7px, #000 8px);
+  filter: drop-shadow(0 0 2px #000);
+}
+
+.osd-hitmark.show {
+  animation: hitmark 0.18s ease-out;
+}
+
+@keyframes hitmark {
+  from {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+.osd-damage {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  box-shadow: inset 0 0 120px 30px rgba(255, 60, 20, 0.85);
+}
+
+.osd-damage.show {
+  animation: damage 0.35s ease-out;
+}
+
+@keyframes damage {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.osd-banner {
+  position: absolute;
+  top: 26%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 36px;
+  font-weight: 900;
+  font-style: italic;
+  white-space: nowrap;
+  color: var(--orange);
+}
+
+.osd-banner.big {
+  font-size: 96px;
+  top: 22%;
+  color: #fff;
+  text-shadow:
+    0 4px 0 var(--ink),
+    0 0 12px rgba(0, 0, 0, 0.6);
+}
+
+.osd-cross {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  background:
+    linear-gradient(#fff, #fff) center / 2px 100% no-repeat,
+    linear-gradient(#fff, #fff) center / 100% 2px no-repeat;
+  opacity: 0.55;
+  filter: drop-shadow(0 0 1px #000);
+}
+
+.osd-status {
+  position: absolute;
+  top: 36%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 30px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.osd-bottom {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 36px;
+  font-size: 24px;
+}
+
+.osd-item {
+  white-space: nowrap;
+}
+
+.osd-item[hidden] {
+  display: none;
+}
+
+.osd-label {
+  color: var(--orange);
+  margin-right: 8px;
+}
+
+@media (max-width: 600px) {
+  .osd-bottom {
+    gap: 16px;
+    font-size: 18px;
+  }
+  .osd-status {
+    font-size: 20px;
+  }
+}
+
+/* Missile camera HUD (ADR-0025): a monochrome TV-guided feed. */
+.msl {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: #c8ffb0;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 6px rgba(120, 255, 90, 0.6);
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.12) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.45) 100%);
+}
+.msl[hidden] { display: none; }
+.riding-missile .osd-cross,
+.riding-missile .osd-bottom,
+.riding-missile .osd-lead { display: none; }
+.msl-corners {
+  position: absolute;
+  inset: 12% 18%;
+  --c: rgba(200, 255, 176, 0.85);
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 28px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) top left / 2px 28px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 28px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 2px 28px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 28px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 2px 28px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 28px 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 2px 28px no-repeat;
+}
+.msl-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  border: 2px solid rgba(200, 255, 176, 0.9);
+  border-radius: 50%;
+}
+.msl-reticle span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  background: #c8ffb0;
+}
+.msl-reticle::before,
+.msl-reticle::after {
+  content: '';
+  position: absolute;
+  background: rgba(200, 255, 176, 0.9);
+}
+.msl-reticle::before { left: -40px; right: -40px; top: 50%; height: 2px; margin-top: -1px; clip-path: polygon(0 0, 30% 0, 30% 100%, 0 100%, 0 0, 100% 0, 100% 100%, 70% 100%, 70% 0); }
+.msl-reticle::after { top: -40px; bottom: -40px; left: 50%; width: 2px; margin-left: -1px; clip-path: polygon(0 0, 100% 0, 100% 30%, 0 30%, 0 0, 0 70%, 100% 70%, 100% 100%, 0 100%); }
+.msl-top {
+  position: absolute;
+  top: 7%;
+  width: 100%;
+  text-align: center;
+  font-size: 18px;
+}
+.msl-left,
+.msl-right {
+  position: absolute;
+  top: 35%;
+  height: 30%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.msl-left { left: 10%; }
+.msl-right { right: 10%; }
+.msl-bar {
+  flex: 1;
+  width: 14px;
+  border: 2px solid rgba(200, 255, 176, 0.85);
+  display: flex;
+  align-items: flex-end;
+}
+.msl-bar div {
+  width: 100%;
+  height: 100%;
+  background: #c8ffb0;
+  transform-origin: bottom;
+}
+.msl.low-fuel .msl-right { color: #ff7a4a; animation: msl-blink 0.4s steps(2) infinite; }
+.msl-bottom {
+  position: absolute;
+  bottom: 8%;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 36px;
+  font-size: 18px;
+}
+.msl-bottom .lock { color: #ff7a4a; }
+.msl-hint { opacity: 0.7; font-size: 14px; align-self: center; }
+@keyframes msl-blink { 50% { opacity: 0.3; } }
+
+/* XP pop-up (ADR-0032). */
+.osd-xp {
+  position: absolute;
+  top: 58%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #ffd25a;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  pointer-events: none;
+}
+.osd-xp.show { animation: xp-pop 1.6s ease-out forwards; }
+@keyframes xp-pop {
+  0% { opacity: 0; transform: translate(-50%, 8px) scale(0.9); }
+  12% { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+  70% { opacity: 1; transform: translate(-50%, -6px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -16px) scale(1); }
+}
+
+/* Menu button for every input (keyboard, gamepad, radio): top middle, opens the pause menu. */
+.osd-menu-btn {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+  background: rgba(20, 21, 22, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  pointer-events: auto;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.osd-menu-btn:hover { opacity: 1; background: rgba(255, 106, 19, 0.35); }
+.osd-menu-btn[hidden] { display: none; }
+.osd-menu-btn span { display: block; width: 20px; height: 3px; border-radius: 2px; background: #fff; }

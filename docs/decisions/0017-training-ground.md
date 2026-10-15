@@ -1,6 +1,6 @@
 # ADR-0017: Training ground with practice bots
 
-- **Status:** Accepted
+- **Status:** Accepted (client-side hit checks superseded by ADR-0067, 2026-10-15)
 - **Date:** 2026-09-30
 
 ## Context

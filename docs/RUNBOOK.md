@@ -87,7 +87,7 @@ Freestyle 5", 3D quad and FPV wing (ADR-0013). Pick with **Drone: … ▸** on t
 
 ### Loadouts (ADR-0033)
 
-**Play → Loadout** (or **Loadout** in the pause menu) is a gunsmith-style screen: your drone spinning up top, the **stat sheet** on the left (Health, Lift = T/W with hover throttle, Agility, Firepower, Target size; weight and thrust), the **parts list** beside it in four color-coded groups — **Frame** (white), **Weapons** (orange; hardpoints in a 2×2 grid laid out like the screen corners they fire from, with a filled/total count), **Propulsion** (blue) and **Special** (purple), and a scrolling **bar of options** along the bottom for the selected part, tinted in that group's color. Hover an option to see what it changes (green better, red worse), click to equip; keyboard ← → / Enter / ↑ ↓ work too. The verdict up top says Agile / Heavy and sluggish / Barely flies / **Too heavy to take off**. Nothing is blocked. Each body remembers its build (per browser). Code: `client/src/ui/loadoutScreen.ts`, icons in `client/src/ui/icons.ts`. Every menu uses the same dark-panel look (the "One look everywhere" block at the end of `client/src/ui/styles.css`).
+**Play → Loadout** (or **Loadout** in the pause menu) is a gunsmith-style screen: your drone spinning up top, the **stat sheet** on the left (Health, Lift = T/W with hover throttle, Agility, Firepower, Target size; weight and thrust), the **parts list** beside it in four color-coded groups — **Frame** (white), **Weapons** (orange; hardpoints in a 2×2 grid laid out like the screen corners they fire from, with a filled/total count), **Propulsion** (blue) and **Special** (purple), and a scrolling **bar of options** along the bottom for the selected part, tinted in that group's color. Hover an option to see what it changes (green better, red worse), click to equip; keyboard ← → / Enter / ↑ ↓ work too. The verdict up top says Agile / Heavy and sluggish / Barely flies / **Too heavy to take off**. Nothing is blocked. Each body remembers its build (per browser). Code: `client/src/ui/loadoutScreen.ts`, icons in `client/src/ui/icons.ts`. Every menu uses the same dark-panel look. Styles live in `client/src/ui/styles/`, one file per area (base, hud, panels, menus, settings, calibration, rooms, loadout, touch, short-screens), imported in cascade order by `styles/index.css`; order matters at equal specificity, and `short-screens.css` (the `max-height: 520px` iPhone-landscape rules, including the compact Loadout) stays last.
 
 - Numbers: bodies in `shared/drones.ts` (`frameKg`, `thrustKg`, `hardpoints`), weapons in `shared/weapons.ts`, specials in `shared/specials.ts`, defaults and weight math in `shared/loadout.ts`. The client scales simulated mass by (build weight ÷ default build weight) with thrust fixed, so defaults fly exactly as tuned (`loadedParams` in `client/src/sim/drone.ts`). Body flight tuning: `QUAD`, `QUAD_3D`, `RACER`, `X8` in `client/src/config.ts`, `WING` in `wingModel.ts`.
 - **Fire** shoots every gun at its own rate. Each hardpoint fires from its own corner of your view: 1 upper left, 2 upper right, 3 lower left, 4 lower right (`gunSide`/`gunRise`/`gunDrop` in `shared/combat.ts`). Each weapon has its own projectile (white-hot gun streaks, chunky yellow burst bolts, orange shotgun pellets, thin red cannon needles, an instant cyan rail beam), with a glow in the shooter's pilot color (`PROJECTILE_STYLES` in `client/src/render/tracers.ts`). Missile pods are a second group: **Special** switches guns/missiles if your special slot is empty; otherwise use **Switch weapon** (Q, gamepad RB, or map it in Settings → Map buttons).
@@ -155,6 +155,7 @@ Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, s
 - `downtown.ts`, `yard.ts`, `playground.ts`, `training.ts`: layout. The Playground uses the `grid*` materials (flat colors with a baked 1 m / 4 m grid, ADR-0019); other maps use the textured materials. Everything is boxes (`ArenaBox`); `boxes` collide, `decor` is scenery only.
 - Thin members (cables, guy wires, braces, arches) use `strut(out, a, b, thickness, mat)` from `builders.ts`. Keep new obstacles 15 m+ from spawns, off the mover routes, and on Training off the central lanes (|x| < 28).
 - Each map needs exactly 8 spawns. `shared/maps/maps.test.ts` checks every spawn has open space around and above it. Run `npm test` after moving things.
+- Maps build on first use: each map file exports a `buildX()` and `getMap(id)` (in `index.ts`) builds it once and keeps it (`MAPS.x` goes through `getMap`). Don't call `buildX()` directly: builders fill module-level arrays (Downtown's decor, explosives, terrain), so a second call would double them. Menus use `MAP_NAMES`, which never builds a map; add a new map to `MAP_ORDER`, `MAP_NAMES` and `BUILDERS`. Downtown takes ~0.25 s to build, the others a few ms.
 - Pick the map with **Map: … ▸** on the Play screen. It applies to solo flying and to rooms you create; people joining get the room's map.
 - Mountains, clouds and the sun glow are in `client/src/world/scenery.ts`; building textures in `textures.ts`.
 
@@ -192,6 +193,12 @@ All sound is synthesized in `client/src/audio/` (ADR-0010); there are no audio f
 ### Dev console
 
 In dev builds, `window.dronefight` exposes `renderer`, `world`, `drone`, `settings`, `physics`, `net` and `audio` for poking around in the browser console.
+
+## How solo works (ADR-0067)
+
+- Solo and Training run the real room server in the page: `client/src/net/localServer.ts` wraps `server/src/rooms.ts` behind a socket-shaped loopback, so `npm run dev` alone gives you full solo play with bots, no `npm run server` needed. `net.local` is true there; `net.online` means a room on the real server.
+- Rules changes go in `server/src/match.ts` only; solo picks them up automatically. Bots are pilots in `Match` (`shared/bots.ts` flies them).
+- Headless UI checks: Playwright can fake a radio or gamepad with `page.addInitScript(() => { navigator.getGamepads = () => [fakePad] })`, where `fakePad` has `mapping: 'standard'`, `axes` and `buttons` you change from the test (Start is button 9, RT fire 7, LT special 6). Playwright lives at `/opt/node-tools/node_modules/playwright/index.mjs` in cloud sessions.
 
 ## Connecting a radio
 
@@ -248,6 +255,8 @@ Sign-in is optional for players and optional for the build: without the two sett
 VITE_SUPABASE_URL=https://<your-project>.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon public key>
 ```
+
+The client loads supabase-js (its own ~215 kB chunk) only when it's needed: pressing Sign in, a saved session in localStorage (`sb-<project ref>-auth-token`), or coming back from Google with `?code=`. Guests never download it. A plain local `npm run build` without these settings drops the Supabase code entirely; to see the production chunks, build with both variables set (values in `fly.toml`).
 
 Then `npm run deploy`. Google: while the OAuth app is in **Testing**, only accounts listed under **Audience → Test users** can sign in; **Publish app** opens it to everyone. The anon key is public by design; row-level security means a pilot can only read and write their own profile. **Never** put the `service_role` key in the client, `fly.toml` or git; when the server needs it (progression, step 3) it goes in with `fly secrets set`.
 
@@ -310,5 +319,6 @@ After that, every update is just `npm run deploy` (it builds in Fly's builder; n
 - After any server restart (deploy, crash, trial stop) clients reconnect and rejoin their room code; the first one back recreates the room on the same map, so the group ends up together again. Scores reset (rooms live in memory, ADR-0005).
 - **Always deploy with `npm run deploy`** (`--ha=false`). Plain `fly deploy` on a new app creates two machines, which splits rooms between them. Fix with `fly scale count 1`.
 - Logs: `fly logs`. Status: `fly status`. Health: `https://<name>.fly.dev/healthz` returns `ok`.
+- **Bundle chunks:** `npm run build` splits `three`, `rapier` and `supabase` into their own chunks (`VENDOR_CHUNKS` in `vite.config.ts`). The rapier chunk is ~4.3 MB because `@dimforge/rapier3d-compat` inlines its WASM as base64, so the "chunks larger than 500 kB" warning for rapier (and three) is expected.
 - Try the production setup locally: `npm run build && PORT=8080 npm start`, then open http://localhost:8080.
 - Region is `primary_region` in `fly.toml` (`dfw` = Dallas, closest to both pilots). Pick one between the two pilots (`fly platform regions` lists them); after changing it, run `fly scale count 1 --region <new>` and remove the old machine.

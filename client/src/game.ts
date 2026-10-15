@@ -8,12 +8,10 @@ import { RemoteAudio } from './audio/remoteAudio';
 import { Sfx } from './audio/sfx';
 import { CombatClient } from './combat/combatClient';
 import { Grenades, Missiles, SmokeTrails } from './combat/effects';
-import { grenadeDamage } from '../../shared/grenade';
+import { PropEffects } from './combat/propEffects';
 import { buildColliders } from '../../shared/raycast';
 import { Particles } from './render/particles';
-import { TrainingGround } from './training/trainingGround';
 import { MovingProps } from './world/movers';
-import { interceptTime } from '../../shared/lead';
 import type { DroneState } from '../../shared/protocol';
 import { InputManager } from './input/inputManager';
 import { TouchInput } from './input/touchInput';
@@ -26,17 +24,18 @@ import { RemoteDrones } from './render/remoteDrones';
 import { Tracers } from './render/tracers';
 import { LoadoutPreview } from './render/loadoutPreview';
 import { Trails } from './render/trails';
-import { COMBAT, pilotColor, pilotName } from '../../shared/combat';
-import { pilotLabel } from '../../shared/roomOptions';
-import { droneClass } from '../../shared/drones';
+import { pilotColor } from '../../shared/combat';
+import { defaultRoomOptions, type RoomOptions } from '../../shared/roomOptions';
+import { droneClass, isWing } from '../../shared/drones';
 import { BoundaryGrid } from './world/boundaryGrid';
-import { WING } from './sim/wingModel';
 import { currentLoadout, loadSettings, saveSettings } from './settings';
 import type { Loadout } from '../../shared/loadout';
 import { Drone } from './sim/drone';
 import { ArenaColliders, createPhysics } from './sim/physics';
-import { Hud, type MarkerInfo, type NetHudInfo } from './ui/hud';
+import { Hud, type NetHudInfo } from './ui/hud';
+import { Targeting } from './ui/targeting';
 import { Menu } from './ui/menu';
+import { MenuNav } from './ui/menuNav';
 import { Account } from './account/account';
 import { levelForXp, type XpReason } from '../../shared/progression';
 
@@ -44,9 +43,7 @@ import { levelForXp, type XpReason } from '../../shared/progression';
 const XP_LABELS: Record<XpReason, string> = { kill: 'kill', assist: 'assist', prop: 'boom', finish: 'match', win: 'win' };
 import { getMap, type MapDef, type MapId } from '../../shared/maps';
 import { buildWorld, type World } from './world/scene';
-import { PROP_STATS, PropField } from '../../shared/props';
-import { splashDamage } from '../../shared/missile';
-import type { V3 } from '../../shared/maps/movers';
+import { PropField } from '../../shared/props';
 
 const STEP = 1 / SIM.hz;
 /** Auto-fire (ADR-0044): fires while the lead circle is within this fraction of the screen's short side of center. */
@@ -99,10 +96,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   };
   if (import.meta.env.DEV) {
     // Handy for poking at the game from the browser console while developing.
-    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get training() { return training; }, get combatEffects() { return combatEffects; }, get props() { return props; }, get combat() { return combat; }, get hud() { return hud; }, get account() { return account; }, input, get touch() { return input.touch; } } });
+    Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get combatEffects() { return combatEffects; }, get props() { return props; }, get combat() { return combat; }, get hud() { return hud; }, get account() { return account; }, input, get touch() { return input.touch; } } });
   }
   const rig = new CameraRig(settings);
-  rig.uptiltOverride = drone.classId === 'wing' ? WING.cameraUptiltDeg : null;
+  rig.uptiltOverride = droneClass(drone.classId).cameraUptiltDeg ?? null;
   const hud = new Hud(hudRoot);
   // The same menu button for every input (keyboard, gamepad, radio): top middle, opens the pause menu.
   hud.onMenu = () => touch.onPause();
@@ -118,40 +115,23 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     smoke: new SmokeTrails(particles),
     missiles: new Missiles(world.scene, particles, () => mapColliders, (at: THREE.Vector3) => {
       sfx.explosion(at);
-      training.splash(at);
-      // Solo: our missile damages props here; online the server does (ADR-0023).
-      if (!net.inRoom) props.splash([at.x, at.y, at.z], propClock(), 'me', splashDamage);
     }),
     // Grenades (ADR-0034): a bigger blast and a heavier boom than a missile.
     grenades: new Grenades(world.scene, particles, () => mapColliders, (at: THREE.Vector3) => {
       combatEffects.missiles.effect(at, 2.2);
       sfx.grenadeBlast(at);
-      training.splash(at);
-      if (!net.inRoom) props.splash([at.x, at.y, at.z], propClock(), 'me', grenadeDamage);
     }),
   };
   combatEffects.grenades.onBounce = (at) => sfx.grenadeBounce(at);
-  // Solo practice bots on the Training map (ADR-0017).
-  const training = new TrainingGround(world.scene, {
-    onHit: () => {
-      hud.flashHit();
-      sfx.hitConfirm();
-    },
-    onKill: (at) => {
-      combatEffects.missiles.effect(at);
-      sfx.explosion(at);
-    },
-  });
-  // Our missile's predicted proximity fuse: practice bots, or the other pilots in a room (the server
-  // decides the real explosion; this just keeps it from visibly flying through them first).
+  // Our missile's predicted proximity fuse: the other pilots and bots (the server decides the real explosion;
+  // this just keeps it from visibly flying through them first).
   // Our missile ended (hit, fuse, burnout or detonated): the server makes it official (ADR-0025).
   combatEffects.missiles.onLocalEnd = (rid, at) => net.sendDetonate(rid, at);
   // Props set off the fuse too (ADR-0023).
   const fuseTargets: THREE.Vector3[] = [];
   combatEffects.missiles.fuseTargets = () => {
     fuseTargets.length = 0;
-    if (training.active) fuseTargets.push(...training.targets());
-    else for (const v of remotes.views) if (!v.crashed && v.mode !== 'hold') fuseTargets.push(v.position);
+    for (const v of remotes.views) if (!v.crashed && v.mode !== 'hold') fuseTargets.push(v.position);
     for (const c of props.centers(propClock())) fuseTargets.push(new THREE.Vector3(c[0], c[1], c[2]));
     return fuseTargets;
   };
@@ -163,7 +143,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const trails = new Trails(world.scene);
   const audio = new AudioEngine();
   const sfx = new Sfx(audio);
-  let motorSound = engineVoice(audio, audio.motors, drone.classId === 'wing', PROPELLERS[drone.loadout.propeller].jet);
+  let motorSound = engineVoice(audio, audio.motors, isWing(drone.classId), PROPELLERS[drone.loadout.propeller].jet);
   const remoteAudio = new RemoteAudio(audio);
   const cannon = new CannonVoice(audio, audio.sfx, 0.8);
   // Every menu button clicks.
@@ -209,48 +189,19 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     combatEffects,
   );
   combat.setMap(currentMap);
-  combat.onLocalRound = (o, d, speed, damage, maxDist) => training.addRound(o, d, speed, damage, maxDist);
 
-  // Destructible props (ADR-0023): the server decides online; solo runs the same rules here.
+  // Destructible props (ADR-0023): the room's server decides, online or in the page (ADR-0067).
   function propClock(): number {
     return net.inRoom ? net.serverNow() : performance.now();
   }
   combat.props = props;
   combat.propClock = propClock;
-  const propPoint = new THREE.Vector3();
-  function propBlastEffect(i: number, p: V3): void {
+  const propEffects = new PropEffects(particles, sfx, combatEffects.missiles);
+  combat.onPropBlast = (i, p) => {
     const kind = props.props[i]?.kind;
-    if (!kind) return;
-    propPoint.set(p[0], p[1], p[2]);
-    const rnd = (k: number) => (Math.random() - 0.5) * k;
-    if (PROP_STATS[kind].effect === 'water') {
-      for (let k = 0; k < 28; k++) {
-        const a = Math.random() * Math.PI * 2;
-        const sp = 2 + Math.random() * 5;
-        particles.emit(p[0], p[1], p[2], { startSize: 0.5, endSize: 1.8, lifeMs: 900 + Math.random() * 700, color: k % 3 ? '#9fd3ff' : '#eef8ff', alpha: 0.85, vx: Math.cos(a) * sp, vy: 2 + Math.random() * 6, vz: Math.sin(a) * sp });
-      }
-      sfx.splash(propPoint);
-      return;
-    }
-    combatEffects.missiles.effect(propPoint);
-    for (let k = 0; k < 18; k++) {
-      particles.emit(p[0] + rnd(1.5), p[1] + rnd(1), p[2] + rnd(1.5), { startSize: 1, endSize: 2.6, lifeMs: 500 + Math.random() * 400, color: k % 2 ? '#ff9a2e' : '#ffd25a', alpha: 0.95, vx: rnd(6), vy: 3 + Math.random() * 5, vz: rnd(6) });
-    }
-    for (let k = 0; k < 8; k++) {
-      particles.emit(p[0] + rnd(2), p[1] + 1, p[2] + rnd(2), { startSize: 1.5, endSize: 5, lifeMs: 3500 + Math.random() * 1500, color: '#3a3632', alpha: 0.7, vx: rnd(1), vy: 1.5 + Math.random(), vz: rnd(1) });
-    }
-    sfx.explosion(propPoint);
-  }
-  combat.onPropBlast = (i, p) => propBlastEffect(i, p);
-  combat.onPropRound = (i, damage, travelMs, at) => {
-    const [x, y, z] = [at.x, at.y, at.z];
-    window.setTimeout(() => {
-      for (let k = 0; k < 3; k++) {
-        particles.emit(x, y, z, { startSize: 0.15, endSize: 0.45, lifeMs: 260, color: '#ffd27a', alpha: 1, vx: (Math.random() - 0.5) * 6, vy: Math.random() * 4, vz: (Math.random() - 0.5) * 6 });
-      }
-      if (!net.inRoom) props.damage(i, damage, propClock(), 'me');
-    }, travelMs);
+    if (kind) propEffects.blast(kind, p);
   };
+  combat.onPropRound = (_i, _damage, travelMs, at) => propEffects.roundHit(at, travelMs);
   let wasInRoom = false;
   const smokeSources: { id: string; position: THREE.Vector3 }[] = [];
   const missileCamPos = new THREE.Vector3();
@@ -260,22 +211,27 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   let watchUntil = 0;
   const watchLook = { target: watchPoint, get uptiltDeg() { return uptiltDeg(); } };
   const missileCamRot = new THREE.Quaternion();
-  const missileTargets: THREE.Vector3[] = [];
 
   // Optional sign-in (ADR-0030, ADR-0031): the menu shows it; guests never need it.
   let menuRef: Menu | null = null;
   const account = new Account(() => menuRef?.onAccountChange());
 
   let paused = true;
+  let fireLatch = false;
+  const menuNav = new MenuNav(menuRoot);
   const menu = new Menu(menuRoot, input, settings, net, {
     onFly: () => {
+      // Solo is a private room in the page (ADR-0067), with the same rules as online.
+      if (!net.inRoom) net.startSolo(settings.map, soloOptions());
       paused = false;
       menu.hide();
       renderer.domElement.focus();
     },
     onSettingsChanged: applySettings,
     onMapChanged: () => {
-      if (!net.inRoom) switchMap(settings.map);
+      // Solo: your room follows the map you pick; online the host's settings decide.
+      if (net.local && net.inRoom) net.startSolo(settings.map, soloOptions());
+      else if (!net.inRoom) switchMap(settings.map);
     },
     onDroneChanged: () => {
       // Body or build changed (ADR-0033): solo now; in a match at your next respawn.
@@ -309,9 +265,14 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   account.onToken = (token) => net.setAuthToken(token);
   net.setAuthToken(account.accessToken);
 
+  /** A solo room's settings: your last room settings on the map you picked, every drone allowed. */
+  function soloOptions(): RoomOptions {
+    return { ...defaultRoomOptions(settings.map), map: settings.map };
+  }
+
   /** The camera tilt in use: wings have their own (ADR-0013), quads use the setting. */
   function uptiltDeg(): number {
-    return drone.classId === 'wing' ? WING.cameraUptiltDeg : settings.camera.uptiltDeg;
+    return droneClass(drone.classId).cameraUptiltDeg ?? settings.camera.uptiltDeg;
   }
 
   /** Change what you're flying: flight model, collider, model and motor sound (ADR-0013). */
@@ -324,8 +285,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     droneModel.visible = settings.camera.view === 'chase';
     world.scene.add(droneModel);
     motorSound.dispose();
-    motorSound = engineVoice(audio, audio.motors, cls === 'wing', PROPELLERS[loadout.propeller].jet);
-    rig.uptiltOverride = cls === 'wing' ? WING.cameraUptiltDeg : null;
+    motorSound = engineVoice(audio, audio.motors, isWing(cls), PROPELLERS[loadout.propeller].jet);
+    rig.uptiltOverride = droneClass(cls).cameraUptiltDeg ?? null;
   }
 
   /** Load a different map: scenery, colliders, bullet walls, and a fresh spawn (ADR-0012). */
@@ -338,7 +299,6 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     movingProps.setMap(currentMap, props);
     combat.props = props;
     combat.setMap(currentMap);
-  combat.onLocalRound = (o, d, speed, damage, maxDist) => training.addRound(o, d, speed, damage, maxDist);
     mapColliders = buildColliders(currentMap.boxes, currentMap.holes, currentMap.terrain);
     surfaces.setMap(currentMap);
     boundaryGrid.setHalfSize(currentMap.halfSize);
@@ -401,14 +361,6 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     else void document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
   }
 
-  /** What the missile HUD measures range to: practice bots, or the other pilots (not while they smoke). */
-  function missileTargetList(): readonly THREE.Vector3[] {
-    missileTargets.length = 0;
-    if (training.active) missileTargets.push(...training.targets());
-    else for (const v of remotes.views) if (!v.crashed && !v.concealed) missileTargets.push(v.position);
-    return missileTargets;
-  }
-
   function localState(): DroneState {
     const p = drone.currPos;
     const q = drone.currRot;
@@ -427,135 +379,20 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     };
   }
 
-  const projected = new THREE.Vector3();
-  const toTarget = new THREE.Vector3();
-  const camForward = new THREE.Vector3();
-  /** Screen marker for a pilot, pinned to the screen edge when off-screen or behind (written into `marker`). */
-  function markerFor(target: THREE.Vector3, marker: MarkerInfo): MarkerInfo {
-    const cam = rig.camera;
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-    toTarget.copy(target).sub(cam.position);
-    marker.distance = toTarget.length();
-    cam.getWorldDirection(camForward);
-    const behind = toTarget.dot(camForward) < 0;
-    projected.copy(target).project(cam);
-    let nx = projected.x;
-    let ny = projected.y;
-    if (behind) {
-      nx = -nx;
-      ny = -ny;
-    }
-    const inside = !behind && Math.abs(nx) <= 1 && Math.abs(ny) <= 1;
-    if (!inside) {
-      // Push to the edge along the direction from screen center.
-      const scale = 0.92 / Math.max(Math.abs(nx), Math.abs(ny), 1e-6);
-      nx *= scale;
-      ny *= scale;
-    }
-    marker.x = ((nx + 1) / 2) * w;
-    marker.y = ((1 - ny) / 2) * h;
-    marker.onScreen = inside;
-    return marker;
-  }
 
-  const leadPoint = new THREE.Vector3();
-  const toTargetLead = new THREE.Vector3();
-  const lead = { x: 0, y: 0 };
-
-  /** Lead indicator (ADR-0011): where the target will be when a round fired now reaches it. */
-  function leadFor(target: THREE.Vector3, velocity: THREE.Vector3): { x: number; y: number } | null {
-    toTargetLead.subVectors(target, drone.currPos);
-    const d = toTargetLead;
-    const speed = combat.projectileSpeed;
-    if (speed === null) return null;
-    const t = interceptTime(d.x, d.y, d.z, velocity.x, velocity.y, velocity.z, speed);
-    if (t === null || t * speed > COMBAT.range) return null;
-    leadPoint.copy(target).addScaledVector(velocity, t);
-    const cam = rig.camera;
-    cam.getWorldDirection(camForward);
-    if (toTarget.subVectors(leadPoint, cam.position).dot(camForward) <= 0) return null;
-    projected.copy(leadPoint).project(cam);
-    if (Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) return null;
-    lead.x = ((projected.x + 1) / 2) * container.clientWidth;
-    lead.y = ((1 - projected.y) / 2) * container.clientHeight;
-    return lead;
-  }
-
-  // Every other pilot gets a marker (ADR-0026, ADR-0043): a name tag while on screen, an edge arrow when not.
-  // Smoking pilots get neither (ADR-0024); crashed ones and dead ones have no tag. Training bots get tags too.
-  const markerPool: MarkerInfo[] = [];
-  const markers: MarkerInfo[] = [];
-  function nextMarker(): MarkerInfo {
-    return markerPool[markers.length] ?? (markerPool[markers.length] = { x: 0, y: 0, onScreen: true, distance: 0, color: '', name: '', hp: null });
-  }
-  /** Teams mode (ADR-0047): this pilot is on your team. */
-  function isTeammate(id: string): boolean {
-    const m = net.match;
-    if (!m || m.options.mode !== 'teams') return false;
-    const mine = net.me?.side;
-    return mine !== undefined && m.players.find((p) => p.id === id)?.side === mine;
-  }
-
-  function pilotMarkers(): readonly MarkerInfo[] {
-    markers.length = 0;
-    for (const v of remotes.views) {
-      if (v.concealed || v.crashed) continue;
-      const player = net.match?.players.find((p) => p.id === v.id);
-      if (player && !player.alive) continue;
-      const m = nextMarker();
-      markerFor(v.position, m);
-      m.color = pilotColor(v.team ?? 1);
-      // Callsign or color (ADR-0047); teammates are marked as friendly.
-      const label = player ? pilotLabel(player) : pilotName(v.team);
-      const friendly = isTeammate(v.id);
-      m.name = `${friendly ? '▲ ' : ''}${label}${player?.level ? ` · ${player.level}` : ''}`;
-      m.hp = player ? player.hp / droneClass(player.drone).maxHp : null;
-      markers.push(m);
-    }
-    if (training.active) {
-      for (const t of training.targets()) {
-        const m = nextMarker();
-        markerFor(t, m);
-        if (!m.onScreen) continue;
-        m.color = '#f4f2ee';
-        m.name = 'Bot';
-        m.hp = null;
-        markers.push(m);
-      }
-    }
-    return markers;
-  }
-
-  /** Lead indicator on the pilot nearest your crosshair (ADR-0026), skipping smoking, holding or crashed ones. */
-  const toPilot = new THREE.Vector3();
-  function pilotLead(): { x: number; y: number } | null {
-    if (paused) return null;
-    rig.camera.getWorldDirection(camForward);
-    let best: (typeof remotes.views)[number] | null = null;
-    let bestDot = -Infinity;
-    for (const v of remotes.views) {
-      // Never lead a teammate (ADR-0047): the circle and auto-fire are for enemies.
-      if (v.concealed || v.mode === 'hold' || v.crashed || isTeammate(v.id)) continue;
-      const dot = toPilot.subVectors(v.position, rig.camera.position).normalize().dot(camForward);
-      if (dot > bestDot) {
-        bestDot = dot;
-        best = v;
-      }
-    }
-    return best ? leadFor(best.position, best.velocity) : null;
-  }
-
-  /** Lead indicator on the practice bot nearest the crosshair (ADR-0017). */
-  function practiceLead(): { x: number; y: number } | null {
-    if (!training.active || paused) return null;
-    const t = training.bestTarget(rig.camera);
-    return t ? leadFor(t.position, t.velocity) : null;
-  }
+  const targeting = new Targeting({
+    camera: () => rig.camera,
+    container,
+    remotes,
+    net,
+    origin: () => drone.currPos,
+    projectileSpeed: () => combat.projectileSpeed,
+  });
 
   const netInfo: NetHudInfo = { status: 'offline', room: null, pingMs: 0, peer: null };
   function netHud(): NetHudInfo | null {
-    if (net.status === 'offline' || net.status === 'error') return null;
+    // Solo runs in the page (ADR-0067): no room code or ping to show.
+    if (net.status === 'offline' || net.status === 'error' || net.local) return null;
     netInfo.status = net.status;
     netInfo.room = net.room;
     netInfo.pingMs = net.clock.rtt;
@@ -597,6 +434,22 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     // Touch and flight assist (ADR-0044, ADR-0045): set before reading the sticks.
     input.touchSettings = settings.touch;
     const control = input.poll(frameDt);
+    // The Menu button and menus from the radio (ADR-0068).
+    if (control.menuPressed) {
+      menu.back();
+      paused = menu.visible;
+    } else if (menu.navigable && (input.source === 'radio' || input.source === 'gamepad')) {
+      if (menuNav.update(control, frameDt) === 'back') {
+        menu.back();
+        paused = menu.visible;
+      }
+    } else menuNav.reset();
+    // Fire held when the menu closes (say, Resume selected with Fire) doesn't shoot until it's let go.
+    if (menu.visible) fireLatch = control.fire;
+    else if (fireLatch) {
+      if (control.fire) control.fire = false;
+      else fireLatch = false;
+    }
     // A room set to Acro only overrides your choice (ADR-0046); the X8 stays Horizon regardless.
     drone.setAssist(net.inRoom && net.match?.options.assist === 'acro' ? 'acro' : settings.flightAssist);
     touch.setVisible(!menu.visible && input.touchActive);
@@ -608,13 +461,9 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
     // Moving props keep moving while the menu is open. In a room everyone uses server time, so both
     // pilots see them in the same place (ADR-0020).
-    // Destroyed props: mirror the server in a room; in solo, run the rules here (ADR-0023).
-    if (net.inRoom) {
-      props.syncDown(net.match?.props ?? [], propClock());
-    } else {
-      if (wasInRoom) props.reset();
-      for (const b of props.tick(propClock()).blasts) propBlastEffect(b.i, b.p);
-    }
+    // Destroyed props: mirror the room's server, online or in the page (ADR-0023, ADR-0067).
+    if (net.inRoom) props.syncDown(net.match?.props ?? [], propClock());
+    else if (wasInRoom) props.reset();
     wasInRoom = net.inRoom;
     movingProps.update(propClock() / 1000);
 
@@ -625,7 +474,6 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       if (!combat.inMatch) {
         const autoReset = drone.crashed && drone.crashTime >= CRASH.autoResetSeconds;
         if (control.resetPressed || autoReset) respawn();
-        if (control.resetPressed && training.active) training.resetStats();
       }
 
       // While you fly a missile the drone hovers and watches it, then the blast for a moment (ADR-0025, ADR-0027).
@@ -636,7 +484,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       }
       const watching = !!ridingNow || now < watchUntil;
       drone.autoHover = watching;
-      drone.hoverLook = watching && drone.classId !== 'wing' ? watchLook : null;
+      drone.hoverLook = watching && !isWing(drone.classId) ? watchLook : null;
       accumulator += frameDt;
       const simStart = performance.now();
       arenaColliders.near(drone.currPos.x, drone.currPos.z);
@@ -691,8 +539,6 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     tracers.update();
     combatEffects.grenades.update(paused ? 0 : frameDt);
     particles.update(rig.camera, frameDt);
-    training.setActive(!net.inRoom && currentMap.id === 'training');
-    training.update(paused ? 0 : frameDt, rig.camera);
     trails.update(remotes.views, rig.camera, (team) => pilotColor(team ?? 1));
     setDronePropColor(droneModel, combat.myColor);
     // Your paint (ADR-0030): repaint when it changes, and keep the room up to date.
@@ -721,7 +567,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       if (moving) net.afkDeadline = null;
       else combat.notify(`Away? Move within ${Math.max(0, Math.ceil((net.afkDeadline - now) / 1000))} s or you'll leave the room`);
     }
-    const leadNow = training.active ? practiceLead() : pilotLead();
+    const leadNow = paused ? null : targeting.pilotLead();
     // Auto-fire (ADR-0044) reads this next frame: the lead circle is on the crosshair.
     input.leadOnTarget = !!leadNow && Math.hypot(leadNow.x - container.clientWidth / 2, leadNow.y - container.clientHeight / 2) < Math.min(container.clientWidth, container.clientHeight) * AUTO_FIRE_RADIUS;
     hud.update({
@@ -738,10 +584,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       combat: combat.hudState(),
       // Edge arrows only for pilots off screen; on screen, trails and glow show them.
       // Smoking pilots get no arrow and no lead circle (ADR-0024).
-      markers: pilotMarkers(),
+      markers: targeting.pilotMarkers(),
       lead: leadNow,
-      training: training.active ? training.statsText() : null,
-      missile: combat.missileHud(missileTargetList()),
+      training: currentMap.id === 'training' && net.inRoom ? combat.practiceText() : null,
+      missile: combat.missileHud(targeting.missileTargetList()),
       special:
         drone.loadout.special === 'maneuver'
           ? { label: 'MANEUVER', value: drone.stalled ? 'STALL' : drone.maneuverActive ? 'ON' : 'OFF' }

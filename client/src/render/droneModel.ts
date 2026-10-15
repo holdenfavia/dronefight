@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { droneClass, type DroneClassId } from '../../../shared/drones';
-import { defaultLoadout, type Loadout } from '../../../shared/loadout';
+import { defaultLoadout, loadoutKey, type Loadout } from '../../../shared/loadout';
 import type { WeaponId } from '../../../shared/weapons';
 import { PROPELLERS, type PropellerId } from '../../../shared/propellers';
 import { PALETTE } from '../world/scene';
@@ -268,8 +268,9 @@ function weaponModel(id: WeaponId): THREE.Group {
  * weapons hung under the frame so other pilots can see what you carry.
  */
 export function createClassModel(cls: DroneClassId, teamColor: string, loadout: Loadout = defaultLoadout(cls), look: DroneLook = DEFAULT_LOOKS[cls]): THREE.Group {
-  const model = cls === 'wing' ? createWingModel(teamColor) : cls === 'x8' ? createX8Model(teamColor) : createDroneModel(teamColor);
-  if (cls === 'quad3d') {
+  const body = droneClass(cls);
+  const model = body.model === 'wing' ? createWingModel(teamColor) : body.model === 'x8' ? createX8Model(teamColor) : createDroneModel(teamColor);
+  if (body.flight === 'quad3d') {
     // 3D quads fly both ways up: a second battery underneath makes them look symmetric.
     const underMat = new THREE.MeshStandardMaterial({ color: '#141516', roughness: 0.7 });
     const battery = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.03, 0.075), underMat);
@@ -277,22 +278,21 @@ export function createClassModel(cls: DroneClassId, teamColor: string, loadout: 
     model.add(battery);
     (model.userData.paint as { accent: THREE.MeshStandardMaterial[] }).accent.push(underMat);
   }
-  // Weapons: under the frame (on a wing, under the wing either side of the pod).
-  const width = cls === 'wing' ? 0.5 : cls === 'x8' ? 0.16 : 0.08;
-  const below = cls === 'wing' ? -0.02 : cls === 'x8' ? -0.025 : -0.012;
+  // Weapons: under the frame, at the body's mounts.
+  const { width, below, fore } = body.mount;
   const mounts: THREE.Object3D[] = [];
   loadout.weapons.forEach((w, i) => {
     if (!w) return;
     const m = weaponModel(w);
     m.userData.slot = i;
     mounts.push(m);
-    m.position.set(hardpointX(i, loadout.weapons.length, width), below, cls === 'wing' ? -0.02 : -0.03);
+    m.position.set(hardpointX(i, loadout.weapons.length, width), below, fore);
     model.add(m);
   });
   dressPropellers(model, loadout.propeller);
   applyLook(model, look);
   // Each body has its own draw scale, so a racer and an X8 look nothing alike in size (ADR-0036).
-  model.scale.setScalar(droneClass(cls).visualScale);
+  model.scale.setScalar(body.visualScale);
   model.userData.droneClass = cls;
   model.userData.weaponMounts = mounts;
   model.userData.loadoutKey = modelKey(loadout, look);
@@ -301,7 +301,7 @@ export function createClassModel(cls: DroneClassId, teamColor: string, loadout: 
 
 /** A key for a model's build and paint, to tell when it needs rebuilding. */
 export function modelKey(loadout: Loadout, look: DroneLook): string {
-  return `${loadout.body}:${loadout.weapons.join(',')}:${loadout.special ?? ''}:${loadout.propeller}:${lookKey(look)}`;
+  return `${loadoutKey(loadout)}:${lookKey(look)}`;
 }
 
 /** How each finish looks (ADR-0030): roughness and metalness, and whether it has a pattern texture. */

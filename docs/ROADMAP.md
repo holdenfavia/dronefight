@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current focus:** Phase 5.5 — Consolidation (proposed below, waiting on the owner's answers), then Phase 5: turn on XP, play-test and balance loadouts, then unlocks. Play-test items remain in earlier phases.
+**Current focus:** Phase 5.5 — Consolidation (from the 2026-10-14 architecture review, approved 2026-10-15), then Phase 5: turn on XP, play-test and balance loadouts, then unlocks. Play-test items remain in earlier phases.
 
 Check items off as they land. Add items as they're discovered. Moving to a new phase updates **Current focus**.
 
@@ -156,17 +156,23 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [ ] More content: flak, laser, rocket pod, flares, mines, cinewhoop, 7" long range, X8 gunship
 - [ ] Badges, challenges, friends leaderboard
 
-## Phase 5.5 — Consolidation (proposed 2026-10-04)
+## Phase 5.5 — Consolidation (architecture review, approved 2026-10-15)
 
-Make the codebase easier to build on before the next content batch. No gameplay changes.
+Make the codebase one system before the next content batch. Decisions: ADR-0065 to ADR-0068.
 
-- [ ] One body definition: move flight tuning (`QUAD`/`RACER`/`X8` in `config.ts`, `WING` in `wingModel.ts`) next to each body, and derive mass/thrust from `frameKg`/`thrustKg` instead of the tuned-default `loadFactor` bridge
-- [ ] Behavior lives on the data: replace scattered `=== 'wing'` / `=== 'grenade'` checks with fields (`flight`, `fireGroup`, `soundProfile`, `modelKind`) and small registries
-- [ ] Split `game.ts` (frame loop) and `combatClient.ts` (one module per weapon kind and per special); split `match.ts` (missiles, grenades, props, scoring)
-- [ ] One `loadoutKey()` helper; rename `MatchPlayer.drone` to use `loadout.body`; merge `shared/abilities.ts` into `shared/specials.ts`
-- [ ] Split `styles.css` by screen; delete overridden light-theme rules
-- [ ] GitHub Actions: typecheck, tests and build on every push; deploy only from green main
-- [ ] Balance numbers in one table (generated from `shared/`) so tuning doesn't mean reading code
+- [x] GitHub Actions: typecheck, tests and build on every push; deploy only a green main
+- [x] Debug readout off by default; "Reset to defaults" resets only its own tab and asks first
+- [x] Physical model is the only quad model: remove `stepFlight` and the `QUAD`/`RACER`/`X8` sets; colliders, arming and hover from the specs
+- [x] Propellers as real props (ADR-0065); parts add real weight to a bare frame (ADR-0066); Loadout stats from headless runs of the real model
+- [x] Menu input and stick navigation on every menu; Settings tabs; Betaflight / Actual / Quick rates with CLI paste (ADR-0068)
+- [x] Behavior on the data: specials in one table with their own fields, body model/mount/camera as fields; one `loadoutKey()`; `MatchPlayer.drone` dropped inside the server (weapon fire groups left in code: already driven by the weapon table)
+- [x] Split `match.ts` into `server/src/match/`; targeting and prop effects out of `game.ts`; menu screen stack and one file per screen; CSS split by screen, overridden rules deleted
+- [ ] Typed game event bus and a `combatClient.ts` split (deferred: firing, events and remote shots share colliders and props, so a split adds plumbing without simplifying)
+- [x] Solo as a room in the page; Training bots as match pilots; host can add bots online; no XP from bots (ADR-0067)
+- [x] Build maps on first use (import ~0.3 s → ~0.03 s); load Supabase only for sign-in or a saved session; split the bundle (three, rapier, supabase)
+- [x] Screens: "Solo map" on Play, pre-match button hierarchy and Add a bot, compact Loadout on iPhone, Map in the solo pause menu, battery / flight mode / armed timer on the HUD
+- [x] Protocol-version guard test; `docs/ARCHITECTURE.md`
+- [ ] Play-test props, weights and bots; tune
 
 ## Later (when the player count grows)
 

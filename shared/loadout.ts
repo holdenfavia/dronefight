@@ -1,5 +1,5 @@
-// Loadouts (ADR-0033): a body, a weapon per hardpoint, a special. Weight against thrust decides how it flies;
-// nothing stops a bad build.
+// Loadouts (ADR-0033): a body, a weapon per hardpoint, a special, a propeller. Every part adds its real weight to
+// the bare drone (ADR-0066), and weight against thrust decides how it flies; nothing stops a bad build.
 
 import { DRONE_CLASSES, isDroneClassId, type DroneClassId } from './drones.js';
 import { isSpecialId, SPECIALS, specialFits, type SpecialId } from './specials.js';
@@ -15,7 +15,7 @@ export interface Loadout {
   propeller: PropellerId;
 }
 
-/** Each body's default loadout: it flies exactly as the original drone was tuned. */
+/** Each body's default loadout. */
 export const DEFAULT_LOADOUTS: Record<DroneClassId, Loadout> = {
   freestyle: { body: 'freestyle', weapons: ['gun', 'missile'], special: null, propeller: 'tri' },
   quad3d: { body: 'quad3d', weapons: ['shotgun', null], special: 'smoke', propeller: 'tri' },
@@ -45,6 +45,7 @@ export function cleanLoadout(raw: unknown, fallbackBody: DroneClassId = 'freesty
   return { body, weapons, special, propeller };
 }
 
+/** All-up weight (kg): the bare drone plus everything on it (ADR-0066). */
 export function totalKg(l: Loadout): number {
   let kg = DRONE_CLASSES[l.body].frameKg;
   for (const w of l.weapons) if (w) kg += WEAPONS[w].kg;
@@ -53,22 +54,9 @@ export function totalKg(l: Loadout): number {
   return kg;
 }
 
-/** Max thrust with these propellers (kgf). */
-export function thrustKg(l: Loadout): number {
-  return DRONE_CLASSES[l.body].thrustKg * PROPELLERS[l.propeller].thrust;
-}
-
-/** Thrust-to-weight: under 1 it can't take off. */
-export function thrustToWeight(l: Loadout): number {
-  return thrustKg(l) / totalKg(l);
-}
-
-/**
- * How much heavier than its tuned default this loadout is (1 = as tuned). The client scales the simulated
- * mass by this with thrust fixed, so every default loadout flies exactly as before (ADR-0033).
- */
-export function loadFactor(l: Loadout): number {
-  return totalKg(l) / totalKg(DEFAULT_LOADOUTS[l.body]);
+/** A build as a short string: equal builds give equal keys (caches, change checks). */
+export function loadoutKey(l: Loadout): string {
+  return `${l.body}|${l.weapons.map((w) => w ?? '-').join(',')}|${l.special ?? '-'}|${l.propeller}`;
 }
 
 /** Weapons by kind: guns fire with Fire; missile pods are the second group. */
@@ -87,22 +75,6 @@ export function missilePods(l: Loadout): number {
 /** How many of a weapon are mounted. */
 export function count(l: Loadout, id: WeaponId): number {
   return l.weapons.filter((w) => w === id).length;
-}
-
-/** A plain-words read on a build, for the Loadout screen. */
-export function handling(l: Loadout): { label: string; level: 'good' | 'heavy' | 'pig' | 'grounded' } {
-  const tw = thrustToWeight(l);
-  if (DRONE_CLASSES[l.body].flight === 'wing') {
-    // A wing flies on lift, not thrust (ADR-0013): judge it against its own stock build, and it never sits grounded.
-    const r = tw / thrustToWeight(defaultLoadout('wing'));
-    if (r < 0.6) return { label: 'Barely flies', level: 'pig' };
-    if (r < 0.85) return { label: 'Heavy and sluggish', level: 'heavy' };
-    return { label: 'Agile', level: 'good' };
-  }
-  if (tw <= 1) return { label: "Too heavy to take off", level: 'grounded' };
-  if (tw < 1.8) return { label: 'Barely flies', level: 'pig' };
-  if (tw < 3.5) return { label: 'Heavy and sluggish', level: 'heavy' };
-  return { label: 'Agile', level: 'good' };
 }
 
 /** Sustained gun damage per second if every round lands (guns only; missiles and grenades are listed apart). */

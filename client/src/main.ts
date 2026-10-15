@@ -1,4 +1,4 @@
-import './ui/styles.css';
+import './ui/styles/index.css';
 import { startGame } from './game';
 
 function el(id: string): HTMLElement {

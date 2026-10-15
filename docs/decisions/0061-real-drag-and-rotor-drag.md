@@ -1,6 +1,6 @@
 # ADR-0061: Full drag, rotor drag and a squared throttle curve (fly like a real 5")
 
-- **Status:** Accepted
+- **Status:** Superseded for quads by ADR-0063 and ADR-0064 (2026-10-15); quads now fly the physical model
 - **Date:** 2026-10-13
 - **Supersedes:** ADR-0052's drag scale (its faster spool and rate response and the prop fade at 62 m/s stay)
 - **Amends:** ADR-0042 (drag from shape), ADR-0008 (flight model tuning)

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BOT_ZONE, createTrainingBots, stepBot, type Bot } from './bots';
+import { TRAINING_ZONE as BOT_ZONE, trainingBots as createTrainingBots, stepBot, type Bot } from './bots.js';
+
+const len = (v: readonly number[]) => Math.hypot(v[0]!, v[1]!, v[2]!);
 
 const dt = 1 / 60;
 
@@ -21,16 +23,16 @@ describe('training bots (ADR-0017)', () => {
   it('stationary bots stay put', () => {
     const b = of('stationary')[0]!;
     run(b, 10);
-    expect(b.pos.distanceTo(b.home)).toBeLessThan(0.5);
+    expect(Math.hypot(b.pos[0] - b.home[0], b.pos[1] - b.home[1], b.pos[2] - b.home[2])).toBeLessThan(0.5);
   });
 
   it('path bots move at about their set speed and stay near their path', () => {
     for (const b of of('path')) {
       let maxOff = 0;
       run(b, 20, false, () => {
-        maxOff = Math.max(maxOff, Math.hypot(b.pos.x - b.path!.center.x, b.pos.z - b.path!.center.z));
+        maxOff = Math.max(maxOff, Math.hypot(b.pos[0] - b.path!.center[0], b.pos[2] - b.path!.center[2]));
       });
-      expect(b.vel.length()).toBeGreaterThan(b.path!.speed * 0.3);
+      expect(len(b.vel)).toBeGreaterThan(b.path!.speed * 0.3);
       expect(maxOff).toBeLessThanOrEqual(b.path!.size + 0.01);
     }
   });
@@ -40,10 +42,10 @@ describe('training bots (ADR-0017)', () => {
       let inZone = true;
       run(b, 60, false, () => {
         const z = BOT_ZONE;
-        inZone &&= b.pos.x >= z.minX && b.pos.x <= z.maxX && b.pos.y >= z.minY && b.pos.y <= z.maxY && b.pos.z >= z.minZ && b.pos.z <= z.maxZ;
+        inZone &&= b.pos[0] >= z.minX && b.pos[0] <= z.maxX && b.pos[1] >= z.minY && b.pos[1] <= z.maxY && b.pos[2] >= z.minZ && b.pos[2] <= z.maxZ;
       });
       expect(inZone).toBe(true);
-      expect(b.vel.length()).toBeGreaterThan(3);
+      expect(len(b.vel)).toBeGreaterThan(3);
     }
   });
 

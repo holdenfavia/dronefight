@@ -1,5 +1,7 @@
 import type { DroneClassId } from './drones.js';
 import { cleanLoadout, type Loadout } from './loadout.js';
+import { isNetworkedSpecial, type NetworkedSpecialId } from './specials.js';
+import type { BotKind } from './bots.js';
 import { isWeaponId, type WeaponId } from './weapons.js';
 import type { XpReason } from './progression.js';
 import { isMapId, type MapId } from './maps/index.js';
@@ -115,6 +117,8 @@ export interface MatchPlayer {
   side?: 0 | 1;
   /** Ready in the pre-match menu (ADR-0047). */
   ready?: boolean;
+  /** A practice bot flown by the server (ADR-0067), and how it flies. */
+  bot?: BotKind;
 }
 
 export interface MatchState {
@@ -146,6 +150,8 @@ export type ClientMessage =
   | { t: 'side'; side: 0 | 1 }
   | { t: 'ready'; ready: boolean }
   | { t: 'start' }
+  /** The host adds or removes a practice bot (ADR-0067). */
+  | { t: 'bot'; add: boolean }
   /** The host changes the room's match settings (ADR-0046): the match restarts with them. */
   | { t: 'options'; options: RoomOptions }
   /** `map` only when rejoining after a dropped connection: recreate the room with this code if it's gone (e.g. a server restart). */
@@ -161,7 +167,7 @@ export type ClientMessage =
   /** Blow up the missile you're flying, here (ADR-0025). */
   | { t: 'detonate'; rid: number; p: Vec3; w?: 'grenade' }
   /** Use a class ability at a position (3D smoke, ADR-0024). */
-  | { t: 'ability'; kind: 'smoke' | 'shield'; p: Vec3 }
+  | { t: 'ability'; kind: NetworkedSpecialId; p: Vec3 }
   | { t: 'ping'; id: number; ct: number };
 
 // ---- Server -> client
@@ -185,7 +191,7 @@ export type ServerMessage =
   | { t: 'respawn'; id: string; spawn: number; loadout: Loadout; o?: [number, number] }
   | { t: 'match'; m: MatchState }
   /** Someone used an ability (ADR-0016). */
-  | { t: 'ability'; id: string; kind: 'smoke' | 'shield'; p: Vec3 }
+  | { t: 'ability'; id: string; kind: NetworkedSpecialId; p: Vec3 }
   /** A missile exploded here (server-decided, ADR-0016). `id` is the shooter, `rid` their missile id. */
   | { t: 'boom'; id: string; rid: number; p: Vec3; kind?: 'grenade' }
   /** Where a grenade is now (ADR-0034), ~20/s while it's out. */
@@ -253,6 +259,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return typeof m.ready === 'boolean' ? { t: 'ready', ready: m.ready } : null;
     case 'start':
       return { t: 'start' };
+    case 'bot':
+      return typeof m.add === 'boolean' ? { t: 'bot', add: m.add } : null;
     case 'options':
       return typeof m.options === 'object' && m.options !== null ? { t: 'options', options: cleanRoomOptions(m.options) } : null;
     case 'leave':
@@ -270,7 +278,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (!isNum(m.rid) || !isVec(m.p, 3)) return null;
       return m.w === 'grenade' ? { t: 'detonate', rid: m.rid, p: m.p as Vec3, w: 'grenade' } : { t: 'detonate', rid: m.rid, p: m.p as Vec3 };
     case 'ability':
-      return (m.kind === 'smoke' || m.kind === 'shield') && isVec(m.p, 3) ? { t: 'ability', kind: m.kind, p: m.p as Vec3 } : null;
+      return isNetworkedSpecial(m.kind) && isVec(m.p, 3) ? { t: 'ability', kind: m.kind, p: m.p as Vec3 } : null;
     case 'loadout':
       return typeof m.loadout === 'object' && m.loadout !== null ? { t: 'loadout', loadout: cleanLoadout(m.loadout) } : null;
     case 'shot': {

@@ -4,7 +4,6 @@ import { DEFAULT_MAP, getMap, type MapDef, type SpawnPoint } from '../../../shar
 import { COMBAT, pilotColor } from '../../../shared/combat';
 import { droneClass } from '../../../shared/drones';
 import { guns, launchers, missilePods, type Loadout } from '../../../shared/loadout';
-import { SHIELD } from '../../../shared/specials';
 import { WEAPONS, type GunSound, type WeaponId } from '../../../shared/weapons';
 import type { MatchPlayer } from '../../../shared/protocol';
 import { buildColliders, raycastArena } from '../../../shared/raycast';
@@ -13,7 +12,7 @@ import type { NetClient } from '../net/netClient';
 import type { Tracers } from '../render/tracers';
 import type { Drone } from '../sim/drone';
 import type { CombatHudInfo, Hud } from '../ui/hud';
-import { SMOKE } from '../../../shared/abilities';
+import { SHIELD, SMOKE, SPECIALS } from '../../../shared/specials';
 import { MISSILE, quatRotate, refillPod, type MissileInput, type MissileState } from '../../../shared/missile';
 import type { Grenades, Missiles, SmokeTrails } from './effects';
 import type { PropField } from '../../../shared/props';
@@ -69,7 +68,8 @@ export class CombatClient {
   /** Last shotgun blast time per remote pilot, so 8 pellets make one boom. */
   private readonly lastBlast = new Map<string, number>();
   /** Every round/pellet we fire, for local practice hit checks on the Training map (ADR-0017). */
-  onLocalRound: ((origin: THREE.Vector3, dir: THREE.Vector3, speed: number, damage: number, maxDist: number) => void) | null = null;
+  /** Your rounds, hits and kills since you arrived on this map: the Training range's readout (ADR-0067). */
+  readonly practice = { rounds: 0, hits: 0, kills: 0 };
   /** Destructible props (ADR-0023): rounds stop at them; `propClock` is the shared time (ms) they move on. */
   props: PropField | null = null;
   propClock: () => number = () => performance.now();
@@ -210,12 +210,13 @@ export class CombatClient {
     // Grenades out: Fire again sets them off (ADR-0034).
     if (launchers(l) > 0 && this.effects.grenades.out(this.myId) > 0) return { label: 'GRENADE', value: 'FIRE: DETONATE' };
     const wait = (until: number) => (until - now > 0 ? `${Math.ceil((until - now) / 1000)}s` : 'READY');
-    if (l.special === 'smoke') return { label: 'SMOKE', value: wait(this.smokeReadyAt) };
+    const label = l.special ? SPECIALS[l.special].hud : '';
+    if (l.special === 'smoke') return { label, value: wait(this.smokeReadyAt) };
     if (l.special === 'shield') {
       const up = this.net.match?.players.find((p) => p.id === this.net.you)?.shielded;
-      return { label: 'SHIELD', value: up ? 'UP' : wait(this.shieldReadyAt) };
+      return { label, value: up ? 'UP' : wait(this.shieldReadyAt) };
     }
-    if (l.special === 'afterburner') return { label: 'BURNER', value: this.drone.afterburnerActive ? 'ON' : `${Math.round(this.drone.afterburnerFuel * 100)}%` };
+    if (l.special === 'afterburner') return { label, value: this.drone.afterburnerActive ? 'ON' : `${Math.round(this.drone.afterburnerFuel * 100)}%` };
     if (missilePods(l) > 0 && guns(l).length > 0) return { label: 'WEAPON', value: 'GUNS' };
     return null;
   }
@@ -264,7 +265,14 @@ export class CombatClient {
   /** Rounds stop at this map's walls; respawns use its spawn list (ADR-0012). */
   setMap(map: MapDef): void {
     this.map = map;
+    this.practice.rounds = this.practice.hits = this.practice.kills = 0;
     this.colliders = buildColliders(map.boxes, map.holes, map.terrain);
+  }
+
+  practiceText(): string {
+    const p = this.practice;
+    const acc = p.rounds > 0 ? Math.round((p.hits / p.rounds) * 100) : 0;
+    return `Training · hits ${p.hits} · kills ${p.kills} · accuracy ${acc}%`;
   }
 
   /** A match is running: the server owns deaths and respawns. */
@@ -478,7 +486,7 @@ export class CombatClient {
         this.onPropRound?.(prop.i, gun.damage, (prop.dist / gun.speed) * 1000, this.propAt);
       }
       if (id !== 'missile' && id !== 'grenade') this.tracers.spawn(o, d, maxDist, this.myColor, gun.speed, id, 0, maxDist < gun.range - 0.01);
-      this.onLocalRound?.(o, d, gun.speed, gun.damage, maxDist);
+      this.practice.rounds++;
       this.net.sendShot({ ts, p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)], w: id });
     }
     if (withSound && gun.sound !== 'vulcan') this.sounds.shot(gun.sound);
@@ -518,6 +526,7 @@ export class CombatClient {
       switch (ev.t) {
         case 'hit':
           if (ev.shooter === you) {
+            this.practice.hits++;
             this.hud.flashHit();
             this.sounds.hitConfirm();
           }
@@ -527,6 +536,7 @@ export class CombatClient {
           }
           break;
         case 'death':
+          if (ev.killer === you && ev.id !== you) this.practice.kills++;
           if (ev.id === you) {
             this.drone.kill();
             this.respawnDeadline = now + COMBAT.respawnMs;

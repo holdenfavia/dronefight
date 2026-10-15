@@ -292,17 +292,20 @@ const EXPLOSIVES: ExplosiveDef[] = [
 /** Tractor route (ADR-0020): a farm loop in the open ground north of the gates, clear of spawns. */
 const TRACTOR_ROUTE = routeFromPoints(roundedRect(-50, 50, 20, 100, 8, 0, false));
 
-export const YARD: MapDef = {
-  id: 'yard',
-  name: 'Yard',
-  halfSize: HALF,
-  boxes: build(),
-  decor: [],
-  spawns: SPAWNS,
-  ground: 'concrete',
-  explosives: EXPLOSIVES,
-  movers: [
-    { kind: 'tractor', route: TRACTOR_ROUTE, offset: 0, speed: 7, color: '#3f9a4a', size: [2.6, 3, 4.6], lift: 1.5 },
-    { kind: 'trailer', route: TRACTOR_ROUTE, offset: -7.2, speed: 7, color: '#c9a24a', size: [2.4, 1.8, 4.2], lift: 0.9 },
-  ],
-};
+/** Builds the map. Call it through getMap(), which builds each map once, on first use. */
+export function buildYard(): MapDef {
+  return {
+    id: 'yard',
+    name: 'Yard',
+    halfSize: HALF,
+    boxes: build(),
+    decor: [],
+    spawns: SPAWNS,
+    ground: 'concrete',
+    explosives: EXPLOSIVES,
+    movers: [
+      { kind: 'tractor', route: TRACTOR_ROUTE, offset: 0, speed: 7, color: '#3f9a4a', size: [2.6, 3, 4.6], lift: 1.5 },
+      { kind: 'trailer', route: TRACTOR_ROUTE, offset: -7.2, speed: 7, color: '#c9a24a', size: [2.4, 1.8, 4.2], lift: 0.9 },
+    ],
+  };
+}

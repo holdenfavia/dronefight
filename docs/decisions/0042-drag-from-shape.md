@@ -1,6 +1,6 @@
 # ADR-0042: Air resistance calculated from each quad's real-size shape
 
-- **Status:** Accepted
+- **Status:** Superseded for quads by ADR-0063 and ADR-0064 (2026-10-15); quads now fly the physical model
 - **Date:** 2026-10-04
 - **Amends:** ADR-0008 (flight model tuning)
 

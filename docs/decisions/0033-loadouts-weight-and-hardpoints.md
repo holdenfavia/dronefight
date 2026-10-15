@@ -1,6 +1,6 @@
 # ADR-0033: Loadouts: bodies with thrust, weight and hardpoints
 
-- **Status:** Accepted
+- **Status:** Accepted (the default-build weight bridge superseded by ADR-0066, 2026-10-15)
 - **Date:** 2026-10-03
 - **Implements:** ADR-0030 step 1 (loadout system and first content batch)
 - **Supersedes:** the fixed per-class weapons and specials of ADR-0013, ADR-0014, ADR-0016, ADR-0022, ADR-0024 and ADR-0025 (each weapon and special keeps its rules; what changes is that they're modules you choose)

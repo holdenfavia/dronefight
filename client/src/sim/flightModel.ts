@@ -1,10 +1,10 @@
 import { Quaternion, Vector3 } from 'three';
-import { QUAD, SIM, type QuadParams, type Rates } from '../config';
-import { betaflightRate } from './rates';
+import type { HorizonParams, Rates } from '../config';
+import { rateCurve } from './rates';
 
 /**
- * Custom acro flight model (ADR-0008). Pure maths: given sticks and the current body state,
- * produce the force to apply and the angular velocity to set for one fixed step.
+ * What every flight model shares (ADR-0008): stick input, body state, and the rate setpoint the sticks ask for.
+ * Quads fly the physical model (physicalQuad.ts, ADR-0063/0064); the wing flies wingModel.ts.
  *
  * Body frame matches Three.js: +X right, +Y up, -Z forward (where the FPV camera looks).
  */
@@ -26,12 +26,13 @@ export interface FlightState {
   linvel: Vector3;
   /** World-space angular velocity (rad/s). */
   angvel: Vector3;
-  /** Current motor output as a fraction of max thrust; negative when a 3D quad reverses (spools with motorTau). */
+  /** Current motor output as a fraction of max thrust (for sound and the wing's spool). */
   motorOutput: number;
-  /** Simulation time in seconds, drives deterministic prop-wash noise. */
+  /** Simulation time in seconds. */
   time: number;
 }
 
+/** The wing model's output for one step. */
 export interface FlightOutput {
   /** World-space force (N) excluding gravity, which the physics engine applies. */
   force: Vector3;
@@ -43,62 +44,18 @@ export interface FlightOutput {
 }
 
 const DEG = Math.PI / 180;
-export function maxThrust(p: QuadParams): number {
-  return p.thrustToWeight * p.massKg * SIM.gravity;
-}
-export const MAX_THRUST_N = maxThrust(QUAD);
 
-// Scratch objects: the flight model runs 500x per second, so it must not allocate (Hard rule 2).
+// Scratch objects: the flight models run every physics step, so they must not allocate (Hard rule 2).
 const invRot = new Quaternion();
-const bodyVec = new Vector3();
-const bodyAngvel = new Vector3();
-const targetBody = new Vector3();
-const up = new Vector3();
 const worldUpBody = new Vector3();
 
 export function createFlightOutput(): FlightOutput {
   return { force: new Vector3(), angvel: new Vector3(), motorOutput: 0, alpha: 0 };
 }
 
-/**
- * Throttle stick (0..1) -> desired motor output, before spool lag.
- * Normal quads: 0..1 with airmode idle. 3D quads (ADR-0013): center is zero, below center reverses.
- */
-export function throttleToMotor(throttle: number, armed: boolean, p: QuadParams = QUAD): number {
-  if (!armed) return 0;
-  const t = Math.max(0, Math.min(1, throttle));
-  if (p.threeD) {
-    const c = t * 2 - 1;
-    const db = p.threeD.centerDeadband;
-    if (Math.abs(c) <= db) return 0;
-    const mag = Math.pow((Math.abs(c) - db) / (1 - db), p.throttleExponent);
-    return c > 0 ? mag : -mag * p.threeD.reverseEfficiency;
-  }
-  return Math.max(p.idleThrust, Math.pow(t, p.throttleExponent));
-}
-
-/** True when the throttle is where it's safe to arm: bottom for normal quads, center for 3D. */
-export function throttleSafeToArm(throttle: number, p: QuadParams, margin: number): boolean {
-  return p.threeD ? Math.abs(throttle - 0.5) <= margin : throttle <= margin;
-}
-
-/** Throttle (0..1) needed to hover, handy for the HUD and tests. */
-export function hoverThrottle(p: QuadParams = QUAD): number {
-  return Math.pow(1 / p.thrustToWeight, 1 / p.throttleExponent);
-}
-
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
-
-/** Smooth pseudo-random signal in roughly -1..1, deterministic in time. */
-function washNoise(t: number, seed: number): number {
-  return (
-    0.5 * Math.sin(t * 23.1 + seed * 1.7) +
-    0.3 * Math.sin(t * 41.7 + seed * 4.3) +
-    0.2 * Math.sin(t * 67.3 + seed * 9.1)
-  );
+/** True when the throttle is where it's safe to arm: bottom for normal quads, center for reversible (3D) ones. */
+export function throttleSafeToArm(throttle: number, reversible: boolean, margin: number): boolean {
+  return reversible ? Math.abs(throttle - 0.5) <= margin : throttle <= margin;
 }
 
 /**
@@ -106,7 +63,7 @@ function washNoise(t: number, seed: number): number {
  * one. Near center stick roll and pitch steer toward a tilt angle set by the stick; past `transition` stick
  * the levelling is gone and it's pure acro.
  */
-export function horizonBlend(input: FlightInput, rotation: Quaternion, h: NonNullable<QuadParams['horizon']>, target: Vector3): Vector3 {
+export function horizonBlend(input: FlightInput, rotation: Quaternion, h: HorizonParams, target: Vector3): Vector3 {
   // World up seen from the body. Level: (0, 1, 0). Rolled right: x < 0. Nose down: z > 0.
   worldUpBody.set(0, 1, 0).applyQuaternion(invRot.copy(rotation).invert());
   // Roll uses atan2 so an upside-down drone rolls back upright; pitch is the tilt toward the nose (±90°).
@@ -115,7 +72,7 @@ export function horizonBlend(input: FlightInput, rotation: Quaternion, h: NonNul
   const max = h.maxAngleDeg * DEG;
   const cap = h.maxLevelDegPerSec * DEG;
   const clamp = (x: number) => Math.max(-cap, Math.min(cap, x));
-  // Positive stick turns about the negative body axis (see stepFlight), so the rates are negated.
+  // Positive stick turns about the negative body axis (see rateSetpoint), so the rates are negated.
   const levelX = -clamp((input.pitch * max - pitch) * h.levelGain);
   const levelZ = -clamp((input.roll * max - roll) * h.levelGain);
   const stick = Math.min(1, Math.max(Math.abs(input.roll), Math.abs(input.pitch)));
@@ -126,89 +83,15 @@ export function horizonBlend(input: FlightInput, rotation: Quaternion, h: NonNul
 }
 
 /**
- * The rotation rate the sticks ask for, in the body frame (rad/s): Betaflight rates, blended with
+ * The rotation rate the sticks ask for, in the body frame (rad/s): the pilot's rates (ADR-0068), blended with
  * self-levelling in horizon/angle (ADR-0037, ADR-0045). Positive stick turns about the negative body axis.
  */
-export function rateSetpoint(input: FlightInput, rotation: Quaternion, rates: Rates, p: QuadParams, out: Vector3): Vector3 {
+export function rateSetpoint(input: FlightInput, rotation: Quaternion, rates: Rates, horizon: HorizonParams | undefined, out: Vector3): Vector3 {
   out.set(
-    -betaflightRate(input.pitch, rates.pitch) * DEG,
-    -betaflightRate(input.yaw, rates.yaw) * DEG,
-    -betaflightRate(input.roll, rates.roll) * DEG,
+    -rateCurve(input.pitch, rates.pitch, rates.type) * DEG,
+    -rateCurve(input.yaw, rates.yaw, rates.type) * DEG,
+    -rateCurve(input.roll, rates.roll, rates.type) * DEG,
   );
-  if (p.horizon) horizonBlend(input, rotation, p.horizon, out);
-  return out;
-}
-
-/**
- * Fraction of static thrust left with `inflow` m/s of air coming into the props (ADR-0052). The props' pitch
- * speed scales with their rpm, which goes with the square root of `motor` output (ADR-0061): at part throttle
- * the thrust fades at much lower airspeeds, so the quad stays tied to the throttle instead of coasting.
- */
-export function propEfficiency(inflow: number, p: QuadParams, motor = 1): number {
-  const pitchSpeed = p.pitchSpeed * Math.sqrt(Math.abs(motor));
-  return pitchSpeed > 0 ? Math.max(0, 1 - Math.max(0, inflow) / pitchSpeed) : 0;
-}
-
-export function stepFlight(
-  input: FlightInput,
-  state: FlightState,
-  rates: Rates,
-  armed: boolean,
-  dt: number,
-  out: FlightOutput,
-  p: QuadParams = QUAD,
-): FlightOutput {
-  invRot.copy(state.rotation).invert();
-  up.set(0, 1, 0).applyQuaternion(state.rotation);
-
-  // --- Motors: spool toward the commanded output.
-  const motorTarget = throttleToMotor(input.throttle, armed, p);
-  const motorAlpha = 1 - Math.exp(-dt / p.motorTau);
-  out.motorOutput = state.motorOutput + (motorTarget - state.motorOutput) * motorAlpha;
-
-  // --- Rotation: track the Betaflight rate setpoint, like a well-tuned PID loop.
-  if (armed) {
-    // Positive stick = negative rotation about the body axis (see frame note above).
-    rateSetpoint(input, state.rotation, rates, p, targetBody);
-
-    // Prop wash: descending into your own disturbed air shakes the quad.
-    const descent = -state.linvel.dot(up);
-    const wash =
-      smoothstep(p.propWash.startSpeed, p.propWash.fullSpeed, descent) *
-      Math.min(1, Math.abs(out.motorOutput) * 3) *
-      p.propWash.maxDegPerSec *
-      DEG;
-    if (wash > 0) {
-      targetBody.x += wash * washNoise(state.time, 1);
-      targetBody.z += wash * washNoise(state.time, 2);
-      targetBody.y += 0.3 * wash * washNoise(state.time, 3);
-    }
-
-    bodyAngvel.copy(state.angvel).applyQuaternion(invRot);
-    const rateAlpha = 1 - Math.exp(-dt / p.rateTau);
-    bodyAngvel.lerp(targetBody, rateAlpha);
-    out.angvel.copy(bodyAngvel).applyQuaternion(state.rotation);
-  } else {
-    // Disarmed: no control authority, the body keeps whatever spin physics gave it.
-    out.angvel.copy(state.angvel);
-  }
-
-  // --- Forces: thrust along body up, drag computed in the body frame.
-  // Props lose thrust as air flows into them near their pitch speed (ADR-0052): this caps top speed and climb.
-  const thrust = out.motorOutput * maxThrust(p) * propEfficiency(state.linvel.dot(up) * Math.sign(out.motorOutput), p, out.motorOutput);
-  out.force.copy(up).multiplyScalar(thrust);
-
-  bodyVec.copy(state.linvel).applyQuaternion(invRot);
-  const speed = bodyVec.length();
-  // Rotor drag (ADR-0061): flapping blades push back on air crossing the discs (body x and z), growing with
-  // thrust. Tip speed goes with sqrt(thrust), so the force per m/s is flapping * sqrt(T * Tmax) / tip speed.
-  const rotor = (p.rotorDrag.flapping * Math.sqrt(Math.abs(thrust) * maxThrust(p))) / p.rotorDrag.tipSpeed;
-  bodyVec.set(
-    -(p.dragQuadratic.x * speed + p.dragLinear + rotor) * bodyVec.x,
-    -(p.dragQuadratic.y * speed + p.dragLinear) * bodyVec.y,
-    -(p.dragQuadratic.z * speed + p.dragLinear + rotor) * bodyVec.z,
-  );
-  out.force.add(bodyVec.applyQuaternion(state.rotation));
-
+  if (horizon) horizonBlend(input, rotation, horizon, out);
   return out;
 }

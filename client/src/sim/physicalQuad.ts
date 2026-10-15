@@ -13,6 +13,7 @@
 import { Quaternion, Vector3 } from 'three';
 import type { PhysicalQuadSpec, PidTune } from '../config';
 import { PHYSICAL_QUAD } from '../config';
+import type { BladeChange } from '../../../shared/propellers';
 
 const TWO_PI = 2 * Math.PI;
 const RPM_PER_RAD_S = 60 / TWO_PI;
@@ -23,7 +24,7 @@ const HALF_RHO = 0.5 * AIR_DENSITY;
 
 // --- Mass properties ------------------------------------------------------------------------------------
 
-interface Part {
+export interface Part {
   mass: number;
   /** Point or box part: centre and optional box size. */
   at?: readonly [number, number, number];
@@ -642,6 +643,34 @@ export function throttleCurve(t: number, expo: number, mid: number): number {
 
 // --- The airframe ---------------------------------------------------------------------------------------
 
+/** The stock 5"'s prop radius: propeller weights are given for a set of four of these (ADR-0065). */
+const PROP_KG_RADIUS = 0.0635;
+
+/**
+ * A body's spec with a different propeller (ADR-0065): the stock prop's blades, pitch, chord and profile drag
+ * changed, a duct added, its extra weight spread over the props, and its spin-up inertia scaled with blade area.
+ * The diameter stays the body's own, so every prop fits every quad.
+ */
+export function withPropeller(spec: PhysicalQuadSpec, blade: BladeChange | undefined, extraKg = 0): PhysicalQuadSpec {
+  if (!blade && extraKg === 0) return spec;
+  const b = blade ?? {};
+  const p = spec.prop;
+  const blades = b.blades ?? p.blades;
+  const chord = p.chord * (b.chord ?? 1);
+  // Each prop carries a quarter of the 5" set's extra weight, scaled by its disc area.
+  const perProp = (extraKg / 4) * (p.radius / PROP_KG_RADIUS) ** 2;
+  // About half a motor's spinning inertia is its prop, which grows with blade area.
+  const area = (blades * chord) / (p.blades * p.chord);
+  const drag = b.dragArea ?? 1;
+  return {
+    ...spec,
+    layout: { ...spec.layout, prop: { ...spec.layout.prop, mass: spec.layout.prop.mass + perProp } },
+    aero: { ...spec.aero, dragArea: [spec.aero.dragArea[0] * drag, spec.aero.dragArea[1] * drag, spec.aero.dragArea[2] * drag] },
+    prop: { ...p, blades, chord, pitch: p.pitch * (b.pitch ?? 1), profileDrag: p.profileDrag * (b.profileDrag ?? 1), duct: p.duct * (b.duct ?? 1) },
+    motor: { ...spec.motor, rotorInertia: spec.motor.rotorInertia * (0.5 + 0.5 * area) },
+  };
+}
+
 export interface PhysicalHardware {
   mass: number;
   centre: [number, number, number];
@@ -659,8 +688,9 @@ export interface PhysicalHardware {
   pressure: [number, number, number];
 }
 
-export function physicalHardware(spec: PhysicalQuadSpec = PHYSICAL_QUAD): PhysicalHardware {
-  const m = massProperties(quadParts(spec));
+/** The quad's mass properties from its parts plus any `payload` (weapons and specials on it, ADR-0066). */
+export function physicalHardware(spec: PhysicalQuadSpec = PHYSICAL_QUAD, payload: readonly Part[] = []): PhysicalHardware {
+  const m = massProperties([...quadParts(spec), ...payload]);
   const [cx, cy, cz] = m.centre;
   const [px, py, pz] = spec.aero.pressureCentre;
   const places = rotorPlaces(spec);
@@ -676,8 +706,8 @@ export function physicalHardware(spec: PhysicalQuadSpec = PHYSICAL_QUAD): Physic
 }
 
 /** Static thrust-to-weight on a test stand: every motor at full duty for 0.5 s (lower coaxial props in the upper ones' wake). */
-export function thrustStand(spec: PhysicalQuadSpec = PHYSICAL_QUAD): { thrustToWeight: number; rpm: number } {
-  const hw = physicalHardware(spec);
+export function thrustStand(spec: PhysicalQuadSpec = PHYSICAL_QUAD, payload: readonly Part[] = []): { thrustToWeight: number; rpm: number; thrustKg: number } {
+  const hw = physicalHardware(spec, payload);
   const n = hw.hubs.length;
   const pt = new Powertrain(n);
   const loads: RotorLoads = { thrust: 0, hx: 0, hz: 0, torque: 0, induced: 0, wake: 0 };
@@ -696,7 +726,7 @@ export function thrustStand(spec: PhysicalQuadSpec = PHYSICAL_QUAD): { thrustToW
     }
     pt.step(1 / 960, spec.motor, spec.battery, duty, true, torque, 1);
   }
-  return { thrustToWeight: thrust / (9.81 * hw.mass), rpm: pt.omega[0]! * RPM_PER_RAD_S };
+  return { thrustToWeight: thrust / (9.81 * hw.mass), rpm: pt.omega[0]! * RPM_PER_RAD_S, thrustKg: thrust / 9.81 };
 }
 
 export interface PhysicalStepInput {
@@ -714,12 +744,8 @@ export interface PhysicalStepInput {
 }
 
 export interface PhysicalOptions {
-  /** Mass and inertia scale for the loadout's weight (ADR-0033). */
-  load: number;
-  /** Thrust multiplier (propellers, afterburner). */
+  /** Thrust multiplier (the afterburner). */
   thrust: number;
-  /** Rotor inertia multiplier (propeller spool). */
-  spool: number;
 }
 
 const scratchQ = new Quaternion();
@@ -747,8 +773,11 @@ export class PhysicalQuad {
   private readonly sticks = new Float64Array(3);
   private readonly flags: PidFlags = { armed: false, airmode: true, direction: 1 };
 
-  constructor(readonly spec: PhysicalQuadSpec = PHYSICAL_QUAD) {
-    this.hw = physicalHardware(spec);
+  constructor(
+    readonly spec: PhysicalQuadSpec = PHYSICAL_QUAD,
+    payload: readonly Part[] = [],
+  ) {
+    this.hw = physicalHardware(spec, payload);
     const n = this.hw.hubs.length;
     this.power = new Powertrain(n, !!spec.reversible);
     this.turbulence = new Turbulence(n);
@@ -785,7 +814,7 @@ export class PhysicalQuad {
     const spec = this.spec;
     const hw = this.hw;
     const [ix0, iy0, iz0] = hw.inertia;
-    const ix = ix0 * opt.load, iy = iy0 * opt.load, iz = iz0 * opt.load;
+    const ix = ix0, iy = iy0, iz = iz0;
     invQ.copy(rotation).invert();
     const upY = v3.set(0, 1, 0).applyQuaternion(rotation).y;
     // Body-frame angular velocity (rad/s) and airspeed (m/s).
@@ -814,7 +843,7 @@ export class PhysicalQuad {
     this.sticks[2] = Math.abs(input.yaw);
     const n = Math.max(1, Math.round(dt * spec.loopHz));
     const h = dt / n;
-    const rotorInertia = spec.motor.rotorInertia * opt.spool;
+    const rotorInertia = spec.motor.rotorInertia;
     const thrustScale = ground * opt.thrust;
     let fx = 0, fy = 0, fz = 0, tx = 0, ty = 0, tz = 0, sx = 0, sy = 0, sz = 0;
     const pt = this.power;
@@ -850,7 +879,7 @@ export class PhysicalQuad {
         my += hz * this.loads.hx - hx * this.loads.hz;
         mz += hx * t - hy * this.loads.hx;
       }
-      pt.step(h, spec.motor, spec.battery, duty, input.armed, this.aero, opt.spool);
+      pt.step(h, spec.motor, spec.battery, duty, input.armed, this.aero, 1);
       // Motor reaction torques yaw the body; spinning rotors add gyroscopic torque.
       let spin = 0;
       for (let i = 0; i < count; i++) {

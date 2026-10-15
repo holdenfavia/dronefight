@@ -63,6 +63,8 @@ export class RoomManager {
     private readonly now: () => number,
     private readonly random: () => number = Math.random,
     private readonly progression: Progression = new Progression(),
+    /** `afk: false` for a room in the page (solo, ADR-0067): nobody is removed for being away. */
+    private readonly options: { afk?: boolean } = {},
   ) {}
 
   connect(conn: Connection): void {
@@ -151,6 +153,9 @@ export class RoomManager {
       case 'start':
         player.room?.match.onStart(player.id, this.now());
         break;
+      case 'bot':
+        player.room?.match.onBot(player.id, msg.add, this.now());
+        break;
       case 'options':
         player.room?.match.setOptions(player.id, msg.options, this.now());
         break;
@@ -167,7 +172,7 @@ export class RoomManager {
   tick(): void {
     const now = this.now();
     for (const room of this.rooms.values()) room.match.tick(now);
-    this.checkAway(now);
+    if (this.options.afk !== false) this.checkAway(now);
   }
 
   /**

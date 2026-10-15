@@ -3,8 +3,8 @@ import { loadLocalProfile, mergeOnSignIn, rowFromProfile, saveLocalProfile, type
 
 /**
  * Optional sign-in (ADR-0030, ADR-0031): Discord or Google through Supabase. Guests never need it.
- * The Supabase client is loaded only when configured and only when needed, so the game's first load
- * stays small and works without it.
+ * The Supabase client is loaded only when configured and only when needed (signing in, a saved session,
+ * or coming back from Google), so guests never download it and the game's first load stays small.
  */
 
 export type Provider = 'discord' | 'google';
@@ -14,6 +14,17 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 /** Profile edits are written to the account at most this often (ms). */
 const SAVE_DELAY_MS = 800;
+/** Where supabase-js keeps the session in localStorage (its default: `sb-<project ref>-auth-token`). */
+const SESSION_KEY = SUPABASE_URL ? `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-auth-token` : '';
+
+/** True if this browser has a saved Supabase session (or a sign-in half done), so the client is worth loading. */
+function hasSavedSession(): boolean {
+  try {
+    return localStorage.getItem(SESSION_KEY) !== null || localStorage.getItem(`${SESSION_KEY}-code-verifier`) !== null;
+  } catch {
+    return false;
+  }
+}
 
 export class Account {
   status: AccountStatus = SUPABASE_URL && ANON_KEY ? 'loading' : 'unavailable';
@@ -90,6 +101,11 @@ export class Account {
     }
     try {
       void this.loadProviders();
+      // A guest with nothing saved: no need for the Supabase client until they press Sign in.
+      if (!this.returning && !hasSavedSession()) {
+        this.becomeGuest();
+        return;
+      }
       const client = await this.getClient();
       if (!client) return;
       client.auth.onAuthStateChange((event, session) => {

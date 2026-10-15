@@ -10,7 +10,7 @@ export interface Weapon {
   id: WeaponId;
   name: string;
   blurb: string;
-  /** Weight on the hardpoint (kg). */
+  /** Weight on the hardpoint (kg), added to the bare drone (ADR-0066). */
   kg: number;
   /** Guns fire rounds; the missile pod launches the flown missile (ADR-0025); the launcher lobs grenades (ADR-0034). */
   kind: 'gun' | 'missile' | 'grenade';
@@ -35,7 +35,7 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
     id: 'gun',
     name: 'Gun',
     blurb: 'Fast, accurate. 3 hits kill a Freestyle (ADR-0028)',
-    kg: 0.12,
+    kg: 0.05,
     kind: 'gun',
     damage: 34,
     fireRate: 12,
@@ -49,7 +49,7 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
     id: 'shotgun',
     name: 'Choked shotgun',
     blurb: '8 pellets, twice a second. A full close blast one-shots a quad',
-    kg: 0.3,
+    kg: 0.12,
     kind: 'gun',
     damage: 14,
     fireRate: 2,
@@ -63,7 +63,7 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
     id: 'cannon',
     name: 'Rotary cannon',
     blurb: '50 light rounds a second. BRRRT',
-    kg: 0.35,
+    kg: 0.14,
     kind: 'gun',
     damage: 10,
     fireRate: 50,
@@ -77,7 +77,7 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
     id: 'missile',
     name: 'Missile pod',
     blurb: 'Three missiles you fly yourself. One-shot within 5 m',
-    kg: 0.25,
+    kg: 0.1,
     kind: 'missile',
     damage: 0,
     fireRate: 0,
@@ -91,7 +91,7 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
     id: 'rail',
     name: 'Rail gun',
     blurb: '75 damage, near-instant, once a second. Very heavy',
-    kg: 2.8,
+    kg: 1.12,
     kind: 'gun',
     damage: 75,
     fireRate: 1,
@@ -105,7 +105,7 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
     id: 'burst',
     name: 'Burst rifle',
     blurb: '3-round bursts of 30. Land the burst',
-    kg: 0.3,
+    kg: 0.12,
     kind: 'gun',
     damage: 30,
     // 3 rounds every 0.6 s.
@@ -121,7 +121,7 @@ export const WEAPONS: Record<WeaponId, Weapon> = {
     id: 'grenade',
     name: 'Grenade launcher',
     blurb: 'Lob a bouncing grenade; press Fire again to set it off. Huge blast',
-    kg: 0.8,
+    kg: 0.32,
     kind: 'grenade',
     // The blast is in shared/grenade.ts; this is the launch cadence.
     damage: 0,

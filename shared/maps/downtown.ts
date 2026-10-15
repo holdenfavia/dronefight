@@ -1723,30 +1723,33 @@ function traffic(): MoverDef[] {
   return cars;
 }
 
-export const DOWNTOWN: MapDef = {
-  id: 'downtown',
-  name: 'Downtown',
-  halfSize: HALF,
-  boxes: build(),
-  decor: DECOR,
-  // On the rolling ground (ADR-0059), like their pads.
-  spawns: SPAWNS.map((s) => ({ ...s, pos: [s.pos[0], terrainHeight(TERRAIN, s.pos[0], s.pos[2]) + 0.1, s.pos[2]] as [number, number, number] })),
-  ground: 'asphalt',
-  // An evening on the coast (ADR-0054): the sun low over the sea to the east, warm light, long views.
-  backdrop: 'coast',
-  atmosphere: {
-    fog: '#dfe7ec',
-    fogNear: 450,
-    fogFar: 2100,
-    hemiSky: '#bcdcff',
-    hemiGround: '#a39580',
-    hemiIntensity: 1.2,
-    sunIntensity: 3.1,
-    sunDirection: [0.9, 0.38, 0.12],
-    sunColor: '#ffdcb4',
-  },
-  movers: [...traffic(), ...raceCars(), airliner()],
-  explosives: EXPLOSIVES,
-  holes: HOLES,
-  terrain: TERRAIN,
-};
+/** Builds the map. Call it through getMap(), which builds each map once, on first use. */
+export function buildDowntown(): MapDef {
+  return {
+    id: 'downtown',
+    name: 'Downtown',
+    halfSize: HALF,
+    boxes: build(),
+    decor: DECOR,
+    // On the rolling ground (ADR-0059), like their pads.
+    spawns: SPAWNS.map((s) => ({ ...s, pos: [s.pos[0], terrainHeight(TERRAIN, s.pos[0], s.pos[2]) + 0.1, s.pos[2]] as [number, number, number] })),
+    ground: 'asphalt',
+    // An evening on the coast (ADR-0054): the sun low over the sea to the east, warm light, long views.
+    backdrop: 'coast',
+    atmosphere: {
+      fog: '#dfe7ec',
+      fogNear: 450,
+      fogFar: 2100,
+      hemiSky: '#bcdcff',
+      hemiGround: '#a39580',
+      hemiIntensity: 1.2,
+      sunIntensity: 3.1,
+      sunDirection: [0.9, 0.38, 0.12],
+      sunColor: '#ffdcb4',
+    },
+    movers: [...traffic(), ...raceCars(), airliner()],
+    explosives: EXPLOSIVES,
+    holes: HOLES,
+    terrain: TERRAIN,
+  };
+}

@@ -83,6 +83,9 @@ type El =
   | 'thr'
   | 'spd'
   | 'alt'
+  | 'bat'
+  | 'mode'
+  | 'time'
   | 'status'
   | 'debug'
   | 'net'
@@ -141,6 +144,9 @@ export class Hud {
         <div class="osd-item"><span class="osd-label">THR</span><span data-thr></span></div>
         <div class="osd-item"><span class="osd-label">SPD</span><span data-spd></span></div>
         <div class="osd-item"><span class="osd-label">ALT</span><span data-alt></span></div>
+        <div class="osd-item" data-bat-item><span class="osd-label">BAT</span><span data-bat></span></div>
+        <div class="osd-item"><span data-mode></span></div>
+        <div class="osd-item"><span class="osd-label">TIME</span><span data-time></span></div>
         <div class="osd-item" data-special-item><span class="osd-label" data-special-label></span><span data-special></span></div>
       </div>`;
     const q = (sel: string) => {
@@ -152,6 +158,9 @@ export class Hud {
       thr: q('[data-thr]'),
       spd: q('[data-spd]'),
       alt: q('[data-alt]'),
+      bat: q('[data-bat]'),
+      mode: q('[data-mode]'),
+      time: q('[data-time]'),
       status: q('[data-status]'),
       debug: q('[data-debug]'),
       net: q('[data-net]'),
@@ -215,6 +224,13 @@ export class Hud {
     this.set(this.el.thr, `${Math.round(info.throttle * 100)}%`);
     this.set(this.el.spd, `${Math.round(drone.speed * 3.6)} km/h`);
     this.set(this.el.alt, `${Math.max(0, drone.currPos.y).toFixed(0)} m`);
+    // Betaflight OSD items: pack voltage under load, flight mode, armed time.
+    const volts = drone.batteryVolts;
+    (this.el.bat.parentElement as HTMLElement).hidden = volts === null;
+    if (volts !== null) this.set(this.el.bat, `${volts.toFixed(1)}V`);
+    this.set(this.el.mode, drone.flightMode);
+    const t = Math.floor(drone.armedSeconds);
+    this.set(this.el.time, `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`);
     // Class special readout (ADR-0015/0016).
     (this.el.special.parentElement as HTMLElement).hidden = !info.special;
     if (info.special) {
@@ -290,7 +306,9 @@ export class Hud {
     const place = c.rank === 1 ? 'leading' : `${ordinal(c.rank)} of ${c.pilots}`;
     const leader = c.leader ? ` · leader ${c.leader.name} ${c.leader.score}` : '';
     const clock = c.timeLeft !== null ? ` · ${Math.floor(c.timeLeft / 60)}:${String(Math.floor(c.timeLeft % 60)).padStart(2, '0')}` : '';
-    if (c.teams) {
+    // The Training range has no score race (ADR-0067): its own readout instead.
+    if (this.trainingText) this.set(this.el.score, this.trainingText);
+    else if (c.teams) {
       const [o, l] = c.teams.scores;
       this.set(this.el.score, `Orange ${o} · Lime ${l} · you're ${c.teams.mine ? 'Lime' : 'Orange'} · first to ${c.killsToWin}${clock}`);
     } else this.set(this.el.score, `You ${c.myScore} · ${place}${leader} · first to ${c.killsToWin}${clock}`);
@@ -385,7 +403,7 @@ function restartAnimation(el: HTMLElement, cls: string): void {
 
 /** 3D quads arm with the throttle centered (ADR-0013); everything else with it down. */
 function armHint(drone: Drone, blocked: boolean): string {
-  const center = drone.classId === 'quad3d';
+  const center = drone.restingThrottle > 0;
   if (blocked) return center ? 'CENTER THROTTLE TO ARM' : 'LOWER THROTTLE TO ARM';
   return center ? 'DISARMED · throttle to center to arm' : 'DISARMED · throttle down to arm';
 }

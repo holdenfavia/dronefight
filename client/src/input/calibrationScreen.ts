@@ -18,7 +18,7 @@ import type { InputManager, ProfileKind } from './inputManager';
 // Controller setup (ADR-0006). Part of the input layer, so it may read raw values. A hub per controller
 // with three separate parts: calibrate sticks (keeps buttons), map buttons (keeps sticks), stick feel.
 
-type StepId = 'select' | 'range' | 'center' | StickChannel | 'arm' | 'reset' | 'fire' | 'special' | 'weaponSwitch' | 'test';
+type StepId = 'select' | 'range' | 'center' | StickChannel | 'arm' | 'reset' | 'fire' | 'special' | 'weaponSwitch' | 'menu' | 'test';
 
 interface Step {
   id: StepId;
@@ -39,6 +39,7 @@ const STEPS: Step[] = [
   { id: 'fire', title: 'Fire', body: 'Press and hold the button or switch you want to <b>FIRE</b> with. Or skip and use the Space bar.' },
   { id: 'special', title: 'Special', body: 'Press the button you want for your class <b>SPECIAL</b> (the wing\'s maneuver mode: a button, or a switch to leave it on). Or skip and use the E key.' },
   { id: 'weaponSwitch', title: 'Switch weapon', body: 'Press the button you want to <b>SWITCH</b> between guns and missiles (needed only if you carry missile pods and a special). Or skip and use the Q key.' },
+  { id: 'menu', title: 'Menu', body: 'Press the button you want to open the <b>MENU</b> and go back (ADR-0068). In menus, pitch moves, roll changes a value, Fire selects and Special goes back. Or skip and use Esc.' },
   { id: 'test', title: 'Check it', body: 'Move the sticks. Each bar should follow the right stick in the right direction. Save when it looks good.' },
 ];
 
@@ -56,6 +57,7 @@ export class CalibrationScreen {
   private fire: SwitchBinding | null = null;
   private special: SwitchBinding | null = null;
   private weaponSwitch: SwitchBinding | null = null;
+  private menu: SwitchBinding | null = null;
   private deadband: number = INPUT.deadband;
   private sensitivity = 1;
   private pending: { axis: number; invert: boolean } | SwitchBinding | null = null;
@@ -94,7 +96,7 @@ export class CalibrationScreen {
   private start(buttonsOnly: boolean, padIndex: number): void {
     this.view = 'wizard';
     this.buttonsOnly = buttonsOnly;
-    const buttonSteps: StepId[] = ['select', 'arm', 'reset', 'fire', 'special', 'weaponSwitch', 'test'];
+    const buttonSteps: StepId[] = ['select', 'arm', 'reset', 'fire', 'special', 'weaponSwitch', 'menu', 'test'];
     const stickSteps: StepId[] = ['select', 'range', 'center', 'throttle', 'roll', 'pitch', 'yaw', 'test'];
     this.steps = STEPS.filter((st) => (buttonsOnly ? buttonSteps : stickSteps).includes(st.id));
     this.step = 0;
@@ -105,6 +107,7 @@ export class CalibrationScreen {
     this.fire = null;
     this.special = null;
     this.weaponSwitch = null;
+    this.menu = null;
     this.deadband = INPUT.deadband;
     this.sensitivity = 1;
     if (padIndex >= 0 && this.choosePad(padIndex)) {
@@ -189,6 +192,7 @@ export class CalibrationScreen {
       case 'reset':
       case 'fire':
       case 'weaponSwitch':
+      case 'menu':
       case 'special': {
         const exclude = Object.values(this.assigned).map((a) => a.axis);
         const found = this.stepBaseline ? detectSwitch(this.stepBaseline, raw, exclude) : null;
@@ -206,7 +210,7 @@ export class CalibrationScreen {
   private render(): void {
     const current = this.steps[this.step];
     if (!current) return;
-    const skippable = current.id === 'arm' || current.id === 'reset' || current.id === 'fire' || current.id === 'special' || current.id === 'weaponSwitch';
+    const skippable = current.id === 'arm' || current.id === 'reset' || current.id === 'fire' || current.id === 'special' || current.id === 'weaponSwitch' || current.id === 'menu';
     const isTest = current.id === 'test';
     this.root.innerHTML = `
       <div class="panel calib">
@@ -289,6 +293,9 @@ export class CalibrationScreen {
       case 'weaponSwitch':
         this.weaponSwitch = this.pending && 'kind' in this.pending ? this.pending : null;
         break;
+      case 'menu':
+        this.menu = this.pending && 'kind' in this.pending ? this.pending : null;
+        break;
       case 'test': {
         const profile = this.buildProfile();
         if (profile) this.input.saveProfile(profile);
@@ -318,6 +325,7 @@ export class CalibrationScreen {
       fire: this.fire,
       special: this.special,
       weaponSwitch: this.weaponSwitch,
+      menu: this.menu,
       sensitivity: this.sensitivity,
     };
   }
@@ -329,6 +337,7 @@ export class CalibrationScreen {
     if (id === 'fire') return this.fire;
     if (id === 'special') return this.special;
     if (id === 'weaponSwitch') return this.weaponSwitch;
+    if (id === 'menu') return this.menu;
     return undefined;
   }
 
@@ -349,6 +358,7 @@ export class CalibrationScreen {
     this.fire = profile.fire ?? null;
     this.special = profile.special ?? null;
     this.weaponSwitch = profile.weaponSwitch ?? null;
+    this.menu = profile.menu ?? null;
     this.sensitivity = profile.sensitivity ?? 1;
     return true;
   }
@@ -455,7 +465,8 @@ export class CalibrationScreen {
     const fireText = profile.fire ? (readSwitch(profile.fire, raw) ? 'FIRING' : 'off') : 'Space';
     const specialText = profile.special ? (readSwitch(profile.special, raw) ? 'PRESSED' : 'off') : 'E key';
     const switchText = profile.weaponSwitch ? (readSwitch(profile.weaponSwitch, raw) ? 'PRESSED' : 'off') : 'Q key';
-    sw.textContent = `Arm: ${armText} · Reset: ${resetText} · Fire: ${fireText} · Special: ${specialText} · Switch: ${switchText}`;
+    const menuText = profile.menu ? (readSwitch(profile.menu, raw) ? 'PRESSED' : 'off') : 'Esc';
+    sw.textContent = `Arm: ${armText} · Reset: ${resetText} · Fire: ${fireText} · Special: ${specialText} · Switch: ${switchText} · Menu: ${menuText}`;
   }
 
   // --- Hub
