@@ -1,119 +1,141 @@
 import type { Account } from '../account/account';
-import { cleanPilotName, NAME_MAX, type DroneLook } from '../../../shared/cosmetics';
-import { levelProgress } from '../../../shared/progression';
+import type { DroneLook } from '../../../shared/cosmetics';
 import { CalibrationScreen } from '../input/calibrationScreen';
 import { LoadoutScreen } from './loadoutScreen';
-import { NET } from '../../../shared/protocol';
 import type { InputManager } from '../input/inputManager';
-import { DRONE_ORDER, droneClass, type DroneClassId } from '../../../shared/drones';
-import { cleanRoomOptions, defaultRoomOptions, KILL_LIMITS, pilotLabel, TEAM_NAMES, TIME_LIMITS, type RoomOptions } from '../../../shared/roomOptions';
-import { WEAPON_ORDER, WEAPONS, type WeaponId } from '../../../shared/weapons';
-import { SPECIAL_ORDER, SPECIALS, type SpecialId } from '../../../shared/specials';
-import { pilotColor } from '../../../shared/combat';
-import { BODY_ICONS, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
 import type { Loadout } from '../../../shared/loadout';
-import { MAP_NAMES, MAP_ORDER, type MapId } from '../../../shared/maps';
+import { MAP_ORDER } from '../../../shared/maps';
 import type { NetClient } from '../net/netClient';
-import { DEFAULT_TOUCH, saveSettings, type Settings, type TouchSettings } from '../settings';
+import { saveSettings, type Settings } from '../settings';
 import { SettingsScreen } from './settingsScreen';
+import type { MenuCallbacks, MenuContext, MenuScreen, ScreenId } from './screens/screen';
+import { MainScreen } from './screens/main';
+import { PauseScreen } from './screens/pause';
+import { PlayScreen } from './screens/play';
+import { RoomScreen } from './screens/room';
+import { RulesScreen } from './screens/rules';
+import { AccountScreen } from './screens/account';
+import { TouchScreen } from './screens/touch';
 
-type Screen = 'main' | 'pause' | 'drone' | 'play' | 'room' | 'settings' | 'controller' | 'buttons' | 'account' | 'touch' | 'rules';
+export type { MenuCallbacks, ScreenId } from './screens/screen';
 
-export interface MenuCallbacks {
-  onFly(): void;
-  /** Camera or graphics settings changed and need re-applying. */
-  onSettingsChanged(): void;
-  /** The chosen map changed (solo play switches immediately). */
-  onMapChanged(): void;
-  /** The chosen drone class changed (solo: now; in a match: next respawn). */
-  onDroneChanged(): void;
-  /** Leave the current game (solo or room) and go back to the start screen. */
-  onLeaveGame(): void;
-  /** Open the touch layout editor (ADR-0044); the menu comes back to Touch controls when it's done. */
-  onEditTouchLayout(): void;
-}
-
-/** Pause menu with main, settings and controller-setup screens. */
+/**
+ * The menu: a stack of screens (one file each under screens/). show() pushes a screen, Back/Done/Esc and the
+ * radio's Menu button pop it; the bottom is the start screen, or the pause menu during a game.
+ */
 export class Menu {
   visible = true;
-  private screen: Screen = 'main';
+  /** The screens open, bottom first; the last one is showing. */
+  private stack: ScreenId[] = [];
   /** You started flying (solo, or Start in a room): Escape then opens the pause menu, not the start screen. */
   private flying = false;
-  /** Where the Loadout screen's Done goes back to (Play, the room screen, or the pause menu). */
-  private droneReturn: Screen = 'main';
-  /** Where the Touch controls screen's Done goes back to (the pause menu or Settings). */
-  private touchReturn: Screen = 'main';
-  /** Room settings (ADR-0046): the draft being edited, and where Back goes. */
-  private rulesDraft: RoomOptions | null = null;
-  private rulesReturn: Screen = 'play';
   /** The room's match phase last time we looked (ADR-0047). */
   private lastPhase: string | null = null;
+  private readonly ctx: MenuContext;
+  private readonly screens: Record<ScreenId, MenuScreen>;
+  private readonly main: MainScreen;
+  private readonly pause: PauseScreen;
+  private readonly play: PlayScreen;
+  private readonly room: RoomScreen;
+  private readonly accountScreen: AccountScreen;
   private readonly calibration: CalibrationScreen;
   private readonly loadoutScreen: LoadoutScreen;
-  private readonly settingsScreen: SettingsScreen;
 
   constructor(
     private readonly root: HTMLElement,
-    private readonly input: InputManager,
+    input: InputManager,
     private readonly settings: Settings,
     private readonly net: NetClient,
     private readonly callbacks: MenuCallbacks,
-    private readonly account: Account,
+    account: Account,
   ) {
+    this.ctx = {
+      root,
+      input,
+      settings,
+      net,
+      account,
+      callbacks,
+      joining: null,
+      show: (screen) => this.show(screen),
+      back: () => this.pop(),
+      toPlay: () => this.reset(this.home, 'play'),
+      fly: () => this.fly(),
+      hide: () => this.hide(),
+      leaveGame: (to) => this.leaveGame(to),
+      commit: () => this.commit(),
+      nextMap: () => this.nextMap(),
+    };
     this.loadoutScreen = new LoadoutScreen(root, settings, {
       changed: () => this.callbacks.onDroneChanged(),
-      done: () => this.show(this.droneReturn),
+      done: () => this.pop(),
       inMatch: () => this.net.inRoom && this.net.match?.phase === 'playing',
       rules: () => (this.net.inRoom ? (this.net.match?.options ?? null) : null),
       // Paint lives on your profile (ADR-0030): saved here and, signed in, to your account.
-      look: (body) => this.account.profile.looks[body],
-      setLook: (body, look) => this.account.update({ looks: { ...this.account.profile.looks, [body]: look } }),
+      look: (body) => account.profile.looks[body],
+      setLook: (body, look) => account.update({ looks: { ...account.profile.looks, [body]: look } }),
     });
-    this.settingsScreen = new SettingsScreen(root, settings, input, {
+    const settingsScreen = new SettingsScreen(root, settings, input, {
       commit: () => this.commit(),
       open: (screen) => this.show(screen),
-      done: () => this.show(this.home),
+      done: () => this.pop(),
     });
-    // Controller setup lives under Settings, so it returns there.
-    this.calibration = new CalibrationScreen(root, input, () => this.show('settings'));
-    this.show('main');
+    // Controller setup lives under Settings, so its Done pops back there.
+    this.calibration = new CalibrationScreen(root, input, () => this.pop());
+    this.main = new MainScreen(this.ctx);
+    this.pause = new PauseScreen(this.ctx);
+    this.play = new PlayScreen(this.ctx);
+    this.room = new RoomScreen(this.ctx);
+    this.accountScreen = new AccountScreen(this.ctx);
+    this.screens = {
+      main: this.main,
+      pause: this.pause,
+      play: this.play,
+      room: this.room,
+      account: this.accountScreen,
+      rules: new RulesScreen(this.ctx, (text) => this.play.status(text)),
+      touch: new TouchScreen(this.ctx),
+      settings: { render: () => settingsScreen.render() },
+      // Loadout (ADR-0033): the gunsmith-style screen in loadoutScreen.ts.
+      drone: { render: () => this.loadoutScreen.open(), leave: () => this.loadoutScreen.close() },
+      controller: { render: () => this.calibration.openHub(), tick: () => this.calibration.tick() },
+      buttons: { render: () => this.calibration.openButtons(), tick: () => this.calibration.tick() },
+    };
+    this.reset('main');
   }
 
-  /** The screen shown before the current one (for the Loadout screen's Done). */
-  private lastScreen: Screen = 'main';
+  /** The screen showing (or last shown, while hidden). */
+  private get top(): ScreenId {
+    return this.stack[this.stack.length - 1] ?? 'main';
+  }
 
-  show(screen: Screen): void {
-    if (screen !== this.screen) this.lastScreen = this.screen;
-    if (this.screen === 'drone' && screen !== 'drone') this.loadoutScreen.close();
-    this.screen = screen;
+  /** Push a screen, or go back down the stack to it if it's already open (then it redraws). */
+  show(screen: ScreenId): void {
+    const i = this.stack.indexOf(screen);
+    this.setStack(i >= 0 ? this.stack.slice(0, i + 1) : [...this.stack, screen]);
+  }
+
+  /** Replace the whole stack (jumps: leaving a game, getting into a room, the match coming back to pre-match). */
+  private reset(...screens: ScreenId[]): void {
+    this.setStack(screens);
+  }
+
+  /** Back/Done: pop the current screen; at the bottom, go to the menu's top screen. */
+  private pop(): void {
+    if (this.stack.length > 1) this.setStack(this.stack.slice(0, -1));
+    else if (this.top !== this.home) this.reset(this.home);
+  }
+
+  private setStack(next: ScreenId[]): void {
+    const prev = this.stack;
+    const from = prev[prev.length - 1];
+    const to = next[next.length - 1] ?? 'main';
+    this.stack = next.length ? next : ['main'];
+    if (from && from !== to) this.screens[from].leave?.();
+    if (!prev.includes(to)) this.screens[to].enter?.();
     this.visible = true;
     this.root.hidden = false;
-    if (screen === 'main') this.renderMain();
-    else if (screen === 'pause') this.renderPause();
-    else if (screen === 'drone') {
-      // Done goes back where you came from (Play, the room, or the pause menu).
-      if (this.lastScreen !== 'drone') this.droneReturn = this.lastScreen;
-      this.renderDrone();
-    }
-    else if (screen === 'settings') this.settingsScreen.render();
-    else if (screen === 'rules') {
-      if (this.lastScreen !== 'rules') {
-        this.rulesReturn = this.lastScreen;
-        // Creating: start from the settings you used last time, on the map you picked. In a room: the room's.
-        const base = this.net.online && this.net.match ? this.net.match.options : { ...this.settings.roomOptions, map: this.settings.map };
-        this.rulesDraft = cleanRoomOptions(structuredClone(base), this.settings.map);
-      }
-      this.renderRules();
-    }
-    else if (screen === 'touch') {
-      if (this.lastScreen !== 'touch') this.touchReturn = this.lastScreen;
-      this.renderTouch();
-    }
-    else if (screen === 'play') this.renderPlay();
-    else if (screen === 'room') this.renderRoom();
-    else if (screen === 'account') this.renderAccount();
-    else if (screen === 'buttons') this.calibration.openButtons();
-    else this.calibration.openHub();
+    this.screens[to].render();
   }
 
   hide(): void {
@@ -123,38 +145,34 @@ export class Menu {
 
   /** The build to show in the 3D preview while the Loadout screen is open, else null (ADR-0033). */
   get previewLoadout(): Loadout | null {
-    return this.visible && this.screen === 'drone' ? this.settings.loadouts[this.settings.drone] : null;
+    return this.visible && this.top === 'drone' ? this.settings.loadouts[this.settings.drone] : null;
   }
 
-  /** Where on screen the preview should draw the drone (normalized -1..1), while the Loadout screen is open. */
   /** The paint to show on the Loadout preview (the hovered paint option, else yours). */
   get previewLook(): DroneLook {
     return this.loadoutScreen.previewLook;
   }
 
+  /** Where on screen the preview should draw the drone (normalized -1..1), while the Loadout screen is open. */
   previewAnchor(): { x: number; y: number } | null {
     return this.previewLoadout ? this.loadoutScreen.anchor() : null;
   }
 
-    /** In a game (flying solo, or in a room): menus go back to the pause menu instead of the start screen. */
+  /** In a game (flying solo, or in a room): menus go back to the pause menu instead of the start screen. */
   private get inGame(): boolean {
     return this.flying || this.net.inRoom;
   }
 
   /** The menu's top screen: pause during a game, start screen otherwise. */
-  private get home(): Screen {
+  private get home(): ScreenId {
     return this.inGame ? 'pause' : 'main';
   }
 
-  /** Escape key: open the pause menu, back out of sub-screens, or resume. */
+  /** Escape key / radio Menu button: open the pause menu, back out of sub-screens, or resume. */
   back(): void {
-    if (!this.visible) this.show(this.home);
-    else if (this.screen === 'controller' || this.screen === 'buttons') this.show('settings');
-    else if (this.screen === 'touch') this.show(this.touchReturn);
-    else if (this.screen === 'rules') this.show(this.rulesReturn);
-    else if (this.screen === 'pause') this.fly();
-    else if (this.screen === 'drone') this.show(this.droneReturn);
-    else if (this.screen !== this.home) this.show(this.home);
+    if (!this.visible) this.reset(this.home);
+    else if (this.top === 'pause') this.fly();
+    else this.pop();
   }
 
   /** Start or resume flying. */
@@ -163,82 +181,13 @@ export class Menu {
     this.callbacks.onFly();
   }
 
-  /** Sign-in state or profile changed (ADR-0031): refresh whatever shows it. */
-  onAccountChange(): void {
-    if (!this.visible) return;
-    if (this.screen === 'main') this.renderMain();
-    else if (this.screen === 'pause') this.renderPause();
-    else if (this.screen === 'account' && !this.root.querySelector('[data-pilot-name]:focus')) this.renderAccount();
-  }
-
-  /** Network status changed: refresh whatever shows it. */
-  onNetChange(): void {
-    // Removed for being away (ADR-0051): back to Play, and say why.
-    if (this.net.kicked) {
-      const why = this.net.kicked;
-      this.net.kicked = null;
-      this.flying = false;
-      this.joining = null;
-      this.callbacks.onLeaveGame();
-      this.show('play');
-      this.updateJoinStatus(why);
-      return;
-    }
-    // Match phase changes (ADR-0047): the host started, so everyone's menu closes and the match begins; the
-    // match ended and the results are over, so everyone comes back to the pre-match menu.
-    const phase = this.net.inRoom ? (this.net.match?.phase ?? null) : null;
-    const was = this.lastPhase;
-    this.lastPhase = phase;
-    if (was === 'waiting' && phase === 'playing' && this.net.online && this.visible && this.screen !== 'drone') {
-      this.fly();
-      return;
-    }
-    if (was === 'ended' && phase === 'waiting') {
-      this.show('room');
-      return;
-    }
-    if (!this.visible) return;
-    // Typed a code (or created a room) and got in: show the room.
-    if (this.screen === 'play' && this.net.online) this.show('room');
-    else if (this.screen === 'play') this.updateJoinStatus();
-    else if (this.screen === 'room') this.renderRoom();
-    else if (this.screen === 'main') this.renderMain();
-    else if (this.screen === 'pause') this.renderPause();
-  }
-
-  /** The radio can move through this screen (ADR-0068); not while mapping buttons or calibrating. */
-  get navigable(): boolean {
-    return this.visible && this.screen !== 'controller' && this.screen !== 'buttons';
-  }
-
-  tick(): void {
-    if (!this.visible) return;
-    if (this.screen === 'controller' || this.screen === 'buttons') this.calibration.tick();
-    if (this.screen === 'main') this.updateControllerStatus();
-  }
-
-  /** Start screen: Play, Settings and sign-in. */
-  private renderMain(): void {
-    this.root.innerHTML = `
-      <div class="title-block">
-        <div class="logo">DRONE<span>FIGHT</span></div>
-        <div class="scribble">fpv dogfights with friends</div>
-      </div>
-      <div class="panel main-menu">
-        <button class="btn big" data-play>Play</button>
-        <button class="btn ghost" data-settings>Settings</button>
-        ${this.accountButton()}
-        <div class="controller-status" data-status></div>
-      </div>
-      <div class="keys">${
-        this.input.touchActive
-          ? 'Touch: left thumb climbs and turns · right thumb aims · index fingers fire and special · second finger on the right fires · double-tap left switches weapons'
-          : 'ESC menu · F fullscreen · R reset · C camera · M mute · keyboard: W/S throttle, A/D yaw, arrows pitch/roll, Space fire, E special'
-      }</div>`;
-    this.root.querySelector('[data-play]')?.addEventListener('click', () => this.show('play'));
-    this.root.querySelector('[data-settings]')?.addEventListener('click', () => this.show('settings'));
-    this.root.querySelector('[data-account]')?.addEventListener('click', () => this.show('account'));
-    this.updateControllerStatus();
+  /** Leave the game (solo or room), to the start screen or to Play. */
+  private leaveGame(to: 'main' | 'play'): void {
+    this.flying = false;
+    this.ctx.joining = null;
+    this.callbacks.onLeaveGame();
+    if (to === 'main') this.reset('main');
+    else this.ctx.toPlay();
   }
 
   /** Solo: the next map (your solo room follows it, ADR-0067). */
@@ -249,526 +198,64 @@ export class Menu {
     this.callbacks.onMapChanged();
   }
 
-  /** Pause menu (Escape during a game): resume, change drone, the room, settings, or leave. */
-  private renderPause(): void {
-    const inRoom = this.net.online;
-    const where = inRoom ? `Room ${this.net.room} · ${this.net.map ? MAP_NAMES[this.net.map] : ''}` : `Solo · ${MAP_NAMES[this.settings.map]}`;
-    this.root.innerHTML = `
-      <div class="panel pause-menu">
-        <div class="panel-head"><span class="kicker">Paused</span><h2>${escapeHtml(where)}</h2></div>
-        <button class="btn big" data-resume>Resume</button>
-        <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
-        ${inRoom ? '' : `<button class="btn ghost" data-map>Map: ${MAP_NAMES[this.settings.map]} ▸</button>`}
-        ${inRoom ? `<button class="btn ghost" data-room>${this.net.match?.phase === 'playing' ? `Room ${this.net.room}: pilots` : 'Pre-match'} ▸</button>` : ''}
-        ${inRoom ? `<button class="btn ghost" data-rules>Room settings ▸</button>` : ''}
-        ${this.input.touchActive ? '<button class="btn ghost" data-touch>Touch controls ▸</button>' : ''}
-        <button class="btn ghost" data-settings>Settings</button>
-        <button class="btn ghost leave" data-leave>Leave game</button>
-        ${this.accountButton()}
-      </div>
-      <div class="keys">ESC resume</div>`;
-    this.root.querySelector('[data-resume]')?.addEventListener('click', () => this.fly());
-    this.root.querySelector('[data-map]')?.addEventListener('click', () => {
-      this.nextMap();
-      this.renderPause();
-      this.root.querySelector<HTMLElement>('[data-map]')?.focus();
-    });
-    this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
-    this.root.querySelector('[data-room]')?.addEventListener('click', () => this.show('room'));
-    this.root.querySelector('[data-touch]')?.addEventListener('click', () => this.show('touch'));
-    this.root.querySelector('[data-rules]')?.addEventListener('click', () => this.show('rules'));
-    this.root.querySelector('[data-settings]')?.addEventListener('click', () => this.show('settings'));
-    this.root.querySelector('[data-account]')?.addEventListener('click', () => this.show('account'));
-    this.root.querySelector('[data-leave]')?.addEventListener('click', () => {
-      this.flying = false;
-      this.joining = null;
-      this.callbacks.onLeaveGame();
-      this.show('main');
-    });
+  /** Sign-in state or profile changed (ADR-0031): refresh whatever shows it. */
+  onAccountChange(): void {
+    if (!this.visible) return;
+    if (this.top === 'main') this.main.render();
+    else if (this.top === 'pause') this.pause.render();
+    else if (this.top === 'account') this.accountScreen.refresh();
   }
 
-  /** Loadout (ADR-0033): the gunsmith-style screen in loadoutScreen.ts. */
-  private renderDrone(): void {
-    this.loadoutScreen.open();
-  }
-
-  /**
-   * Start-screen entry to the account: plainly "✓ Signed in" (green, with your name and level) once you
-   * are, "Sign in (optional)" for guests. Hidden if sign-in isn't set up.
-   */
-  private accountButton(): string {
-    const a = this.account;
-    if (!a.available) return '';
-    if (a.status === 'signed-in') {
-      const name = escapeHtml(a.profile.name || a.user?.label || '');
-      const level = a.xp !== null ? ` · Lv ${levelProgress(a.xp).level}` : '';
-      return `<button class="btn ghost account-btn signed-in" data-account><span class="signed-in-mark">✓ Signed in</span>${name ? ` · ${name}` : ''}${level}</button>`;
+  /** Network status changed: refresh whatever shows it. */
+  onNetChange(): void {
+    // Removed for being away (ADR-0051): back to Play, and say why.
+    if (this.net.kicked) {
+      const why = this.net.kicked;
+      this.net.kicked = null;
+      this.leaveGame('play');
+      this.play.status(why);
+      return;
     }
-    const label = a.status === 'loading' ? (a.returning ? 'Finishing sign-in…' : 'Checking sign-in…') : 'Sign in (optional) ▸';
-    // A failed sign-in says why, right on the start screen.
-    const err = a.error ? `<div class="join-status warn">${escapeHtml(a.error)}</div>` : '';
-    return `<button class="btn ghost account-btn" data-account>${label}</button>${err}`;
+    // Match phase changes (ADR-0047): the host started, so everyone's menu closes and the match begins; the
+    // match ended and the results are over, so everyone comes back to the pre-match menu.
+    const phase = this.net.inRoom ? (this.net.match?.phase ?? null) : null;
+    const was = this.lastPhase;
+    this.lastPhase = phase;
+    if (was === 'waiting' && phase === 'playing' && this.net.online && this.visible && this.top !== 'drone') {
+      this.fly();
+      return;
+    }
+    if (was === 'ended' && phase === 'waiting') {
+      this.reset(this.home, 'room');
+      return;
+    }
+    if (!this.visible) return;
+    // Typed a code (or created a room) and got in: show the room, over the pause menu.
+    if (this.top === 'play' && this.net.online) this.reset(this.home, 'room');
+    else if (this.top === 'play') this.play.status();
+    else if (this.top === 'room') this.room.render();
+    else if (this.top === 'main') this.main.render();
+    else if (this.top === 'pause') this.pause.render();
   }
 
-  /** Your level and progress to the next (ADR-0032). */
-  private levelBlock(xp: number): string {
-    const { level, into, span } = levelProgress(xp);
-    return `<div class="level-row"><span class="level-num">Level ${level}</span><span>${into.toLocaleString()} / ${span.toLocaleString()} XP to level ${level + 1}</span></div>
-        <div class="level-bar"><div style="width:${((into / span) * 100).toFixed(1)}%"></div></div>
-        <div class="level-hint">Earn XP in online matches: kills, assists, finishing and winning.</div>`;
+  /** The radio can move through this screen (ADR-0068); not while mapping buttons or calibrating. */
+  get navigable(): boolean {
+    return this.visible && this.top !== 'controller' && this.top !== 'buttons';
   }
 
-  /** Account: sign in with Discord or Google, your pilot name, sign out (ADR-0030, ADR-0031). */
-  private renderAccount(): void {
-    const a = this.account;
-    const signedIn = a.status === 'signed-in';
-    const via = a.user?.provider === 'google' ? 'Google' : a.user?.provider === 'discord' ? 'Discord' : 'your account';
-    this.root.innerHTML = `
-      <div class="panel account">
-        <div class="panel-head"><span class="kicker">Account</span><h2>${signedIn ? 'Signed in' : 'Sign in'}</h2></div>
-        <p class="calib-body">${
-          signedIn
-            ? `Signed in with <b>${via}</b> as <b>${escapeHtml(a.user?.label ?? '')}</b>. Your pilot name and drones follow you to any device.`
-            : 'Optional. Playing never needs an account; signing in keeps your pilot name and drones on every device, and later your progress.'
-        }</p>
-        ${
-          signedIn
-            ? ''
-            : `<div class="signin-buttons">
-          ${a.providers.includes('discord') ? `<button class="btn signin discord" data-signin="discord" ${a.status === 'loading' ? 'disabled' : ''}>Sign in with Discord</button>` : ''}
-          ${a.providers.includes('google') ? `<button class="btn signin google" data-signin="google" ${a.status === 'loading' ? 'disabled' : ''}>${GOOGLE_G}<span>Sign in with Google</span></button>` : ''}
-        </div>`
-        }
-        ${signedIn && a.xp !== null ? this.levelBlock(a.xp) : ''}
-        <label class="field">Pilot name <input type="text" maxlength="${NAME_MAX}" placeholder="your callsign" value="${escapeHtml(a.profile.name)}" data-pilot-name autocomplete="off" spellcheck="false"></label>
-        <div class="join-status warn">${a.error ? escapeHtml(a.error) : ''}</div>
-        <div class="actions">
-          ${signedIn ? '<button class="btn ghost" data-signout>Sign out</button>' : ''}
-          <button class="btn" data-done>Done</button>
-        </div>
-      </div>`;
-    this.root.querySelectorAll<HTMLButtonElement>('[data-signin]').forEach((b) =>
-      b.addEventListener('click', () => {
-        b.disabled = true;
-        b.textContent = 'Opening…';
-        void a.signIn(b.dataset.signin === 'google' ? 'google' : 'discord');
-      }),
-    );
-    this.root.querySelector('[data-signout]')?.addEventListener('click', () => void a.signOut());
-    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show(this.home));
-    const name = this.root.querySelector<HTMLInputElement>('[data-pilot-name]');
-    name?.addEventListener('input', () => {
-      const clean = cleanPilotName(name.value);
-      if (clean !== name.value.trim()) name.value = clean;
-      a.update({ name: clean });
-    });
-  }
-
-  /** Play: pick drone and map, then fly solo, create a room, or type a friend's two-digit code. */
-  private renderPlay(): void {
-    const busy = this.net.status === 'connecting' || this.net.status === 'reconnecting';
-    this.root.innerHTML = `
-      <div class="panel play">
-        <div class="panel-head"><span class="kicker">Play</span><h2>Pick and go</h2></div>
-        <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
-        <button class="btn ghost" data-map>Map: ${MAP_NAMES[this.settings.map]} ▸</button>
-        <div class="play-modes">
-          <button class="btn big" data-solo>Solo</button>
-          <button class="btn big ghost" data-create ${busy ? 'disabled' : ''}>Create room</button>
-        </div>
-        <div class="divider">or join a friend</div>
-        <div class="code-boxes">
-          <input maxlength="1" inputmode="numeric" autocomplete="off" aria-label="First digit" data-digit="0">
-          <input maxlength="1" inputmode="numeric" autocomplete="off" aria-label="Second digit" data-digit="1">
-        </div>
-        <div class="join-status" data-join-status></div>
-        <div class="actions"><button class="btn ghost" data-back>Back</button></div>
-      </div>`;
-    this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
-    this.root.querySelector('[data-map]')?.addEventListener('click', () => {
-      this.nextMap();
-      this.renderPlay();
-      this.root.querySelector<HTMLElement>('[data-map]')?.focus();
-    });
-    this.root.querySelector('[data-solo]')?.addEventListener('click', () => this.fly());
-    // Create room: pick the match settings first (ADR-0046).
-    this.root.querySelector('[data-create]')?.addEventListener('click', () => this.show('rules'));
-    this.root.querySelector('[data-back]')?.addEventListener('click', () => this.show('main'));
-
-    // Two digit boxes: typing moves along, the second digit joins straight away.
-    const boxes = [...this.root.querySelectorAll<HTMLInputElement>('[data-digit]')];
-    const [first, second] = boxes;
-    if (!first || !second) return;
-    const tryJoin = () => {
-      const code = boxes.map((b) => b.value).join('');
-      if (code.length !== 2) return;
-      this.joining = code;
-      this.net.joinRoom(code);
-      this.updateJoinStatus(`Looking for room ${code}…`);
-    };
-    boxes.forEach((box, i) => {
-      box.addEventListener('input', () => {
-        const digits = box.value.replace(/[^0-9]/g, '');
-        // Pasting "17" into a box fills both.
-        if (digits.length > 1 && i === 0) {
-          first.value = digits[0]!;
-          second.value = digits[1]!;
-        } else {
-          box.value = digits.slice(-1);
-        }
-        if (box.value && i === 0) second.focus();
-        tryJoin();
-      });
-      box.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' && !box.value && i === 1) first.focus();
-      });
-    });
-    first.focus();
-    this.updateJoinStatus();
+  tick(): void {
+    if (!this.visible) return;
+    this.screens[this.top].tick?.();
   }
 
   /** Join a room by code (invite links): Play screen, then straight in. */
   joinCode(code: string): void {
     this.show('play');
-    this.joining = code.replace(/[^0-9]/g, '').slice(0, 2);
-    this.net.joinRoom(this.joining);
-    this.updateJoinStatus(`Looking for room ${this.joining}…`);
-  }
-
-  /** The code being joined from the Play screen, for its status line. */
-  private joining: string | null = null;
-
-  private updateJoinStatus(text?: string): void {
-    const el = this.root.querySelector('[data-join-status]');
-    if (!el) return;
-    const net = this.net;
-    let msg = text ?? '';
-    let warn = false;
-    if (!text && net.status === 'error' && net.error) {
-      msg = this.joining ? `No room ${this.joining}. Check the code with your friend.` : net.error;
-      warn = true;
-      // Clear the boxes for another try.
-      this.root.querySelectorAll<HTMLInputElement>('[data-digit]').forEach((b) => (b.value = ''));
-      this.root.querySelector<HTMLInputElement>('[data-digit="0"]')?.focus();
-    } else if (!text && (net.status === 'connecting' || net.status === 'reconnecting')) {
-      msg = this.joining ? `Looking for room ${this.joining}…` : 'Connecting…';
-    }
-    el.textContent = msg;
-    el.classList.toggle('warn', warn);
-  }
-
-  private updateControllerStatus(): void {
-    const el = this.root.querySelector('[data-status]');
-    if (!el) return;
-    const pads = this.input.listGamepads();
-    const ready = pads.find((p) => p.kind === 'saved') ?? pads.find((p) => p.kind !== 'none');
-    const text = ready
-      ? `✓ ${ready.id}${ready.kind === 'guessed' ? ' (guessed layout: check it in Controller setup)' : ''}`
-      : pads[0]
-        ? `New controller found: set it up in Settings → Controller setup (${pads[0].id})`
-        : this.input.touchActive
-          ? '✓ Touch controls. A Bluetooth gamepad works too.'
-          : 'No controller: keyboard mode. Plug in your radio and move a stick.';
-    if (el.textContent !== text) {
-      el.textContent = text;
-      el.classList.toggle('warn', !ready && !this.input.touchActive);
-    }
-  }
-
-  /** The room you're in: its code to share, map and pilots, and Start. */
-  /**
-   * The pre-match menu (ADR-0047): the room code, the rules, everyone in the room (by team in Teams) with
-   * their drone, level and Ready; pick a team, ready up, change your loadout; the host starts the match.
-   * You can fly around (no damage) while you wait.
-   */
-  private renderRoom(): void {
-    const net = this.net;
-    if (!net.online || !net.room) {
-      this.show('play');
-      return;
-    }
-    const m = net.match;
-    const teams = m?.options.mode === 'teams';
-    const me = net.me;
-    const playing = m?.phase === 'playing';
-    const players = m?.players ?? [];
-    const row = (p: (typeof players)[number]) => `
-      <li class="pm-row ${p.id === net.you ? 'me' : ''}">
-        <span class="pm-dot" style="background:${pilotColor(p.team)}"></span>
-        <span class="pm-name">${escapeHtml(pilotLabel(p))}${p.bot ? ' <em>bot</em>' : ''}${p.id === net.you ? ' <em>you</em>' : ''}${p.id === m?.host ? ' <em class="host">host</em>' : ''}</span>
-        <span class="pm-drone"><span class="pm-icon">${BODY_ICONS[p.drone]}</span>${escapeHtml(droneClass(p.drone).name)}</span>
-        <span class="pm-level">${p.level ? `Lv ${p.level}` : ''}</span>
-        <span class="pm-ready ${p.ready || p.bot ? 'on' : ''}">${p.ready || p.bot ? '✓ Ready' : '…'}</span>
-      </li>`;
-    const list = teams
-      ? `<div class="pm-teams">${([0, 1] as const)
-          .map((side) => {
-            const mine = players.filter((p) => p.side === side);
-            return `<div class="pm-team side-${side}">
-              <div class="pm-team-head"><span>${TEAM_NAMES[side]} team · ${mine.length}</span>${me?.side !== side && !playing ? `<button class="btn ghost small" data-side="${side}">Join ${TEAM_NAMES[side]}</button>` : ''}</div>
-              <ul class="pm-list">${mine.map(row).join('') || '<li class="pm-empty">Nobody yet</li>'}</ul>
-            </div>`;
-          })
-          .join('')}</div>`
-      : `<ul class="pm-list">${players.map(row).join('')}</ul>`;
-    const sides = new Set(players.map((p) => p.side));
-    const canStart = !playing && players.length >= 2 && (!teams || sides.size === 2);
-    const why = players.length < 2 ? 'Waiting for another pilot, or add a bot' : teams && sides.size < 2 ? 'Both teams need a pilot' : '';
-    const host = players.find((p) => p.id === m?.host);
-    const found = this.joining === net.room;
-    this.root.innerHTML = `
-      <div class="panel online prematch">
-        <div class="panel-head"><span class="kicker">${playing ? 'Match in progress' : 'Pre-match'}</span><h2>Room ${net.room} · ${net.map ? MAP_NAMES[net.map] : ''}</h2></div>
-        <div class="pm-top">
-          <div class="room-code">${net.room}</div>
-          <div>
-            <div class="room-hint">${found ? 'you\'re in' : 'read this code to your friends'} · up to ${NET.maxPlayersPerRoom} pilots</div>
-            <div class="room-rules">${teams ? 'Teams' : 'Free-for-all'} · ${this.rulesSummary(m?.options)}</div>
-          </div>
-        </div>
-        ${list}
-        <div class="pm-buttons">
-          <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
-          <button class="btn ghost" data-rules>Room settings ▸</button>
-          ${net.isHost ? `<button class="btn ghost" data-bot="add" ${players.length >= NET.maxPlayersPerRoom ? 'disabled' : ''}>+ Bot</button>${players.some((p) => p.bot) ? '<button class="btn ghost" data-bot="remove">− Bot</button>' : ''}` : ''}
-        </div>
-        <div class="actions pm-actions">
-          <span class="pm-minor">
-            <button class="btn ghost small" data-copy>Copy invite</button>
-            <button class="btn ghost small" data-leave>Leave room</button>
-          </span>
-          ${
-            playing
-              ? '<button class="btn big" data-fly>Join the match</button>'
-              : `<button class="btn ghost" data-fly>Fly around</button>${
-                  net.isHost
-                    ? `<button class="btn big" data-start ${canStart ? '' : 'disabled'} title="${why}">Start match</button>`
-                    : `<button class="btn big ${me?.ready ? '' : 'ghost'}" data-ready>${me?.ready ? '✓ Ready' : 'Ready'}</button>`
-                }`
-          }
-        </div>
-        ${!playing && !net.isHost ? `<div class="pm-wait">Waiting for ${escapeHtml(host ? pilotLabel(host) : 'the host')} to start</div>` : ''}
-        ${!playing && net.isHost && !canStart ? `<div class="join-status">${why}</div>` : ''}
-      </div>`;
-    this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.fly());
-    this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
-    this.root.querySelector('[data-rules]')?.addEventListener('click', () => this.show('rules'));
-    this.root.querySelector('[data-ready]')?.addEventListener('click', () => net.sendReady(!me?.ready));
-    this.root.querySelector('[data-start]')?.addEventListener('click', () => net.sendStart());
-    this.root.querySelectorAll<HTMLButtonElement>('[data-bot]').forEach((b) => b.addEventListener('click', () => net.sendBot(b.dataset.bot === 'add')));
-    this.root.querySelectorAll<HTMLButtonElement>('[data-side]').forEach((b) => b.addEventListener('click', () => net.sendSide(b.dataset.side === '1' ? 1 : 0)));
-    this.root.querySelector('[data-leave]')?.addEventListener('click', () => {
-      this.flying = false;
-      this.joining = null;
-      this.callbacks.onLeaveGame();
-      this.show('play');
-    });
-    this.root.querySelector<HTMLButtonElement>('[data-copy]')?.addEventListener('click', (e) => {
-      const btn = e.currentTarget as HTMLButtonElement;
-      const link = `${location.origin}${location.pathname}?room=${net.room}`;
-      navigator.clipboard?.writeText(link).then(
-        () => (btn.textContent = 'Copied ✓'),
-        () => (btn.textContent = link),
-      );
-    });
-  }
-
-  /** One line about a room's rules, for the room screen. */
-  private rulesSummary(o: RoomOptions | undefined): string {
-    if (!o) return '';
-    const parts = [`First to ${o.killsToWin}`, o.timeLimitMin ? `${o.timeLimitMin} min` : 'no time limit'];
-    if (o.bodies.length < DRONE_ORDER.length) parts.push(o.bodies.map((b) => droneClass(b).name).join(', ') + ' only');
-    if (o.weapons.length < WEAPON_ORDER.length) parts.push(`${o.weapons.length} weapons`);
-    if (o.assist === 'acro') parts.push('Acro only');
-    return escapeHtml(parts.join(' · '));
-  }
-
-  /**
-   * Room settings (ADR-0046): when creating a room, and from the pause menu or room screen in one. The host
-   * edits (Apply restarts the match); everyone else sees the rules.
-   */
-  private renderRules(): void {
-    const d = this.rulesDraft ?? defaultRoomOptions(this.settings.map);
-    const creating = !this.net.online;
-    const canEdit = creating || this.net.isHost;
-    const dis = canEdit ? '' : 'disabled';
-    const seg = (key: string, items: readonly (readonly [string | number, string])[], current: string | number) =>
-      `<div class="seg-choice" data-rseg="${key}">${items.map(([v, l]) => `<button type="button" ${dis} data-value="${v}" class="${String(v) === String(current) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-    const chips = (key: 'bodies' | 'weapons' | 'specials', ids: readonly string[], on: readonly string[], label: (id: string) => string, icon: (id: string) => string) =>
-      `<div class="rule-chips" data-rchips="${key}">${ids.map((id) => `<button type="button" ${dis} class="rule-chip ${on.includes(id) ? 'on' : ''}" data-id="${id}"><span class="rule-chip-icon">${icon(id)}</span>${escapeHtml(label(id))}</button>`).join('')}</div>`;
-    const hostName = this.net.match?.players.find((p) => p.id === this.net.match?.host);
-    this.root.innerHTML = `
-      <div class="panel rules">
-        <div class="panel-head"><span class="kicker">${creating ? 'Create room' : `Room ${this.net.room}`}</span><h2>Room settings</h2></div>
-        ${canEdit ? '' : `<p class="hint">Only the room's host${hostName ? ` (${escapeHtml(pilotLabel(hostName))})` : ''} can change these.</p>`}
-        <div class="calib-sub">Mode</div>
-        ${seg('mode', [['ffa', 'Free-for-all'], ['teams', 'Teams (Orange vs Lime)']], d.mode)}
-        <div class="calib-sub">Map</div>
-        ${seg('map', MAP_ORDER.filter((m) => m !== 'training').map((m) => [m, MAP_NAMES[m]] as const), d.map)}
-        <div class="rules-row">
-          <div><div class="calib-sub">Kills to win</div>${seg('killsToWin', KILL_LIMITS.map((k) => [k, String(k)] as const), d.killsToWin)}</div>
-          <div><div class="calib-sub">Time limit</div>${seg('timeLimitMin', TIME_LIMITS.map((t) => [t, t ? `${t} min` : 'Off'] as const), d.timeLimitMin)}</div>
-        </div>
-        <div class="calib-sub">Flight assist</div>
-        ${seg('assist', [['any', 'Any'], ['acro', 'Acro only']], d.assist)}
-        <div class="calib-sub">Drones</div>
-        ${chips('bodies', DRONE_ORDER, d.bodies, (id) => droneClass(id as DroneClassId).name, (id) => BODY_ICONS[id as DroneClassId])}
-        <div class="calib-sub">Weapons</div>
-        ${chips('weapons', WEAPON_ORDER, d.weapons, (id) => WEAPONS[id as WeaponId].name, (id) => WEAPON_ICONS[id as WeaponId])}
-        <div class="calib-sub">Specials</div>
-        ${chips('specials', SPECIAL_ORDER, d.specials, (id) => SPECIALS[id as SpecialId].name, (id) => SPECIAL_ICONS[id as SpecialId])}
-        <p class="hint">Builds that break the rules are swapped for the nearest allowed one.${creating ? '' : ' Applying restarts the match.'}</p>
-        <div class="join-status" data-join-status></div>
-        <div class="actions">
-          <button class="btn ghost" data-back>Back</button>
-          ${canEdit ? `<button class="btn big" data-apply>${creating ? 'Create room' : 'Apply'}</button>` : ''}
-        </div>
-      </div>`;
-    this.root.querySelectorAll<HTMLElement>('[data-rseg]').forEach((group) =>
-      group.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
-        b.addEventListener('click', () => {
-          const key = group.dataset.rseg!;
-          const v = b.dataset.value ?? '';
-          if (key === 'mode') d.mode = v === 'teams' ? 'teams' : 'ffa';
-          else if (key === 'map') d.map = v as MapId;
-          else if (key === 'killsToWin') d.killsToWin = Number(v);
-          else if (key === 'timeLimitMin') d.timeLimitMin = Number(v);
-          else if (key === 'assist') d.assist = v === 'acro' ? 'acro' : 'any';
-          group.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
-        }),
-      ),
-    );
-    this.root.querySelectorAll<HTMLElement>('[data-rchips]').forEach((group) =>
-      group.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
-        b.addEventListener('click', () => {
-          const key = group.dataset.rchips as 'bodies' | 'weapons' | 'specials';
-          const list = d[key] as string[];
-          const id = b.dataset.id!;
-          const i = list.indexOf(id);
-          // Pilots need at least one drone and one weapon.
-          if (i >= 0 && key !== 'specials' && list.length === 1) return;
-          if (i >= 0) list.splice(i, 1);
-          else list.push(id);
-          b.classList.toggle('on', i < 0);
-        }),
-      ),
-    );
-    this.root.querySelector('[data-back]')?.addEventListener('click', () => this.show(this.rulesReturn));
-    this.root.querySelector('[data-apply]')?.addEventListener('click', () => {
-      const options = cleanRoomOptions(d, d.map);
-      if (creating) {
-        this.settings.roomOptions = options;
-        this.settings.map = options.map;
-        saveSettings(this.settings);
-        this.callbacks.onMapChanged();
-        this.joining = null;
-        this.net.createRoom(options.map, options);
-        this.show('play');
-        this.updateJoinStatus('Creating a room…');
-      } else {
-        this.net.sendOptions(options);
-        this.show(this.rulesReturn);
-      }
-    });
-  }
-
-  /**
-   * Touch controls (ADR-0044): on a touch device it replaces Controller setup. Sticks, flight assist, the four
-   * ways to fire, and how the controls look. Saved per device.
-   */
-  private renderTouch(): void {
-    const s = this.settings;
-    const t = s.touch;
-    const check = (key: keyof TouchSettings, label: string, hint = '') =>
-      `<label class="field check"><input type="checkbox" data-tcheck="${key}" ${t[key] ? 'checked' : ''}> ${label}${hint ? ` <span class="hint">${hint}</span>` : ''}</label>`;
-    const slider = (key: 'stickSize' | 'sensitivity' | 'opacity' | 'buttonSize', label: string, min: number, max: number) =>
-      `<label class="field">${label} <input type="range" min="${min}" max="${max}" step="0.05" value="${t[key]}" data-tslider="${key}"><span>${Math.round(t[key] * 100)}%</span></label>`;
-    const seg = (name: string, options: readonly [string, string][], current: string) =>
-      `<div class="seg-choice" data-seg="${name}">${options.map(([v, l]) => `<button type="button" data-value="${v}" class="${v === current ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-    this.root.innerHTML = `
-      <div class="panel touch-settings">
-        <div class="panel-head"><span class="kicker">Settings</span><h2>Touch controls</h2></div>
-        <div class="touch-grid">
-          <div>
-            <div class="calib-sub">Sticks</div>
-            ${seg('sticks', [['floating', 'Floating'], ['fixed', 'Fixed']], t.sticks)}
-            ${slider('stickSize', 'Stick size', 0.6, 1.6)}
-            ${slider('sensitivity', 'Sensitivity', 0.6, 1.6)}
-            ${check('swap', 'Swap sides (aim with your left thumb)')}
-            <div class="calib-sub">Flight</div>
-            ${seg('assist', [['acro', 'Acro'], ['horizon', 'Horizon'], ['angle', 'Angle']], s.flightAssist)}
-          </div>
-          <div>
-            <div class="calib-sub">Firing</div>
-            ${check('cornerTriggers', 'Corner Fire trigger', 'top right, for your index finger')}
-            ${check('secondFingerFire', 'Second finger fires', 'anywhere on the aiming side')}
-            ${check('autoFire', 'Auto-fire on target', 'guns fire while the lead circle is on someone')}
-            ${check('triggerLock', 'Trigger lock', 'tap Fire to keep firing')}
-            <div class="calib-sub">Look</div>
-            ${slider('opacity', 'Control opacity', 0.2, 1)}
-            ${slider('buttonSize', 'Button size', 0.6, 1.6)}
-          </div>
-        </div>
-        <p class="hint">Double-tap the left side to switch weapons. Saved on this device.</p>
-        <div class="actions">
-          <button class="btn ghost" data-tedit>Edit layout</button>
-          <button class="btn ghost" data-treset>Reset</button>
-          <button class="btn" data-done>Done</button>
-        </div>
-      </div>`;
-    this.root.querySelectorAll<HTMLInputElement>('[data-tcheck]').forEach((el) =>
-      el.addEventListener('change', () => {
-        const key = el.dataset.tcheck as 'swap' | 'cornerTriggers' | 'secondFingerFire' | 'autoFire' | 'triggerLock';
-        t[key] = el.checked;
-        this.commit();
-      }),
-    );
-    this.root.querySelectorAll<HTMLInputElement>('[data-tslider]').forEach((el) =>
-      el.addEventListener('input', () => {
-        const key = el.dataset.tslider as 'stickSize' | 'sensitivity' | 'opacity' | 'buttonSize';
-        t[key] = Number(el.value);
-        const label = el.nextElementSibling;
-        if (label) label.textContent = `${Math.round(t[key] * 100)}%`;
-        this.commit();
-      }),
-    );
-    this.root.querySelectorAll<HTMLElement>('[data-seg]').forEach((group) =>
-      group.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
-        b.addEventListener('click', () => {
-          const v = b.dataset.value ?? '';
-          if (group.dataset.seg === 'sticks') t.sticks = v === 'fixed' ? 'fixed' : 'floating';
-          else s.flightAssist = v as Settings['flightAssist'];
-          group.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
-          this.commit();
-        }),
-      ),
-    );
-    this.root.querySelector('[data-tedit]')?.addEventListener('click', () => {
-      this.hide();
-      this.callbacks.onEditTouchLayout();
-    });
-    this.root.querySelector('[data-treset]')?.addEventListener('click', () => {
-      s.touch = { ...DEFAULT_TOUCH, layout: s.touch.layout };
-      this.commit();
-      this.renderTouch();
-    });
-    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show(this.touchReturn));
+    this.play.join(code.replace(/[^0-9]/g, '').slice(0, 2));
   }
 
   private commit(): void {
     saveSettings(this.settings);
     this.callbacks.onSettingsChanged();
   }
-}
-
-/** Google's "G" mark, as their sign-in branding guidelines specify for a "Sign in with Google" button. */
-const GOOGLE_G = `<svg class="signin-logo" viewBox="0 0 48 48" aria-hidden="true">
-  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-</svg>`;
-
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
