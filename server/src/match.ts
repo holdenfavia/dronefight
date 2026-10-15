@@ -1,10 +1,9 @@
 import { getMap, pickSpawn, type MapDef, type MapId } from '../../shared/maps/index.js';
-import { SMOKE } from '../../shared/abilities.js';
 import { MISSILE, MISSILE_MAX_AGE, missileImpact, refillPod, splashDamage } from '../../shared/missile.js';
 import { COMBAT } from '../../shared/combat.js';
 import { DEFAULT_DRONE, droneClass, type DroneClassId } from '../../shared/drones.js';
-import { cleanLoadout, count, defaultLoadout, launchers, missilePods, type Loadout } from '../../shared/loadout.js';
-import { SHIELD } from '../../shared/specials.js';
+import { cleanLoadout, count, defaultLoadout, launchers, loadoutKey, missilePods, type Loadout } from '../../shared/loadout.js';
+import { SHIELD, SMOKE } from '../../shared/specials.js';
 import { WEAPONS, type WeaponId } from '../../shared/weapons.js';
 import { cleanRoomOptions, restrictLoadout, type RoomOptions, type Side } from '../../shared/roomOptions.js';
 import type { DroneLook } from '../../shared/cosmetics.js';
@@ -50,9 +49,7 @@ interface HistoryEntry {
 interface Pilot {
   id: string;
   team: number;
-  /** Current class, and the one to switch to at next respawn (ADR-0013). */
   /** Body and full loadout (ADR-0033), and the one to switch to at next respawn. */
-  drone: DroneClassId;
   loadout: Loadout;
   pendingLoadout: Loadout | null;
   score: number;
@@ -204,7 +201,7 @@ export class Match {
     else {
       for (const p of this.pilots.values()) {
         applyPending(p);
-        p.hp = droneClass(p.drone).maxHp;
+        p.hp = droneClass(p.loadout.body).maxHp;
       }
       this.broadcastState();
     }
@@ -221,7 +218,6 @@ export class Match {
     this.pilots.set(id, {
       id,
       team,
-      drone: loadout.body,
       loadout,
       pendingLoadout: null,
       score: 0,
@@ -271,7 +267,7 @@ export class Match {
       for (const p of this.pilots.values()) {
         p.score = 0;
         applyPending(p);
-        p.hp = droneClass(p.drone).maxHp;
+        p.hp = droneClass(p.loadout.body).maxHp;
         p.alive = true;
         p.respawnAt = null;
       }
@@ -378,7 +374,7 @@ export class Match {
     if (!pilot) return;
     // Only what the room allows (ADR-0046).
     const loadout = restrictLoadout(asLoadout(choice), this.options);
-    if (sameLoadout(pilot.loadout, loadout)) {
+    if (loadoutKey(pilot.loadout) === loadoutKey(loadout)) {
       pilot.pendingLoadout = null;
       return;
     }
@@ -386,7 +382,7 @@ export class Match {
     pilot.pendingLoadout = loadout;
     if (this.phase !== 'playing') {
       applyPending(pilot);
-      pilot.hp = droneClass(pilot.drone).maxHp;
+      pilot.hp = droneClass(pilot.loadout.body).maxHp;
     }
     this.broadcastState();
   }
@@ -702,7 +698,7 @@ export class Match {
       players: [...this.pilots.values()].map((p) => ({
         id: p.id,
         team: p.team,
-        drone: p.drone,
+        drone: p.loadout.body,
         loadout: p.loadout,
         ...(p.shieldUntil > this.now && p.shieldHp > 0 ? { shielded: true } : {}),
         score: p.score,
@@ -710,7 +706,7 @@ export class Match {
         alive: p.alive,
         protected: p.protectedUntil > this.now,
         ...(p.level !== null ? { level: p.level } : {}),
-        ...(p.looks ? { look: p.looks[p.drone] } : {}),
+        ...(p.looks ? { look: p.looks[p.loadout.body] } : {}),
         ...(p.name ? { name: p.name } : {}),
         ...(this.teams ? { side: p.side } : {}),
         ...(p.ready ? { ready: true } : {}),
@@ -745,7 +741,7 @@ export class Match {
           const pos = sampleHistory(target.history, targetTime);
           if (!pos) continue;
           const miss = segmentPointDistance(ax, ay, az, bx, by, bz, pos[0], pos[1], pos[2]);
-          if (miss <= droneClass(target.drone).hitRadius) {
+          if (miss <= droneClass(target.loadout.body).hitRadius) {
             this.hit(b.shooter, b.damage, target, now);
             done = true;
             break;
@@ -879,7 +875,7 @@ export class Match {
     pilot.shieldUntil = 0;
     pilot.shieldHp = 0;
     pilot.alive = true;
-    pilot.hp = droneClass(pilot.drone).maxHp;
+    pilot.hp = droneClass(pilot.loadout.body).maxHp;
     pilot.respawnAt = null;
     pilot.protectedUntil = now + COMBAT.spawnProtectionMs;
     pilot.lastDamagedBy = null;
@@ -921,7 +917,7 @@ export class Match {
       p.score = 0;
       p.ready = false;
       applyPending(p);
-      p.hp = droneClass(p.drone).maxHp;
+      p.hp = droneClass(p.loadout.body).maxHp;
       p.alive = true;
       p.respawnAt = null;
       p.protectedUntil = now;
@@ -976,20 +972,15 @@ function asLoadout(choice: Loadout | DroneClassId): Loadout {
   return typeof choice === 'string' ? defaultLoadout(choice) : cleanLoadout(choice);
 }
 
-function sameLoadout(a: Loadout, b: Loadout): boolean {
-  return a.body === b.body && a.special === b.special && a.weapons.join() === b.weapons.join();
-}
-
 /** Missiles a loadout's pods hold: 3 per pod (ADR-0033). */
 function podSize(l: Loadout): number {
   return MISSILE.pod * missilePods(l);
 }
 
 /** Switch to the pending loadout, if any (keeping no more missiles than the new pods hold). */
-function applyPending(p: { loadout: Loadout; drone: DroneClassId; pendingLoadout: Loadout | null; missiles: number; ammo: Map<WeaponId, unknown> }): void {
+function applyPending(p: { loadout: Loadout; pendingLoadout: Loadout | null; missiles: number; ammo: Map<WeaponId, unknown> }): void {
   if (!p.pendingLoadout) return;
   p.loadout = p.pendingLoadout;
-  p.drone = p.loadout.body;
   p.pendingLoadout = null;
   p.missiles = Math.min(p.missiles, podSize(p.loadout));
   p.ammo.clear();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SMOKE } from '../../shared/abilities.js';
+import { SMOKE } from '../../shared/specials.js';
 import { launchMissile, MISSILE, MISSILE_MAX_AGE, quatRotate, stepMissile, type MissileInput, type MissileState } from '../../shared/missile.js';
 import { COMBAT } from '../../shared/combat.js';
 import { DRONE_CLASSES } from '../../shared/drones.js';

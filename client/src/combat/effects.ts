@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { SMOKE } from '../../../shared/abilities';
+import { SMOKE } from '../../../shared/specials';
 import { GRENADE, launchGrenade, stepGrenade, type GrenadeState } from '../../../shared/grenade';
 import { launchMissile, MISSILE, missileImpact, stepMissile, type MissileInput, type MissileState, type Vec3 } from '../../../shared/missile';
 import type { BoxCollider } from '../../../shared/raycast';

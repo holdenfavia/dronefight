@@ -3,6 +3,7 @@ import type { AudioEngine } from './audioEngine';
 import { CannonVoice } from './cannonVoice';
 import { PROPELLERS, type PropellerId } from '../../../shared/propellers';
 import { engineVoice, type EngineVoice } from './jetVoice';
+import { isWing } from '../../../shared/drones';
 
 /** A remote cannon counts as firing until this long after its last round arrived (ms). */
 const CANNON_HOLD_MS = 90;
@@ -23,7 +24,7 @@ export class RemoteAudio {
     const seen = new Set<string>();
     for (const view of views) {
       seen.add(view.id);
-      const wing = view.droneClass === 'wing';
+      const wing = isWing(view.droneClass);
       let entry = this.voices.get(view.id);
       if (entry && (entry.wing !== wing || entry.propeller !== view.propeller)) {
         // They switched body or engine (ADR-0013, ADR-0038): swap to the matching sound.

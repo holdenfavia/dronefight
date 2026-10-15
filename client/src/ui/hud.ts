@@ -385,7 +385,7 @@ function restartAnimation(el: HTMLElement, cls: string): void {
 
 /** 3D quads arm with the throttle centered (ADR-0013); everything else with it down. */
 function armHint(drone: Drone, blocked: boolean): string {
-  const center = drone.classId === 'quad3d';
+  const center = drone.restingThrottle > 0;
   if (blocked) return center ? 'CENTER THROTTLE TO ARM' : 'LOWER THROTTLE TO ARM';
   return center ? 'DISARMED · throttle to center to arm' : 'DISARMED · throttle down to arm';
 }

@@ -28,9 +28,8 @@ import { LoadoutPreview } from './render/loadoutPreview';
 import { Trails } from './render/trails';
 import { COMBAT, pilotColor, pilotName } from '../../shared/combat';
 import { pilotLabel } from '../../shared/roomOptions';
-import { droneClass } from '../../shared/drones';
+import { droneClass, isWing } from '../../shared/drones';
 import { BoundaryGrid } from './world/boundaryGrid';
-import { WING } from './sim/wingModel';
 import { currentLoadout, loadSettings, saveSettings } from './settings';
 import type { Loadout } from '../../shared/loadout';
 import { Drone } from './sim/drone';
@@ -103,7 +102,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     Object.assign(window, { dronefight: { renderer, world, drone, settings, physics, get net() { return net; }, get audio() { return audio; }, get remotes() { return remotes; }, get training() { return training; }, get combatEffects() { return combatEffects; }, get props() { return props; }, get combat() { return combat; }, get hud() { return hud; }, get account() { return account; }, input, get touch() { return input.touch; } } });
   }
   const rig = new CameraRig(settings);
-  rig.uptiltOverride = drone.classId === 'wing' ? WING.cameraUptiltDeg : null;
+  rig.uptiltOverride = droneClass(drone.classId).cameraUptiltDeg ?? null;
   const hud = new Hud(hudRoot);
   // The same menu button for every input (keyboard, gamepad, radio): top middle, opens the pause menu.
   hud.onMenu = () => touch.onPause();
@@ -164,7 +163,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const trails = new Trails(world.scene);
   const audio = new AudioEngine();
   const sfx = new Sfx(audio);
-  let motorSound = engineVoice(audio, audio.motors, drone.classId === 'wing', PROPELLERS[drone.loadout.propeller].jet);
+  let motorSound = engineVoice(audio, audio.motors, isWing(drone.classId), PROPELLERS[drone.loadout.propeller].jet);
   const remoteAudio = new RemoteAudio(audio);
   const cannon = new CannonVoice(audio, audio.sfx, 0.8);
   // Every menu button clicks.
@@ -314,7 +313,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
 
   /** The camera tilt in use: wings have their own (ADR-0013), quads use the setting. */
   function uptiltDeg(): number {
-    return drone.classId === 'wing' ? WING.cameraUptiltDeg : settings.camera.uptiltDeg;
+    return droneClass(drone.classId).cameraUptiltDeg ?? settings.camera.uptiltDeg;
   }
 
   /** Change what you're flying: flight model, collider, model and motor sound (ADR-0013). */
@@ -327,8 +326,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     droneModel.visible = settings.camera.view === 'chase';
     world.scene.add(droneModel);
     motorSound.dispose();
-    motorSound = engineVoice(audio, audio.motors, cls === 'wing', PROPELLERS[loadout.propeller].jet);
-    rig.uptiltOverride = cls === 'wing' ? WING.cameraUptiltDeg : null;
+    motorSound = engineVoice(audio, audio.motors, isWing(cls), PROPELLERS[loadout.propeller].jet);
+    rig.uptiltOverride = droneClass(cls).cameraUptiltDeg ?? null;
   }
 
   /** Load a different map: scenery, colliders, bullet walls, and a fresh spawn (ADR-0012). */
@@ -655,7 +654,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       }
       const watching = !!ridingNow || now < watchUntil;
       drone.autoHover = watching;
-      drone.hoverLook = watching && drone.classId !== 'wing' ? watchLook : null;
+      drone.hoverLook = watching && !isWing(drone.classId) ? watchLook : null;
       accumulator += frameDt;
       const simStart = performance.now();
       arenaColliders.near(drone.currPos.x, drone.currPos.z);

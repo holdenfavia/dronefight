@@ -4,7 +4,6 @@ import { DEFAULT_MAP, getMap, type MapDef, type SpawnPoint } from '../../../shar
 import { COMBAT, pilotColor } from '../../../shared/combat';
 import { droneClass } from '../../../shared/drones';
 import { guns, launchers, missilePods, type Loadout } from '../../../shared/loadout';
-import { SHIELD } from '../../../shared/specials';
 import { WEAPONS, type GunSound, type WeaponId } from '../../../shared/weapons';
 import type { MatchPlayer } from '../../../shared/protocol';
 import { buildColliders, raycastArena } from '../../../shared/raycast';
@@ -13,7 +12,7 @@ import type { NetClient } from '../net/netClient';
 import type { Tracers } from '../render/tracers';
 import type { Drone } from '../sim/drone';
 import type { CombatHudInfo, Hud } from '../ui/hud';
-import { SMOKE } from '../../../shared/abilities';
+import { SHIELD, SMOKE, SPECIALS } from '../../../shared/specials';
 import { MISSILE, quatRotate, refillPod, type MissileInput, type MissileState } from '../../../shared/missile';
 import type { Grenades, Missiles, SmokeTrails } from './effects';
 import type { PropField } from '../../../shared/props';
@@ -210,12 +209,13 @@ export class CombatClient {
     // Grenades out: Fire again sets them off (ADR-0034).
     if (launchers(l) > 0 && this.effects.grenades.out(this.myId) > 0) return { label: 'GRENADE', value: 'FIRE: DETONATE' };
     const wait = (until: number) => (until - now > 0 ? `${Math.ceil((until - now) / 1000)}s` : 'READY');
-    if (l.special === 'smoke') return { label: 'SMOKE', value: wait(this.smokeReadyAt) };
+    const label = l.special ? SPECIALS[l.special].hud : '';
+    if (l.special === 'smoke') return { label, value: wait(this.smokeReadyAt) };
     if (l.special === 'shield') {
       const up = this.net.match?.players.find((p) => p.id === this.net.you)?.shielded;
-      return { label: 'SHIELD', value: up ? 'UP' : wait(this.shieldReadyAt) };
+      return { label, value: up ? 'UP' : wait(this.shieldReadyAt) };
     }
-    if (l.special === 'afterburner') return { label: 'BURNER', value: this.drone.afterburnerActive ? 'ON' : `${Math.round(this.drone.afterburnerFuel * 100)}%` };
+    if (l.special === 'afterburner') return { label, value: this.drone.afterburnerActive ? 'ON' : `${Math.round(this.drone.afterburnerFuel * 100)}%` };
     if (missilePods(l) > 0 && guns(l).length > 0) return { label: 'WEAPON', value: 'GUNS' };
     return null;
   }

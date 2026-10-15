@@ -1,6 +1,6 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { Euler, Quaternion, Vector3 } from 'three';
-import type { DroneClassId } from '../../../shared/drones';
+import { isWing, type DroneClassId } from '../../../shared/drones';
 import type { SpawnPoint } from '../../../shared/maps';
 import { CRASH, FLIGHT_ASSIST, INPUT, SIM, type FlightAssist, type HorizonParams, type Rates } from '../config';
 import { defaultLoadout, totalKg, type Loadout } from '../../../shared/loadout';
@@ -143,7 +143,7 @@ export class Drone {
     const { rapier, world } = this.physics;
     if (this.collider) world.removeCollider(this.collider, false);
     let desc: RAPIER.ColliderDesc;
-    if (id === 'wing') {
+    if (isWing(id)) {
       const e = WING.halfExtents;
       this.horizon = undefined;
       desc = rapier.ColliderDesc.cuboid(e.x, e.y, e.z).setMass(totalKg(loadout));
@@ -158,7 +158,7 @@ export class Drone {
     }
     desc.setRestitution(0.2).setFriction(0.6);
     // The physical model turns the body with torques, so nothing may damp its rotation; the wing sets it directly.
-    this.body.setAngularDamping(id === 'wing' ? 0.3 : 0);
+    this.body.setAngularDamping(isWing(id) ? 0.3 : 0);
     this.collider = world.createCollider(desc, this.body);
   }
 
@@ -166,17 +166,21 @@ export class Drone {
   setAssist(assist: FlightAssist): void {
     if (assist === this.assist) return;
     this.assist = assist;
-    if (this.droneClass !== 'wing') this.horizon = this.physical.spec.horizon ?? (assist === 'acro' ? undefined : FLIGHT_ASSIST[assist]);
+    if (!this.isWing) this.horizon = this.physical.spec.horizon ?? (assist === 'acro' ? undefined : FLIGHT_ASSIST[assist]);
   }
 
   /** Bodies flown by the physical model (ADR-0063, ADR-0064): every quad. The wing has its own model. */
   private get isPhysical(): boolean {
-    return this.droneClass !== 'wing';
+    return !this.isWing;
+  }
+
+  private get isWing(): boolean {
+    return isWing(this.droneClass);
   }
 
   /** A reversible (3D) quad's throttle rests at center; everything else at the bottom. */
   get restingThrottle(): number {
-    return this.droneClass !== 'wing' && this.physical.spec.reversible ? 0.5 : 0;
+    return !this.isWing && this.physical.spec.reversible ? 0.5 : 0;
   }
 
   /** Respawn at a different pad (match spawns, ADR-0009). Later plain respawns use it too. */
@@ -195,7 +199,7 @@ export class Drone {
 
   respawn(): void {
     const [x, y, z] = this.spawn.pos;
-    const wing = this.droneClass === 'wing';
+    const wing = this.isWing;
     // Wings hand-launch: in the air, at flying speed, pointed along the nearest street/lane axis (ADR-0013).
     const yawDeg = wing ? Math.round(this.spawn.yawDeg / 90) * 90 : this.spawn.yawDeg;
     this.spawnRot.setFromAxisAngle(new Vector3(0, 1, 0), (yawDeg * Math.PI) / 180);
@@ -222,7 +226,7 @@ export class Drone {
 
   /** Arming rules, run once per frame. Throttle must be in its safe position to arm, like Betaflight. */
   updateArming(control: ControlState): void {
-    const reversible = this.droneClass !== 'wing' && !!this.physical.spec.reversible;
+    const reversible = !this.isWing && !!this.physical.spec.reversible;
     const throttleLow = throttleSafeToArm(control.throttle, reversible, INPUT.armThrottleMax);
     if (this.crashed) {
       this.armed = false;
@@ -251,7 +255,7 @@ export class Drone {
   handleSpecial(control: ControlState): boolean {
     const was = this.maneuverActive;
     const special = this.loadoutNow.special;
-    this.maneuverActive = special === 'maneuver' && this.droneClass === 'wing' && control.special && !this.crashed;
+    this.maneuverActive = special === 'maneuver' && this.isWing && control.special && !this.crashed;
     // Afterburner (ADR-0033): held, while there's fuel.
     this.afterburnerActive = special === 'afterburner' && control.special && this.armed && !this.crashed && this.afterburnerFuel > 0;
     return this.maneuverActive && !was;
@@ -259,7 +263,7 @@ export class Drone {
 
   /** Wing past its stall angle right now (for the HUD). */
   get stalled(): boolean {
-    return this.droneClass === 'wing' && !this.crashed && this.speed > 2 && Math.abs(this.out.alpha) > (WING.stallDeg * Math.PI) / 180;
+    return this.isWing && !this.crashed && this.speed > 2 && Math.abs(this.out.alpha) > (WING.stallDeg * Math.PI) / 180;
   }
 
   /** Before world.step(): compute and apply flight forces. */
@@ -275,7 +279,7 @@ export class Drone {
       this.state.motorOutput = 0;
       return;
     }
-    if (this.autoHover && this.armed && this.droneClass !== 'wing') {
+    if (this.autoHover && this.armed && !this.isWing) {
       this.hover();
       return;
     }
