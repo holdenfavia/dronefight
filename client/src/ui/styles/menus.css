@@ -1,0 +1,137 @@
+/* Menu overlay, start screen, Play screen, account and pause menu. */
+
+#menu {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 16px;
+  background: radial-gradient(ellipse at 50% 40%, rgba(14, 15, 16, 0.35) 0%, rgba(10, 11, 12, 0.85) 100%);
+  overflow-y: auto;
+}
+
+#menu[hidden] {
+  display: none;
+}
+
+/* Menu focus from the radio (ADR-0068): the focused control is always clear. */
+#menu.radio-nav :focus { outline: 3px solid var(--orange); outline-offset: 2px; }
+
+.title-block {
+  text-align: center;
+  position: relative;
+}
+
+.logo {
+  font-size: clamp(56px, 11vw, 132px);
+  font-weight: 900;
+  font-style: italic;
+  line-height: 0.9;
+  letter-spacing: -0.01em;
+  color: var(--paper);
+  text-shadow: 0 4px 0 var(--ink);
+}
+
+.logo span {
+  color: var(--orange);
+}
+
+.scribble {
+  font-family: var(--marker);
+  color: var(--orange);
+  font-size: 22px;
+  transform: rotate(-4deg);
+  margin-top: 6px;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.main-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, 100%);
+}
+
+.drone-blurb {
+  font-family: var(--marker);
+  font-size: 15px;
+  color: var(--orange);
+  text-align: center;
+  margin: -4px 0 2px;
+}
+
+.controller-status {
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #7ee07e;
+  overflow-wrap: anywhere;
+}
+
+.controller-status.warn {
+  color: var(--orange);
+}
+
+.keys {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--paper);
+  text-align: center;
+  text-shadow: 0 1px 2px #000;
+}
+
+/* Play screen: solo / create / two digit boxes that join on the second digit. */
+.play-modes { display: flex; gap: 10px; margin-top: 8px; }
+.play-modes .btn { flex: 1; }
+.code-boxes { display: flex; justify-content: center; gap: 12px; margin: 6px 0; }
+.code-boxes input {
+  width: 64px;
+  height: 76px;
+  font: inherit;
+  font-size: 44px;
+  font-weight: 900;
+  text-align: center;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #f4f2ee;
+}
+.code-boxes input:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255, 106, 19, 0.3); }
+.join-status { min-height: 1.4em; text-align: center; font-weight: 700; }
+.join-status.warn { color: #ff7a6a; }
+
+/* Account (ADR-0031). */
+.signin-buttons { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 12px; }
+.btn.signin.discord { background: #5865f2; color: #fff; }
+.btn.signin.google { background: #fff; color: #1f1f1f; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.signin-logo { width: 20px; height: 20px; flex: none; }
+/* After .btn (same specificity): the account button is smaller. */
+.account-btn { font-size: 13px; }
+.account input[type='text'] {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f2ee;
+}
+
+/* Level bar on the Account screen. */
+.level-row { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 4px; }
+.level-num { font-size: 28px; font-weight: 900; }
+.level-bar { height: 10px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 6px; overflow: hidden; background: rgba(255, 255, 255, 0.08); }
+.level-bar div { height: 100%; background: var(--orange, #ff6a13); }
+.level-hint { font-size: 12px; opacity: 0.7; margin-bottom: 10px; }
+
+/* Signed in: unmistakable on the start screen. After .btn.ghost (same specificity) so it wins. */
+.account-btn.signed-in { background: rgba(46, 139, 46, 0.25); border-color: #4fd14f; color: #c9f5c9; }
+.signed-in-mark { font-weight: 900; }
+
+/* Pause menu. */
+.pause-menu { display: flex; flex-direction: column; gap: 8px; min-width: 300px; }

@@ -1,0 +1,66 @@
+/* Short landscape screens (iPhone, ADR-0044): menus scroll from the top instead of clipping, and shrink. */
+@media (max-height: 520px) {
+  #menu:not(:has(.gunsmith)) { justify-content: flex-start; gap: 10px; padding: 10px 12px; }
+  #menu:not(:has(.gunsmith)) > :first-child { margin-top: auto; }
+  #menu:not(:has(.gunsmith)) > :last-child { margin-bottom: auto; }
+  .logo { font-size: clamp(36px, 9vh, 64px); }
+  .scribble { font-size: 14px; }
+  .panel { padding: 12px 14px; }
+  .btn.big { padding-top: 8px; padding-bottom: 8px; font-size: 20px; }
+  .keys { font-size: 11px; }
+
+  /* Compact Loadout (gunsmith) on short screens like iPhone landscape: the whole screen fits in one view.
+     Stats left, parts beside them (each scrolls inside its panel), drone on the right, option cards along the bottom. */
+  .gunsmith {
+    grid-template-columns: clamp(150px, 24vw, 200px) clamp(196px, 31vw, 260px) 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'head head head' 'stats slots hero' 'bar bar bar';
+    gap: 6px 10px;
+    padding: 8px 12px;
+    min-height: 0;
+    height: 100vh;
+    height: 100dvh;
+  }
+  .gs-head { gap: 10px; align-items: center; }
+  .gs-head h2 { font-size: 22px; }
+  .gs-head .kicker { font-size: 10px; }
+  .gs-head .btn { padding: 5px 16px; font-size: 16px; }
+  .gs-verdict { font-size: 10px; padding: 2px 7px; }
+  .gs-stats, .gs-slots { align-self: stretch; min-height: 0; overflow-y: auto; padding: 8px; }
+  .gs-stats { gap: 4px; }
+  .gs-stat-head { font-size: 10px; }
+  .gs-stat-bar { height: 5px; margin-top: 3px; }
+  .gs-numbers { gap: 4px; padding-top: 6px; margin-top: 0; }
+  .gs-numbers b { font-size: 13px; }
+  .gs-numbers span { font-size: 8px; }
+  .gs-slots { gap: 8px; }
+  .gs-group { gap: 4px; }
+  .gs-group h3 { font-size: 10px; padding-bottom: 2px; }
+  .gs-slot { padding: 4px 7px; gap: 8px; }
+  .gs-slot-icon { width: 30px; }
+  .gs-slot-text { font-size: 12px; }
+  .gs-slot-text small { font-size: 9px; }
+  .gs-hardpoints, .gs-paints { gap: 4px; }
+  .gs-hp { min-height: 0; padding: 3px 6px 4px; }
+  .gs-hp-num { font-size: 10px; }
+  .gs-hp-icon { width: 28px; }
+  .gs-hp-name { font-size: 10px; }
+  .gs-hp.none span { font-size: 13px; }
+  .gs-hp.none small { font-size: 8px; }
+  .gs-paint { padding: 3px 5px 4px; font-size: 10px; }
+  .gs-paint small { font-size: 8px; }
+  .gs-paint-icon { width: 28px; }
+  .gs-hero { min-height: 0; }
+  .gs-bar { margin: 0 -12px -8px; padding: 4px 12px 6px; }
+  .gs-bar-title { font-size: 11px; margin-bottom: 2px; }
+  .gs-hint { font-size: 10px; }
+  .gs-cards { gap: 8px; padding: 4px 2px 2px; }
+  .gs-card { width: 132px; padding: 6px 8px; gap: 2px; }
+  .gs-card:hover, .gs-card:focus-visible { transform: translateY(-2px); }
+  .gs-card-icon { height: 28px; }
+  .gs-card-icon svg { height: 26px; }
+  .gs-card-name { font-size: 12px; }
+  .gs-card-line { font-size: 10px; min-height: 0; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .gs-card-foot { font-size: 10px; }
+  .gs-card-foot b { font-size: 9px; }
+}

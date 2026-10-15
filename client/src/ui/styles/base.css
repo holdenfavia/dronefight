@@ -1,0 +1,35 @@
+/* ADR-0007: bold condensed all-caps UI, orange / black / white, hand-written accents. */
+:root {
+  --orange: #ff6a13;
+  --orange-dark: #d9530a;
+  --ink: #141516;
+  --paper: #f4f2ee;
+  --muted: #8a8780;
+  --ui: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+  --marker: 'Permanent Marker', 'Comic Sans MS', cursive;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #cfe4f5;
+  color: var(--paper);
+  font-family: var(--ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+}
+
+#stage canvas {
+  display: block;
+  outline: none;
+}

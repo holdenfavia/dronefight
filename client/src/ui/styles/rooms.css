@@ -1,0 +1,137 @@
+/* Online: room code, joining, room settings (ADR-0046) and the pre-match menu (ADR-0047). */
+
+.room-code {
+  font-size: 72px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-align: center;
+  margin: 6px 0 4px;
+  color: var(--orange);
+  text-shadow: 0 0 24px rgba(255, 106, 19, 0.4);
+}
+
+.room-map {
+  text-align: center;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(244, 242, 238, 0.7);
+  margin-bottom: 4px;
+}
+
+.room-hint {
+  font-family: var(--marker);
+  text-align: center;
+  color: var(--orange);
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.peer-status {
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 17px;
+  text-align: center;
+  margin: 8px 0;
+}
+
+.peer-status.ok {
+  color: #7ee07e;
+}
+
+.join-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.join-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--ui);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f2ee;
+}
+
+.divider {
+  text-align: center;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: rgba(244, 242, 238, 0.55);
+  margin: 14px 0 0;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+}
+.divider::before, .divider::after { background: rgba(255, 255, 255, 0.18); }
+
+.net-error {
+  color: #ff7a6a;
+  font-weight: 700;
+  margin-top: 10px;
+  min-height: 1em;
+}
+
+/* Room settings (ADR-0046). */
+.panel.rules { max-width: 720px; width: 100%; }
+.rules .seg-choice { flex-wrap: wrap; }
+.rules-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 16px; }
+.rule-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rule-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 4px 10px 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 242, 238, 0.45);
+  cursor: pointer;
+}
+.rule-chip.on { color: #f4f2ee; border-color: var(--orange); background: rgba(255, 106, 19, 0.16); }
+.rule-chip:disabled, .rules .seg-choice button:disabled { cursor: default; }
+.rule-chip-icon { width: 30px; display: inline-flex; }
+.rule-chip-icon svg { width: 100%; height: auto; }
+.room-rules { color: rgba(244, 242, 238, 0.75); font-size: 14px; }
+
+/* Pre-match menu (ADR-0047). */
+.panel.prematch { max-width: 760px; width: 100%; }
+.pm-top { display: flex; align-items: center; gap: 18px; }
+.pm-top .room-code { font-size: 64px; line-height: 1; }
+.pm-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.pm-team { border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; padding: 8px; }
+.pm-team.side-0 { border-top: 3px solid #ff6a13; }
+.pm-team.side-1 { border-top: 3px solid #b6f000; }
+.pm-team-head { display: flex; justify-content: space-between; align-items: center; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.pm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.pm-row { display: grid; grid-template-columns: 12px 1fr auto auto 64px; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.04); font-size: 14px; }
+.pm-row.me { background: rgba(255, 106, 19, 0.12); }
+.pm-dot { width: 12px; height: 12px; border-radius: 50%; }
+.pm-name { font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-name em { font-style: normal; font-size: 11px; opacity: 0.6; margin-left: 4px; }
+.pm-name em.host { color: var(--orange); opacity: 1; }
+.pm-drone { display: flex; align-items: center; gap: 5px; opacity: 0.8; font-size: 13px; white-space: nowrap; }
+.pm-icon { width: 26px; display: inline-flex; }
+.pm-icon svg { width: 100%; height: auto; }
+.pm-level { font-size: 12px; opacity: 0.7; }
+.pm-ready { font-size: 12px; font-weight: 800; text-transform: uppercase; opacity: 0.5; text-align: right; }
+.pm-ready.on { color: #7ee07e; opacity: 1; }
+.pm-empty { opacity: 0.5; font-size: 13px; padding: 5px 8px; }
+.pm-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.pm-wait { align-self: center; font-size: 14px; opacity: 0.75; }
+/* Pre-match: the one thing to do next stands out; invite and leave sit small on the left. */
+.pm-actions { align-items: center; }
+.pm-minor { display: flex; gap: 6px; margin-right: auto; }

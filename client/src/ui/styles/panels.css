@@ -1,0 +1,98 @@
+/* Panels, buttons and shared controls: the dark translucent look on every menu (ADR-0039). */
+
+.panel {
+  background: rgba(14, 15, 16, 0.82);
+  color: #f4f2ee;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-top: 3px solid var(--orange);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  padding: 22px 24px;
+  width: min(520px, 100%);
+}
+
+.panel h2 {
+  margin: 2px 0 12px;
+  font-size: 34px;
+  font-weight: 900;
+  text-transform: uppercase;
+  line-height: 1;
+  color: #f4f2ee;
+  letter-spacing: 0.02em;
+}
+
+.kicker {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--orange);
+}
+
+.btn {
+  font-family: var(--ui);
+  font-size: 20px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 10px 18px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--orange);
+  color: #111;
+  cursor: pointer;
+  box-shadow: none;
+  transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(255, 106, 19, 0.35); }
+.btn:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn.big {
+  font-size: 30px;
+  padding: 12px;
+}
+
+.btn.ghost { background: rgba(255, 255, 255, 0.06); color: #f4f2ee; border-color: rgba(255, 255, 255, 0.18); }
+.btn.ghost:hover:not(:disabled) { background: rgba(255, 106, 19, 0.16); border-color: var(--orange); box-shadow: none; }
+.btn.ghost.leave { color: #ff8a7a; border-color: rgba(255, 90, 70, 0.5); }
+.btn.small { padding: 4px 10px; font-size: 13px; }
+/* Second press confirms (Settings reset, ADR-0068). After .btn.ghost so it wins on ghost buttons. */
+.btn.confirm { background: #c0392b; color: #fff; border-color: #c0392b; }
+
+.actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.hint {
+  font-size: 14px;
+  color: rgba(244, 242, 238, 0.7);
+  margin: 6px 0 14px;
+}
+.body-blurb { color: rgba(244, 242, 238, 0.7); }
+
+/* Segmented choice (Settings tabs, touch options, room rules). */
+.seg-choice { display: flex; gap: 0; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 6px; overflow: hidden; }
+.seg-choice button {
+  flex: 1;
+  font: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: #f4f2ee;
+  cursor: pointer;
+}
+.seg-choice button.on { background: var(--orange); color: #111; }

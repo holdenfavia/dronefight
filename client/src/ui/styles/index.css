@@ -1,0 +1,15 @@
+/*
+ * dronefight UI styles, one file per area (ADR-0007 type and colors, ADR-0039 dark panels).
+ * Order matters: later files win over earlier ones at equal specificity (e.g. .account-btn after .btn,
+ * .account-btn.signed-in and .btn.confirm after .btn.ghost), and short-screens.css must stay last.
+ */
+@import './base.css';
+@import './hud.css';
+@import './panels.css';
+@import './menus.css';
+@import './settings.css';
+@import './calibration.css';
+@import './rooms.css';
+@import './loadout.css';
+@import './touch.css';
+@import './short-screens.css';
