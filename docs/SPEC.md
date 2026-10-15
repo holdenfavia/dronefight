@@ -65,7 +65,7 @@ A loadout = **body** + one **weapon per hardpoint** + one **special** + **propul
 
 ## Art direction (ADR-0007)
 
-- Inspired by the *feel* of Flight Division, never its assets. Bright sunny skies, soft clean light; orange / black / white; stylized-realistic, clean.
+- Inspired by the *feel* of Flight Division, never its assets. Bright sunny skies, soft clean light; orange / black / white; stylized-realistic, clean. Every day from 2:02 to 2:22 pm US Central the sky turns purple (ADR-0069).
 - Pilot colors: one per pilot, orange and lime first (ADR-0026).
 - UI: bold condensed all-caps type on dark translucent panels with orange accents, on every menu (ADR-0039).
 - Materials match what things are made of (ADR-0060). Performance beats fidelity: baked lighting, instancing, compressed textures.

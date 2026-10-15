@@ -44,6 +44,7 @@ import {
   WOOD_TILE_M,
   woodTexture,
 } from './textures';
+import { isPurpleSkyTime, PURPLE_SKY_CHECK_MS } from './purpleSky';
 
 // Art direction per ADR-0007: bright sky, clean light, orange / black / white on concrete.
 export const PALETTE = {
@@ -53,6 +54,9 @@ export const PALETTE = {
   sun: new THREE.Color('#fff4e2'),
   hemiSky: new THREE.Color('#bcdcff'),
   hemiGround: new THREE.Color('#a39580'),
+  // The daily purple sky (ADR-0069).
+  purpleZenith: new THREE.Color('#4b1d8f'),
+  purpleHorizon: new THREE.Color('#d9b8ff'),
   orange: '#ff6a13',
   steel: '#26282b',
   white: '#eeeeea',
@@ -82,6 +86,15 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
   const sky = buildSky();
   scene.add(sky);
   const sunDir = SUN_DIRECTION.clone();
+  // Flip to the purple sky and back as the clock crosses the daily window (ADR-0069).
+  let purple = isPurpleSkyTime();
+  if (purple) paintSky(sky, sunDir, purple);
+  setInterval(() => {
+    const now = isPurpleSkyTime();
+    if (now === purple) return;
+    purple = now;
+    paintSky(sky, sunDir, purple);
+  }, PURPLE_SKY_CHECK_MS);
   let scenery: THREE.Group | null = null;
   let sceneryKey = '';
 
@@ -125,7 +138,7 @@ export function buildWorld(renderer: THREE.WebGPURenderer): World {
     sun.color.set(a?.sunColor ?? PALETTE.sun);
     if (a?.sunDirection) sunDir.set(...a.sunDirection).normalize();
     else sunDir.copy(SUN_DIRECTION);
-    paintSky(sky, sunDir);
+    paintSky(sky, sunDir, purple);
     // The backdrop (mountains or a coast) for this map and sun, rebuilt only when it changes.
     const key = `${map.backdrop ?? 'mountains'}:${map.halfSize}:${sunDir.toArray().join(',')}`;
     if (key !== sceneryKey) {
@@ -282,11 +295,13 @@ function buildSky(): THREE.Mesh {
  * Sky colors for a sun direction: horizon to zenith, plus a warm glow along the horizon toward a low sun
  * (an evening over the sea, ADR-0054). A high sun gives no glow. Moves the sun disc too.
  */
-function paintSky(sky: THREE.Mesh, dir: THREE.Vector3): void {
+function paintSky(sky: THREE.Mesh, dir: THREE.Vector3, purple = false): void {
   const geo = sky.geometry;
   const pos = geo.getAttribute('position');
   const color = geo.getAttribute('color') as THREE.BufferAttribute;
   const c = new THREE.Color();
+  const horizon = purple ? PALETTE.purpleHorizon : PALETTE.skyHorizon;
+  const zenith = purple ? PALETTE.purpleZenith : PALETTE.skyZenith;
   const low = Math.max(0, 1 - dir.y / 0.6);
   const flat = Math.hypot(dir.x, dir.z) || 1;
   for (let i = 0; i < pos.count; i++) {
@@ -294,7 +309,7 @@ function paintSky(sky: THREE.Mesh, dir: THREE.Vector3): void {
     const y = pos.getY(i);
     const z = pos.getZ(i);
     const h = Math.max(0, y / 1100);
-    c.copy(PALETTE.skyHorizon).lerp(PALETTE.skyZenith, Math.pow(h, 0.55));
+    c.copy(horizon).lerp(zenith, Math.pow(h, 0.55));
     if (low > 0) {
       const toward = Math.max(0, (x * dir.x + z * dir.z) / (flat * (Math.hypot(x, z) || 1)));
       c.lerp(SUNSET_GLOW, low * Math.pow(toward, 4) * Math.pow(1 - Math.min(1, h * 1.6), 2) * 0.75);

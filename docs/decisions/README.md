@@ -10,7 +10,7 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0004](0004-netcode-latest-state-wins.md) | Netcode: latest state wins, ~100 ms interpolation, no backlog replay, server-side hits | Accepted |
 | [0005](0005-room-codes-not-matchmaking.md) | Node WebSocket server with room codes (two digits since 2026-10-01); no matchmaking | Accepted (room size superseded by 0026) |
 | [0006](0006-controller-gamepad-calibration.md) | Radios via Gamepad API behind a mapping/calibration layer | Accepted |
-| [0007](0007-art-direction.md) | Art direction: bright industrial, orange/black/white, inspired by Flight Division's feel only | Accepted (Playground exception: 0019; menu style: 0039) |
+| [0007](0007-art-direction.md) | Art direction: bright industrial, orange/black/white, inspired by Flight Division's feel only | Accepted (Playground exception: 0019; menu style: 0039; daily purple sky: 0069) |
 | [0008](0008-rapier-integrates-flight-forces.md) | Custom flight model computes forces; Rapier applies all forces (incl. real gravity) and integrates motion | Accepted |
 | [0009](0009-combat-rules.md) | Combat: tracer rounds, 100 HP, server-decided hits with limited lag compensation, crash = death, first to 5; lime second color | Accepted (amended by 0011, 0012, 0013, 0033; free-for-all and first to 10: 0026) |
 | [0010](0010-procedural-audio.md) | Procedural audio (Web Audio): throttle-following motors, positional other pilots, synthesized effects; no audio files | Accepted |
@@ -68,3 +68,4 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0062](0062-flight-division-flight-code-allowed.md) | Flight Division's flight-model code and tuning may be used (owner has permission); its art, sounds, UI and branding still may not (Hard rule 4) | Accepted |
 | [0063](0063-physical-5in-flight-model.md) | The 5" flies a physical model ported from Flight Division: blade-element rotors, electrical motors and battery, Betaflight-style PID at 960 Hz, real inertia; other bodies stay on the simple model | Accepted (other bodies: 0064) |
 | [0064](0064-physical-model-for-every-quad.md) | Every quad flies the physical model from real parts: 3" racer (6S 3000 kV, T/W 7.8), 3D quad (reversible motors, symmetric props, centre stick zero), X8 (four coaxial pairs of 7", T/W 4.1) | Accepted |
+| [0069](0069-daily-purple-sky.md) | Daily purple sky from 2:02 to 2:22 pm US Central (America/Chicago), every client on its own clock, flips live; normal sky otherwise | Accepted |
