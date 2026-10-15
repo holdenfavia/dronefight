@@ -63,6 +63,8 @@ export function lookAngvel(rot: Quaternion, from: Vector3, target: Vector3, upti
 export class Drone {
   readonly body: RAPIER.RigidBody;
   armed = false;
+  /** Seconds flown armed since the last respawn (the OSD's fly timer). */
+  armedSeconds = 0;
   crashed = false;
   /** Seconds since the crash, for auto-respawn. */
   crashTime = 0;
@@ -212,6 +214,7 @@ export class Drone {
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.body.resetForces(true);
     this.armed = false;
+    this.armedSeconds = 0;
     this.crashed = false;
     this.crashTime = 0;
     this.maneuverActive = false;
@@ -261,6 +264,20 @@ export class Drone {
     return this.maneuverActive && !was;
   }
 
+  /** The OSD's flight mode: the wing's maneuver mode, or the self-levelling a quad flies with (ADR-0037, ADR-0045). */
+  get flightMode(): 'ACRO' | 'HORIZON' | 'ANGLE' | 'MANEUVER' {
+    if (this.isWing) return this.maneuverActive ? 'MANEUVER' : 'ACRO';
+    if (!this.horizon) return 'ACRO';
+    return this.horizon.transition === Infinity ? 'ANGLE' : 'HORIZON';
+  }
+
+  /** Battery voltage under load (V), sagging on punches like a real pack; null for the wing, which has no battery model. */
+  get batteryVolts(): number | null {
+    if (this.isWing) return null;
+    const { battery } = this.physical.spec;
+    return this.physical.sag * battery.cells * battery.cellVoltage;
+  }
+
   /** Wing past its stall angle right now (for the HUD). */
   get stalled(): boolean {
     return this.isWing && !this.crashed && this.speed > 2 && Math.abs(this.out.alpha) > (WING.stallDeg * Math.PI) / 180;
@@ -279,6 +296,7 @@ export class Drone {
       this.state.motorOutput = 0;
       return;
     }
+    if (this.armed) this.armedSeconds += dt;
     if (this.autoHover && this.armed && !this.isWing) {
       this.hover();
       return;

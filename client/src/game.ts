@@ -8,10 +8,10 @@ import { RemoteAudio } from './audio/remoteAudio';
 import { Sfx } from './audio/sfx';
 import { CombatClient } from './combat/combatClient';
 import { Grenades, Missiles, SmokeTrails } from './combat/effects';
+import { PropEffects } from './combat/propEffects';
 import { buildColliders } from '../../shared/raycast';
 import { Particles } from './render/particles';
 import { MovingProps } from './world/movers';
-import { interceptTime } from '../../shared/lead';
 import type { DroneState } from '../../shared/protocol';
 import { InputManager } from './input/inputManager';
 import { TouchInput } from './input/touchInput';
@@ -24,15 +24,16 @@ import { RemoteDrones } from './render/remoteDrones';
 import { Tracers } from './render/tracers';
 import { LoadoutPreview } from './render/loadoutPreview';
 import { Trails } from './render/trails';
-import { COMBAT, pilotColor, pilotName } from '../../shared/combat';
-import { defaultRoomOptions, pilotLabel, type RoomOptions } from '../../shared/roomOptions';
+import { pilotColor } from '../../shared/combat';
+import { defaultRoomOptions, type RoomOptions } from '../../shared/roomOptions';
 import { droneClass, isWing } from '../../shared/drones';
 import { BoundaryGrid } from './world/boundaryGrid';
 import { currentLoadout, loadSettings, saveSettings } from './settings';
 import type { Loadout } from '../../shared/loadout';
 import { Drone } from './sim/drone';
 import { ArenaColliders, createPhysics } from './sim/physics';
-import { Hud, type MarkerInfo, type NetHudInfo } from './ui/hud';
+import { Hud, type NetHudInfo } from './ui/hud';
+import { Targeting } from './ui/targeting';
 import { Menu } from './ui/menu';
 import { MenuNav } from './ui/menuNav';
 import { Account } from './account/account';
@@ -42,8 +43,7 @@ import { levelForXp, type XpReason } from '../../shared/progression';
 const XP_LABELS: Record<XpReason, string> = { kill: 'kill', assist: 'assist', prop: 'boom', finish: 'match', win: 'win' };
 import { getMap, type MapDef, type MapId } from '../../shared/maps';
 import { buildWorld, type World } from './world/scene';
-import { PROP_STATS, PropField } from '../../shared/props';
-import type { V3 } from '../../shared/maps/movers';
+import { PropField } from '../../shared/props';
 
 const STEP = 1 / SIM.hz;
 /** Auto-fire (ADR-0044): fires while the lead circle is within this fraction of the screen's short side of center. */
@@ -196,39 +196,12 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   }
   combat.props = props;
   combat.propClock = propClock;
-  const propPoint = new THREE.Vector3();
-  function propBlastEffect(i: number, p: V3): void {
+  const propEffects = new PropEffects(particles, sfx, combatEffects.missiles);
+  combat.onPropBlast = (i, p) => {
     const kind = props.props[i]?.kind;
-    if (!kind) return;
-    propPoint.set(p[0], p[1], p[2]);
-    const rnd = (k: number) => (Math.random() - 0.5) * k;
-    if (PROP_STATS[kind].effect === 'water') {
-      for (let k = 0; k < 28; k++) {
-        const a = Math.random() * Math.PI * 2;
-        const sp = 2 + Math.random() * 5;
-        particles.emit(p[0], p[1], p[2], { startSize: 0.5, endSize: 1.8, lifeMs: 900 + Math.random() * 700, color: k % 3 ? '#9fd3ff' : '#eef8ff', alpha: 0.85, vx: Math.cos(a) * sp, vy: 2 + Math.random() * 6, vz: Math.sin(a) * sp });
-      }
-      sfx.splash(propPoint);
-      return;
-    }
-    combatEffects.missiles.effect(propPoint);
-    for (let k = 0; k < 18; k++) {
-      particles.emit(p[0] + rnd(1.5), p[1] + rnd(1), p[2] + rnd(1.5), { startSize: 1, endSize: 2.6, lifeMs: 500 + Math.random() * 400, color: k % 2 ? '#ff9a2e' : '#ffd25a', alpha: 0.95, vx: rnd(6), vy: 3 + Math.random() * 5, vz: rnd(6) });
-    }
-    for (let k = 0; k < 8; k++) {
-      particles.emit(p[0] + rnd(2), p[1] + 1, p[2] + rnd(2), { startSize: 1.5, endSize: 5, lifeMs: 3500 + Math.random() * 1500, color: '#3a3632', alpha: 0.7, vx: rnd(1), vy: 1.5 + Math.random(), vz: rnd(1) });
-    }
-    sfx.explosion(propPoint);
-  }
-  combat.onPropBlast = (i, p) => propBlastEffect(i, p);
-  combat.onPropRound = (_i, _damage, travelMs, at) => {
-    const [x, y, z] = [at.x, at.y, at.z];
-    window.setTimeout(() => {
-      for (let k = 0; k < 3; k++) {
-        particles.emit(x, y, z, { startSize: 0.15, endSize: 0.45, lifeMs: 260, color: '#ffd27a', alpha: 1, vx: (Math.random() - 0.5) * 6, vy: Math.random() * 4, vz: (Math.random() - 0.5) * 6 });
-      }
-    }, travelMs);
+    if (kind) propEffects.blast(kind, p);
   };
+  combat.onPropRound = (_i, _damage, travelMs, at) => propEffects.roundHit(at, travelMs);
   let wasInRoom = false;
   const smokeSources: { id: string; position: THREE.Vector3 }[] = [];
   const missileCamPos = new THREE.Vector3();
@@ -238,7 +211,6 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   let watchUntil = 0;
   const watchLook = { target: watchPoint, get uptiltDeg() { return uptiltDeg(); } };
   const missileCamRot = new THREE.Quaternion();
-  const missileTargets: THREE.Vector3[] = [];
 
   // Optional sign-in (ADR-0030, ADR-0031): the menu shows it; guests never need it.
   let menuRef: Menu | null = null;
@@ -389,13 +361,6 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     else void document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
   }
 
-  /** What the missile HUD measures range to: practice bots, or the other pilots (not while they smoke). */
-  function missileTargetList(): readonly THREE.Vector3[] {
-    missileTargets.length = 0;
-    for (const v of remotes.views) if (!v.crashed && !v.concealed) missileTargets.push(v.position);
-    return missileTargets;
-  }
-
   function localState(): DroneState {
     const p = drone.currPos;
     const q = drone.currRot;
@@ -414,114 +379,15 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     };
   }
 
-  const projected = new THREE.Vector3();
-  const toTarget = new THREE.Vector3();
-  const camForward = new THREE.Vector3();
-  /** Screen marker for a pilot, pinned to the screen edge when off-screen or behind (written into `marker`). */
-  function markerFor(target: THREE.Vector3, marker: MarkerInfo): MarkerInfo {
-    const cam = rig.camera;
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-    toTarget.copy(target).sub(cam.position);
-    marker.distance = toTarget.length();
-    cam.getWorldDirection(camForward);
-    const behind = toTarget.dot(camForward) < 0;
-    projected.copy(target).project(cam);
-    let nx = projected.x;
-    let ny = projected.y;
-    if (behind) {
-      nx = -nx;
-      ny = -ny;
-    }
-    const inside = !behind && Math.abs(nx) <= 1 && Math.abs(ny) <= 1;
-    if (!inside) {
-      // Push to the edge along the direction from screen center.
-      const scale = 0.92 / Math.max(Math.abs(nx), Math.abs(ny), 1e-6);
-      nx *= scale;
-      ny *= scale;
-    }
-    marker.x = ((nx + 1) / 2) * w;
-    marker.y = ((1 - ny) / 2) * h;
-    marker.onScreen = inside;
-    return marker;
-  }
 
-  const leadPoint = new THREE.Vector3();
-  const toTargetLead = new THREE.Vector3();
-  const lead = { x: 0, y: 0 };
-
-  /** Lead indicator (ADR-0011): where the target will be when a round fired now reaches it. */
-  function leadFor(target: THREE.Vector3, velocity: THREE.Vector3): { x: number; y: number } | null {
-    toTargetLead.subVectors(target, drone.currPos);
-    const d = toTargetLead;
-    const speed = combat.projectileSpeed;
-    if (speed === null) return null;
-    const t = interceptTime(d.x, d.y, d.z, velocity.x, velocity.y, velocity.z, speed);
-    if (t === null || t * speed > COMBAT.range) return null;
-    leadPoint.copy(target).addScaledVector(velocity, t);
-    const cam = rig.camera;
-    cam.getWorldDirection(camForward);
-    if (toTarget.subVectors(leadPoint, cam.position).dot(camForward) <= 0) return null;
-    projected.copy(leadPoint).project(cam);
-    if (Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) return null;
-    lead.x = ((projected.x + 1) / 2) * container.clientWidth;
-    lead.y = ((1 - projected.y) / 2) * container.clientHeight;
-    return lead;
-  }
-
-  // Every other pilot gets a marker (ADR-0026, ADR-0043): a name tag while on screen, an edge arrow when not.
-  // Smoking pilots get neither (ADR-0024); crashed ones and dead ones have no tag. Training bots get tags too.
-  const markerPool: MarkerInfo[] = [];
-  const markers: MarkerInfo[] = [];
-  function nextMarker(): MarkerInfo {
-    return markerPool[markers.length] ?? (markerPool[markers.length] = { x: 0, y: 0, onScreen: true, distance: 0, color: '', name: '', hp: null });
-  }
-  /** Teams mode (ADR-0047): this pilot is on your team. */
-  function isTeammate(id: string): boolean {
-    const m = net.match;
-    if (!m || m.options.mode !== 'teams') return false;
-    const mine = net.me?.side;
-    return mine !== undefined && m.players.find((p) => p.id === id)?.side === mine;
-  }
-
-  function pilotMarkers(): readonly MarkerInfo[] {
-    markers.length = 0;
-    for (const v of remotes.views) {
-      if (v.concealed || v.crashed) continue;
-      const player = net.match?.players.find((p) => p.id === v.id);
-      if (player && !player.alive) continue;
-      const m = nextMarker();
-      markerFor(v.position, m);
-      m.color = pilotColor(v.team ?? 1);
-      // Callsign or color (ADR-0047); teammates are marked as friendly.
-      const label = player ? pilotLabel(player) : pilotName(v.team);
-      const friendly = isTeammate(v.id);
-      m.name = `${friendly ? '▲ ' : ''}${label}${player?.level ? ` · ${player.level}` : ''}`;
-      m.hp = player ? player.hp / droneClass(player.drone).maxHp : null;
-      markers.push(m);
-    }
-    return markers;
-  }
-
-  /** Lead indicator on the pilot nearest your crosshair (ADR-0026), skipping smoking, holding or crashed ones. */
-  const toPilot = new THREE.Vector3();
-  function pilotLead(): { x: number; y: number } | null {
-    if (paused) return null;
-    rig.camera.getWorldDirection(camForward);
-    let best: (typeof remotes.views)[number] | null = null;
-    let bestDot = -Infinity;
-    for (const v of remotes.views) {
-      // Never lead a teammate (ADR-0047): the circle and auto-fire are for enemies.
-      if (v.concealed || v.mode === 'hold' || v.crashed || isTeammate(v.id)) continue;
-      const dot = toPilot.subVectors(v.position, rig.camera.position).normalize().dot(camForward);
-      if (dot > bestDot) {
-        bestDot = dot;
-        best = v;
-      }
-    }
-    return best ? leadFor(best.position, best.velocity) : null;
-  }
-
+  const targeting = new Targeting({
+    camera: () => rig.camera,
+    container,
+    remotes,
+    net,
+    origin: () => drone.currPos,
+    projectileSpeed: () => combat.projectileSpeed,
+  });
 
   const netInfo: NetHudInfo = { status: 'offline', room: null, pingMs: 0, peer: null };
   function netHud(): NetHudInfo | null {
@@ -701,7 +567,7 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       if (moving) net.afkDeadline = null;
       else combat.notify(`Away? Move within ${Math.max(0, Math.ceil((net.afkDeadline - now) / 1000))} s or you'll leave the room`);
     }
-    const leadNow = pilotLead();
+    const leadNow = paused ? null : targeting.pilotLead();
     // Auto-fire (ADR-0044) reads this next frame: the lead circle is on the crosshair.
     input.leadOnTarget = !!leadNow && Math.hypot(leadNow.x - container.clientWidth / 2, leadNow.y - container.clientHeight / 2) < Math.min(container.clientWidth, container.clientHeight) * AUTO_FIRE_RADIUS;
     hud.update({
@@ -718,10 +584,10 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
       combat: combat.hudState(),
       // Edge arrows only for pilots off screen; on screen, trails and glow show them.
       // Smoking pilots get no arrow and no lead circle (ADR-0024).
-      markers: pilotMarkers(),
+      markers: targeting.pilotMarkers(),
       lead: leadNow,
       training: currentMap.id === 'training' && net.inRoom ? combat.practiceText() : null,
-      missile: combat.missileHud(missileTargetList()),
+      missile: combat.missileHud(targeting.missileTargetList()),
       special:
         drone.loadout.special === 'maneuver'
           ? { label: 'MANEUVER', value: drone.stalled ? 'STALL' : drone.maneuverActive ? 'ON' : 'OFF' }
