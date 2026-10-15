@@ -1074,3 +1074,16 @@ describe('practice bots (ADR-0067)', () => {
     expect(t.progress.filter(([, e]) => e === 'finish' || e === 'win')).toEqual([]);
   });
 });
+
+describe('switching to the Training map (ADR-0067)', () => {
+  it('a lobby room switched to Training is live at once, with its bots', () => {
+    const match = new Match('yard', () => {}, Math.random, () => {}, true);
+    match.addPlayer('me', 1000);
+    match.setOptions('me', { ...defaultRoomOptions('training'), map: 'training' }, 2000);
+    expect(match.phase).toBe('playing');
+    expect(match.state().players.filter((p) => p.bot).length).toBe(9);
+    match.setOptions('me', { ...defaultRoomOptions('yard'), map: 'yard' }, 3000);
+    expect(match.state().players.filter((p) => p.bot).length).toBe(0);
+    expect(match.phase).toBe('waiting');
+  });
+});

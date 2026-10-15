@@ -1475,6 +1475,9 @@ body {
 .pm-empty { opacity: 0.5; font-size: 13px; padding: 5px 8px; }
 .pm-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .pm-wait { align-self: center; font-size: 14px; opacity: 0.75; }
+/* Pre-match: the one thing to do next stands out; invite and leave sit small on the left. */
+.pm-actions { align-items: center; }
+.pm-minor { display: flex; gap: 6px; margin-right: auto; }
 
 /* Menu button for every input (keyboard, gamepad, radio): top middle, opens the pause menu. */
 .osd-menu-btn {

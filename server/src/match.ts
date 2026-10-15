@@ -217,11 +217,19 @@ export class Match {
       p.lastSpawn = null;
     }
     // A running match restarts under the new rules; in the pre-match menu they just apply.
-    if (this.pilots.size >= MIN_PILOTS && (!this.lobby || this.phase === 'playing')) this.startMatch(now);
+    // The Training range is always live (ADR-0067).
+    if (this.pilots.size >= MIN_PILOTS && (!this.lobby || this.phase === 'playing' || (this.training && this.humans > 0))) this.startMatch(now);
     else {
+      // Leaving the Training range with its bots can leave too few pilots for a match.
+      if (this.phase === 'playing') {
+        this.phase = 'waiting';
+        this.endsAt = null;
+      }
       for (const p of this.pilots.values()) {
         applyPending(p);
         p.hp = droneClass(p.loadout.body).maxHp;
+        p.alive = true;
+        p.respawnAt = null;
       }
       this.broadcastState();
     }
@@ -255,7 +263,8 @@ export class Match {
       damagedBy: new Map(),
       level: null,
       looks: null,
-      name: '',
+      // Bots are named for how they fly (ADR-0067).
+      name: bot ? `${bot.kind[0]!.toUpperCase()}${bot.kind.slice(1)} bot` : '',
       side,
       ready: false,
       lastCrashed: false,

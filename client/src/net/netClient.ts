@@ -101,7 +101,7 @@ export class NetClient {
       return;
     }
     this.useServer(true);
-    this.createRoom(map, options);
+    this.requestCreate(map, options);
   }
 
   /** Switch between the online server and the one in this page; leaves the current room. */
@@ -118,7 +118,11 @@ export class NetClient {
 
   /** Create a room with these match settings (ADR-0046). */
   createRoom(map: MapId, options?: RoomOptions): void {
-    if (this.wantRoom?.kind !== 'create' || !this.local) this.useServer(false);
+    this.useServer(false);
+    this.requestCreate(map, options);
+  }
+
+  private requestCreate(map: MapId, options?: RoomOptions): void {
     this.wantRoom = options ? { kind: 'create', map, options } : { kind: 'create', map };
     this.ensureConnected();
   }
@@ -171,6 +175,10 @@ export class NetClient {
   }
   sendStart(): void {
     if (this.inRoom) this.send({ t: 'start' });
+  }
+  /** Host: add or remove a practice bot (ADR-0067). */
+  sendBot(add: boolean): void {
+    if (this.inRoom) this.send({ t: 'bot', add });
   }
 
   /** You in the room's match state. */

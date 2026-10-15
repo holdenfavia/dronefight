@@ -68,7 +68,8 @@ export class CombatClient {
   /** Last shotgun blast time per remote pilot, so 8 pellets make one boom. */
   private readonly lastBlast = new Map<string, number>();
   /** Every round/pellet we fire, for local practice hit checks on the Training map (ADR-0017). */
-  onLocalRound: ((origin: THREE.Vector3, dir: THREE.Vector3, speed: number, damage: number, maxDist: number) => void) | null = null;
+  /** Your rounds, hits and kills since you arrived on this map: the Training range's readout (ADR-0067). */
+  readonly practice = { rounds: 0, hits: 0, kills: 0 };
   /** Destructible props (ADR-0023): rounds stop at them; `propClock` is the shared time (ms) they move on. */
   props: PropField | null = null;
   propClock: () => number = () => performance.now();
@@ -264,7 +265,14 @@ export class CombatClient {
   /** Rounds stop at this map's walls; respawns use its spawn list (ADR-0012). */
   setMap(map: MapDef): void {
     this.map = map;
+    this.practice.rounds = this.practice.hits = this.practice.kills = 0;
     this.colliders = buildColliders(map.boxes, map.holes, map.terrain);
+  }
+
+  practiceText(): string {
+    const p = this.practice;
+    const acc = p.rounds > 0 ? Math.round((p.hits / p.rounds) * 100) : 0;
+    return `Training · hits ${p.hits} · kills ${p.kills} · accuracy ${acc}%`;
   }
 
   /** A match is running: the server owns deaths and respawns. */
@@ -478,7 +486,7 @@ export class CombatClient {
         this.onPropRound?.(prop.i, gun.damage, (prop.dist / gun.speed) * 1000, this.propAt);
       }
       if (id !== 'missile' && id !== 'grenade') this.tracers.spawn(o, d, maxDist, this.myColor, gun.speed, id, 0, maxDist < gun.range - 0.01);
-      this.onLocalRound?.(o, d, gun.speed, gun.damage, maxDist);
+      this.practice.rounds++;
       this.net.sendShot({ ts, p: [r(o.x), r(o.y), r(o.z)], d: [r(d.x), r(d.y), r(d.z)], w: id });
     }
     if (withSound && gun.sound !== 'vulcan') this.sounds.shot(gun.sound);
@@ -518,6 +526,7 @@ export class CombatClient {
       switch (ev.t) {
         case 'hit':
           if (ev.shooter === you) {
+            this.practice.hits++;
             this.hud.flashHit();
             this.sounds.hitConfirm();
           }
@@ -527,6 +536,7 @@ export class CombatClient {
           }
           break;
         case 'death':
+          if (ev.killer === you && ev.id !== you) this.practice.kills++;
           if (ev.id === you) {
             this.drone.kill();
             this.respawnDeadline = now + COMBAT.respawnMs;

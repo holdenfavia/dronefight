@@ -290,7 +290,9 @@ export class Hud {
     const place = c.rank === 1 ? 'leading' : `${ordinal(c.rank)} of ${c.pilots}`;
     const leader = c.leader ? ` · leader ${c.leader.name} ${c.leader.score}` : '';
     const clock = c.timeLeft !== null ? ` · ${Math.floor(c.timeLeft / 60)}:${String(Math.floor(c.timeLeft % 60)).padStart(2, '0')}` : '';
-    if (c.teams) {
+    // The Training range has no score race (ADR-0067): its own readout instead.
+    if (this.trainingText) this.set(this.el.score, this.trainingText);
+    else if (c.teams) {
       const [o, l] = c.teams.scores;
       this.set(this.el.score, `Orange ${o} · Lime ${l} · you're ${c.teams.mine ? 'Lime' : 'Orange'} · first to ${c.killsToWin}${clock}`);
     } else this.set(this.el.score, `You ${c.myScore} · ${place}${leader} · first to ${c.killsToWin}${clock}`);

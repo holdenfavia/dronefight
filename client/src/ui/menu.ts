@@ -100,7 +100,7 @@ export class Menu {
       if (this.lastScreen !== 'rules') {
         this.rulesReturn = this.lastScreen;
         // Creating: start from the settings you used last time, on the map you picked. In a room: the room's.
-        const base = this.net.inRoom && this.net.match ? this.net.match.options : { ...this.settings.roomOptions, map: this.settings.map };
+        const base = this.net.online && this.net.match ? this.net.match.options : { ...this.settings.roomOptions, map: this.settings.map };
         this.rulesDraft = cleanRoomOptions(structuredClone(base), this.settings.map);
       }
       this.renderRules();
@@ -189,7 +189,7 @@ export class Menu {
     const phase = this.net.inRoom ? (this.net.match?.phase ?? null) : null;
     const was = this.lastPhase;
     this.lastPhase = phase;
-    if (was === 'waiting' && phase === 'playing' && this.visible && this.screen !== 'drone') {
+    if (was === 'waiting' && phase === 'playing' && this.net.online && this.visible && this.screen !== 'drone') {
       this.fly();
       return;
     }
@@ -199,7 +199,7 @@ export class Menu {
     }
     if (!this.visible) return;
     // Typed a code (or created a room) and got in: show the room.
-    if (this.screen === 'play' && this.net.inRoom) this.show('room');
+    if (this.screen === 'play' && this.net.online) this.show('room');
     else if (this.screen === 'play') this.updateJoinStatus();
     else if (this.screen === 'room') this.renderRoom();
     else if (this.screen === 'main') this.renderMain();
@@ -241,15 +241,24 @@ export class Menu {
     this.updateControllerStatus();
   }
 
+  /** Solo: the next map (your solo room follows it, ADR-0067). */
+  private nextMap(): void {
+    const i = MAP_ORDER.indexOf(this.settings.map);
+    this.settings.map = MAP_ORDER[(i + 1) % MAP_ORDER.length] ?? MAP_ORDER[0]!;
+    saveSettings(this.settings);
+    this.callbacks.onMapChanged();
+  }
+
   /** Pause menu (Escape during a game): resume, change drone, the room, settings, or leave. */
   private renderPause(): void {
-    const inRoom = this.net.inRoom;
+    const inRoom = this.net.online;
     const where = inRoom ? `Room ${this.net.room} · ${this.net.map ? MAP_NAMES[this.net.map] : ''}` : `Solo · ${MAP_NAMES[this.settings.map]}`;
     this.root.innerHTML = `
       <div class="panel pause-menu">
         <div class="panel-head"><span class="kicker">Paused</span><h2>${escapeHtml(where)}</h2></div>
         <button class="btn big" data-resume>Resume</button>
         <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
+        ${inRoom ? '' : `<button class="btn ghost" data-map>Map: ${MAP_NAMES[this.settings.map]} ▸</button>`}
         ${inRoom ? `<button class="btn ghost" data-room>${this.net.match?.phase === 'playing' ? `Room ${this.net.room}: pilots` : 'Pre-match'} ▸</button>` : ''}
         ${inRoom ? `<button class="btn ghost" data-rules>Room settings ▸</button>` : ''}
         ${this.input.touchActive ? '<button class="btn ghost" data-touch>Touch controls ▸</button>' : ''}
@@ -259,6 +268,11 @@ export class Menu {
       </div>
       <div class="keys">ESC resume</div>`;
     this.root.querySelector('[data-resume]')?.addEventListener('click', () => this.fly());
+    this.root.querySelector('[data-map]')?.addEventListener('click', () => {
+      this.nextMap();
+      this.renderPause();
+      this.root.querySelector<HTMLElement>('[data-map]')?.focus();
+    });
     this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
     this.root.querySelector('[data-room]')?.addEventListener('click', () => this.show('room'));
     this.root.querySelector('[data-touch]')?.addEventListener('click', () => this.show('touch'));
@@ -372,11 +386,9 @@ export class Menu {
       </div>`;
     this.root.querySelector('[data-drone]')?.addEventListener('click', () => this.show('drone'));
     this.root.querySelector('[data-map]')?.addEventListener('click', () => {
-      const i = MAP_ORDER.indexOf(this.settings.map);
-      this.settings.map = MAP_ORDER[(i + 1) % MAP_ORDER.length] ?? MAP_ORDER[0]!;
-      saveSettings(this.settings);
-      this.callbacks.onMapChanged();
+      this.nextMap();
       this.renderPlay();
+      this.root.querySelector<HTMLElement>('[data-map]')?.focus();
     });
     this.root.querySelector('[data-solo]')?.addEventListener('click', () => this.fly());
     // Create room: pick the match settings first (ADR-0046).
@@ -471,7 +483,7 @@ export class Menu {
    */
   private renderRoom(): void {
     const net = this.net;
-    if (!net.inRoom || !net.room) {
+    if (!net.online || !net.room) {
       this.show('play');
       return;
     }
@@ -483,10 +495,10 @@ export class Menu {
     const row = (p: (typeof players)[number]) => `
       <li class="pm-row ${p.id === net.you ? 'me' : ''}">
         <span class="pm-dot" style="background:${pilotColor(p.team)}"></span>
-        <span class="pm-name">${escapeHtml(pilotLabel(p))}${p.id === net.you ? ' <em>you</em>' : ''}${p.id === m?.host ? ' <em class="host">host</em>' : ''}</span>
+        <span class="pm-name">${escapeHtml(pilotLabel(p))}${p.bot ? ' <em>bot</em>' : ''}${p.id === net.you ? ' <em>you</em>' : ''}${p.id === m?.host ? ' <em class="host">host</em>' : ''}</span>
         <span class="pm-drone"><span class="pm-icon">${BODY_ICONS[p.drone]}</span>${escapeHtml(droneClass(p.drone).name)}</span>
         <span class="pm-level">${p.level ? `Lv ${p.level}` : ''}</span>
-        <span class="pm-ready ${p.ready ? 'on' : ''}">${p.ready ? '✓ Ready' : '…'}</span>
+        <span class="pm-ready ${p.ready || p.bot ? 'on' : ''}">${p.ready || p.bot ? '✓ Ready' : '…'}</span>
       </li>`;
     const list = teams
       ? `<div class="pm-teams">${([0, 1] as const)
@@ -501,7 +513,7 @@ export class Menu {
       : `<ul class="pm-list">${players.map(row).join('')}</ul>`;
     const sides = new Set(players.map((p) => p.side));
     const canStart = !playing && players.length >= 2 && (!teams || sides.size === 2);
-    const why = players.length < 2 ? 'Waiting for another pilot' : teams && sides.size < 2 ? 'Both teams need a pilot' : '';
+    const why = players.length < 2 ? 'Waiting for another pilot, or add a bot' : teams && sides.size < 2 ? 'Both teams need a pilot' : '';
     const host = players.find((p) => p.id === m?.host);
     const found = this.joining === net.room;
     this.root.innerHTML = `
@@ -516,23 +528,26 @@ export class Menu {
         </div>
         ${list}
         <div class="pm-buttons">
-          ${playing ? '' : `<button class="btn ${me?.ready ? '' : 'ghost'}" data-ready>${me?.ready ? '✓ Ready' : 'Ready'}</button>`}
           <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
           <button class="btn ghost" data-rules>Room settings ▸</button>
+          ${net.isHost ? `<button class="btn ghost" data-bot="add" ${players.length >= NET.maxPlayersPerRoom ? 'disabled' : ''}>+ Bot</button>${players.some((p) => p.bot) ? '<button class="btn ghost" data-bot="remove">− Bot</button>' : ''}` : ''}
         </div>
-        <div class="actions">
-          <button class="btn ghost" data-copy>Copy invite</button>
-          <button class="btn ghost" data-leave>Leave room</button>
+        <div class="actions pm-actions">
+          <span class="pm-minor">
+            <button class="btn ghost small" data-copy>Copy invite</button>
+            <button class="btn ghost small" data-leave>Leave room</button>
+          </span>
           ${
             playing
               ? '<button class="btn big" data-fly>Join the match</button>'
               : `<button class="btn ghost" data-fly>Fly around</button>${
                   net.isHost
                     ? `<button class="btn big" data-start ${canStart ? '' : 'disabled'} title="${why}">Start match</button>`
-                    : `<span class="pm-wait">Waiting for ${escapeHtml(host ? pilotLabel(host) : 'the host')} to start</span>`
+                    : `<button class="btn big ${me?.ready ? '' : 'ghost'}" data-ready>${me?.ready ? '✓ Ready' : 'Ready'}</button>`
                 }`
           }
         </div>
+        ${!playing && !net.isHost ? `<div class="pm-wait">Waiting for ${escapeHtml(host ? pilotLabel(host) : 'the host')} to start</div>` : ''}
         ${!playing && net.isHost && !canStart ? `<div class="join-status">${why}</div>` : ''}
       </div>`;
     this.root.querySelector('[data-fly]')?.addEventListener('click', () => this.fly());
@@ -540,6 +555,7 @@ export class Menu {
     this.root.querySelector('[data-rules]')?.addEventListener('click', () => this.show('rules'));
     this.root.querySelector('[data-ready]')?.addEventListener('click', () => net.sendReady(!me?.ready));
     this.root.querySelector('[data-start]')?.addEventListener('click', () => net.sendStart());
+    this.root.querySelectorAll<HTMLButtonElement>('[data-bot]').forEach((b) => b.addEventListener('click', () => net.sendBot(b.dataset.bot === 'add')));
     this.root.querySelectorAll<HTMLButtonElement>('[data-side]').forEach((b) => b.addEventListener('click', () => net.sendSide(b.dataset.side === '1' ? 1 : 0)));
     this.root.querySelector('[data-leave]')?.addEventListener('click', () => {
       this.flying = false;
@@ -573,7 +589,7 @@ export class Menu {
    */
   private renderRules(): void {
     const d = this.rulesDraft ?? defaultRoomOptions(this.settings.map);
-    const creating = !this.net.inRoom;
+    const creating = !this.net.online;
     const canEdit = creating || this.net.isHost;
     const dis = canEdit ? '' : 'disabled';
     const seg = (key: string, items: readonly (readonly [string | number, string])[], current: string | number) =>

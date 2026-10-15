@@ -194,6 +194,12 @@ All sound is synthesized in `client/src/audio/` (ADR-0010); there are no audio f
 
 In dev builds, `window.dronefight` exposes `renderer`, `world`, `drone`, `settings`, `physics`, `net` and `audio` for poking around in the browser console.
 
+## How solo works (ADR-0067)
+
+- Solo and Training run the real room server in the page: `client/src/net/localServer.ts` wraps `server/src/rooms.ts` behind a socket-shaped loopback, so `npm run dev` alone gives you full solo play with bots, no `npm run server` needed. `net.local` is true there; `net.online` means a room on the real server.
+- Rules changes go in `server/src/match.ts` only; solo picks them up automatically. Bots are pilots in `Match` (`shared/bots.ts` flies them).
+- Headless UI checks: Playwright can fake a radio or gamepad with `page.addInitScript(() => { navigator.getGamepads = () => [fakePad] })`, where `fakePad` has `mapping: 'standard'`, `axes` and `buttons` you change from the test (Start is button 9, RT fire 7, LT special 6). Playwright lives at `/opt/node-tools/node_modules/playwright/index.mjs` in cloud sessions.
+
 ## Connecting a radio
 
 ### DJI FPV Remote Controller 2
