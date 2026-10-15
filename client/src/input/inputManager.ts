@@ -11,6 +11,7 @@ import {
   normalizeStick,
   normalizeThrottle,
   readSwitch,
+  STANDARD_START_BUTTON,
   standardGamepadProfile,
   type ControllerProfile,
   type RawSnapshot,
@@ -34,6 +35,8 @@ export interface ControlState extends FlightInput {
   specialPressed: boolean;
   /** True for one poll when Switch weapon is pressed (guns / missiles, ADR-0033). */
   switchPressed: boolean;
+  /** True for one poll when Menu is pressed: open the pause menu or go back, like Esc (ADR-0068). */
+  menuPressed: boolean;
 }
 
 export type InputSource = 'radio' | 'gamepad' | 'keyboard' | 'touch';
@@ -68,6 +71,7 @@ export class InputManager {
     special: false,
     specialPressed: false,
     switchPressed: false,
+    menuPressed: false,
   };
   source: InputSource = 'keyboard';
   /** Gamepad.id of a connected controller with no profile yet, if that's all we have. */
@@ -81,6 +85,7 @@ export class InputManager {
   private resetWasDown = false;
   private specialWasDown = false;
   private switchWasDown = false;
+  private menuWasDown = false;
   private readonly rawScratch: { axes: number[]; buttons: number[] } = { axes: [], buttons: [] };
   private lastKeyAt = 0;
   /** Touch controls (ADR-0044), when on a touch device. */
@@ -155,6 +160,7 @@ export class InputManager {
     let resetDown: boolean;
     let specialDown: boolean;
     let switchDown: boolean;
+    let menuDown = false;
     if (pad && profile) {
       this.readPad(pad, profile);
       this.source = pad.mapping === 'standard' || looksLikeGamepad(pad.id) ? 'gamepad' : 'radio';
@@ -164,6 +170,9 @@ export class InputManager {
       this.state.fire = readSwitch(profile.fire ?? null, this.rawScratch) || this.keys.has('Space');
       specialDown = readSwitch(profile.special ?? null, this.rawScratch) || this.keys.has('KeyE');
       switchDown = readSwitch(profile.weaponSwitch ?? null, this.rawScratch) || this.keys.has('KeyQ');
+      // Profiles saved before the Menu input (ADR-0068) still get Start on a standard pad.
+      const menu = profile.menu !== undefined ? profile.menu : pad.mapping === 'standard' ? { kind: 'button' as const, index: STANDARD_START_BUTTON } : null;
+      menuDown = readSwitch(menu, this.rawScratch);
     } else if (this.touchActive) {
       this.readTouch();
       this.source = 'touch';
@@ -190,6 +199,8 @@ export class InputManager {
     this.specialWasDown = specialDown;
     this.state.switchPressed = switchDown && !this.switchWasDown;
     this.switchWasDown = switchDown;
+    this.state.menuPressed = menuDown && !this.menuWasDown;
+    this.menuWasDown = menuDown;
     return this.state;
   }
 

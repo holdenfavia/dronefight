@@ -1294,6 +1294,23 @@ body {
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
 }
 
+/* Settings tabs, rate curve and CLI paste (ADR-0068). */
+.settings-tabs { margin: 0 0 12px; }
+.settings-body { min-height: 180px; }
+.rates-wrap { display: flex; gap: 12px; align-items: center; }
+.rates-wrap .rates { flex: 1; }
+.rate-curve { width: 150px; flex: none; background: rgba(0, 0, 0, 0.25); border-radius: 6px; }
+.rates th { white-space: nowrap; }
+.axis-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.rate-paste { margin: 8px 0; }
+.rate-paste summary { cursor: pointer; font-weight: 700; text-transform: uppercase; font-size: 13px; letter-spacing: 0.06em; }
+.rate-paste textarea { width: 100%; margin: 6px 0; font: 13px ui-monospace, monospace; background: rgba(0, 0, 0, 0.35); color: #f4f2ee; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 6px; padding: 6px; }
+.btn.confirm { background: #c0392b; color: #fff; border-color: #c0392b; }
+@media (max-width: 560px) { .rates-wrap { flex-direction: column; align-items: stretch; } .rate-curve { width: 100%; } }
+
+/* Menu focus from the radio (ADR-0068): the focused control is always clear. */
+#menu.radio-nav :focus { outline: 3px solid var(--orange); outline-offset: 2px; }
+
 /* Touch controls screen. */
 .panel.touch-settings { max-width: 640px; width: 100%; }
 .touch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 20px; }

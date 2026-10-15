@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from 'three';
 import type { HorizonParams, Rates } from '../config';
-import { betaflightRate } from './rates';
+import { rateCurve } from './rates';
 
 /**
  * What every flight model shares (ADR-0008): stick input, body state, and the rate setpoint the sticks ask for.
@@ -83,14 +83,14 @@ export function horizonBlend(input: FlightInput, rotation: Quaternion, h: Horizo
 }
 
 /**
- * The rotation rate the sticks ask for, in the body frame (rad/s): Betaflight rates, blended with
+ * The rotation rate the sticks ask for, in the body frame (rad/s): the pilot's rates (ADR-0068), blended with
  * self-levelling in horizon/angle (ADR-0037, ADR-0045). Positive stick turns about the negative body axis.
  */
 export function rateSetpoint(input: FlightInput, rotation: Quaternion, rates: Rates, horizon: HorizonParams | undefined, out: Vector3): Vector3 {
   out.set(
-    -betaflightRate(input.pitch, rates.pitch) * DEG,
-    -betaflightRate(input.yaw, rates.yaw) * DEG,
-    -betaflightRate(input.roll, rates.roll) * DEG,
+    -rateCurve(input.pitch, rates.pitch, rates.type) * DEG,
+    -rateCurve(input.yaw, rates.yaw, rates.type) * DEG,
+    -rateCurve(input.roll, rates.roll, rates.type) * DEG,
   );
   if (horizon) horizonBlend(input, rotation, horizon, out);
   return out;

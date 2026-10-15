@@ -1,4 +1,3 @@
-import { DEFAULT_RATES, type AxisRates } from '../config';
 import type { Account } from '../account/account';
 import { cleanPilotName, NAME_MAX, type DroneLook } from '../../../shared/cosmetics';
 import { levelProgress } from '../../../shared/progression';
@@ -15,8 +14,8 @@ import { BODY_ICONS, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
 import type { Loadout } from '../../../shared/loadout';
 import { getMap, MAP_ORDER, type MapId } from '../../../shared/maps';
 import type { NetClient } from '../net/netClient';
-import { maxRate } from '../sim/rates';
-import { DEFAULT_TOUCH, defaultSettings, saveSettings, type Settings, type TouchSettings } from '../settings';
+import { DEFAULT_TOUCH, saveSettings, type Settings, type TouchSettings } from '../settings';
+import { SettingsScreen } from './settingsScreen';
 
 type Screen = 'main' | 'pause' | 'drone' | 'play' | 'room' | 'settings' | 'controller' | 'buttons' | 'account' | 'touch' | 'rules';
 
@@ -51,6 +50,7 @@ export class Menu {
   private lastPhase: string | null = null;
   private readonly calibration: CalibrationScreen;
   private readonly loadoutScreen: LoadoutScreen;
+  private readonly settingsScreen: SettingsScreen;
 
   constructor(
     private readonly root: HTMLElement,
@@ -68,6 +68,11 @@ export class Menu {
       // Paint lives on your profile (ADR-0030): saved here and, signed in, to your account.
       look: (body) => this.account.profile.looks[body],
       setLook: (body, look) => this.account.update({ looks: { ...this.account.profile.looks, [body]: look } }),
+    });
+    this.settingsScreen = new SettingsScreen(root, settings, input, {
+      commit: () => this.commit(),
+      open: (screen) => this.show(screen),
+      done: () => this.show(this.home),
     });
     // Controller setup lives under Settings, so it returns there.
     this.calibration = new CalibrationScreen(root, input, () => this.show('settings'));
@@ -90,7 +95,7 @@ export class Menu {
       if (this.lastScreen !== 'drone') this.droneReturn = this.lastScreen;
       this.renderDrone();
     }
-    else if (screen === 'settings') this.renderSettings();
+    else if (screen === 'settings') this.settingsScreen.render();
     else if (screen === 'rules') {
       if (this.lastScreen !== 'rules') {
         this.rulesReturn = this.lastScreen;
@@ -199,6 +204,11 @@ export class Menu {
     else if (this.screen === 'room') this.renderRoom();
     else if (this.screen === 'main') this.renderMain();
     else if (this.screen === 'pause') this.renderPause();
+  }
+
+  /** The radio can move through this screen (ADR-0068); not while mapping buttons or calibrating. */
+  get navigable(): boolean {
+    return this.visible && this.screen !== 'controller' && this.screen !== 'buttons';
   }
 
   tick(): void {
@@ -646,120 +656,6 @@ export class Menu {
     });
   }
 
-  private renderSettings(): void {
-    const s = this.settings;
-    const rateRow = (axis: 'roll' | 'pitch' | 'yaw') => {
-      const r = s.rates[axis];
-      return `<tr data-axis="${axis}">
-        <th>${axis}</th>
-        <td><input type="number" step="0.01" min="0.01" max="3" value="${r.rcRate}" data-rate="rcRate"></td>
-        <td><input type="number" step="0.01" min="0" max="0.99" value="${r.superRate}" data-rate="superRate"></td>
-        <td><input type="number" step="0.01" min="0" max="1" value="${r.expo}" data-rate="expo"></td>
-        <td class="maxvel" data-max>${Math.round(maxRate(r))}</td>
-      </tr>`;
-    };
-    this.root.innerHTML = `
-      <div class="panel settings">
-        <div class="panel-head"><span class="kicker">Settings</span><h2>Settings</h2></div>
-        <div class="settings-controller">${
-          this.input.touchActive
-            ? '<button class="btn" data-touch>Touch controls</button>'
-            : '<button class="btn" data-controller>Controller setup</button><button class="btn ghost" data-buttons>Map buttons</button>'
-        }</div>
-        <label class="field">Flight assist
-          <select data-assist>
-            ${(['acro', 'horizon', 'angle'] as const).map((a) => `<option value="${a}" ${s.flightAssist === a ? 'selected' : ''}>${ASSIST_LABELS[a]}</option>`).join('')}
-          </select>
-        </label>
-        <p class="hint">Quads only. The X8 always flies Horizon.</p>
-        <div class="calib-sub">Rates &amp; camera</div>
-        <table class="rates">
-          <thead><tr><th></th><th>RC rate</th><th>Super</th><th>Expo</th><th>Max °/s</th></tr></thead>
-          <tbody>${rateRow('roll')}${rateRow('pitch')}${rateRow('yaw')}</tbody>
-        </table>
-        <p class="hint">Betaflight classic rates. Copy yours from the Betaflight Configurator.</p>
-        <label class="field">Camera uptilt <input type="range" min="0" max="60" step="1" value="${s.camera.uptiltDeg}" data-cam="uptiltDeg"><span>${s.camera.uptiltDeg}°</span></label>
-        <label class="field">Field of view <input type="range" min="80" max="150" step="1" value="${s.camera.fovHorizontalDeg}" data-cam="fovHorizontalDeg"><span>${s.camera.fovHorizontalDeg}°</span></label>
-        <label class="field">View
-          <select data-view><option value="fpv" ${s.camera.view === 'fpv' ? 'selected' : ''}>FPV</option><option value="chase" ${s.camera.view === 'chase' ? 'selected' : ''}>Chase</option></select>
-        </label>
-        <label class="field">Volume <input type="range" min="0" max="1" step="0.05" value="${s.audio.volume}" data-audio="volume"><span>${Math.round(s.audio.volume * 100)}%</span></label>
-        <label class="field">My drone <input type="range" min="0" max="1" step="0.05" value="${s.audio.own}" data-audio="own"><span>${Math.round(s.audio.own * 100)}%</span></label>
-        <label class="field">Other pilots <input type="range" min="0" max="1" step="0.05" value="${s.audio.others}" data-audio="others"><span>${Math.round(s.audio.others * 100)}%</span></label>
-        <label class="field check"><input type="checkbox" data-mute ${s.audio.muted ? 'checked' : ''}> Mute (M)</label>
-        <label class="field check"><input type="checkbox" data-gfx="shadows" ${s.graphics.shadows ? 'checked' : ''}> Shadows</label>
-        <label class="field check"><input type="checkbox" data-gfx="gridTextures" ${s.graphics.gridTextures ? 'checked' : ''}> Simplified grid textures</label>
-        <label class="field check"><input type="checkbox" data-gfx="showDebug" ${s.graphics.showDebug ? 'checked' : ''}> Debug readout (FPS, renderer)</label>
-        <div class="actions">
-          <button class="btn ghost" data-defaults>Reset to defaults</button>
-          <button class="btn" data-done>Done</button>
-        </div>
-      </div>`;
-
-    this.root.querySelectorAll<HTMLInputElement>('[data-rate]').forEach((el) =>
-      el.addEventListener('change', () => {
-        const row = el.closest<HTMLElement>('tr');
-        const axis = row?.dataset.axis as 'roll' | 'pitch' | 'yaw' | undefined;
-        const key = el.dataset.rate as keyof AxisRates;
-        const value = Number(el.value);
-        if (!axis || !Number.isFinite(value)) return;
-        const limits: Record<keyof AxisRates, [number, number]> = { rcRate: [0.01, 3], superRate: [0, 0.99], expo: [0, 1] };
-        const [lo, hi] = limits[key];
-        s.rates[axis][key] = Math.max(lo, Math.min(hi, value));
-        el.value = String(s.rates[axis][key]);
-        const max = row?.querySelector('[data-max]');
-        if (max) max.textContent = String(Math.round(maxRate(s.rates[axis])));
-        this.commit();
-      }),
-    );
-    this.root.querySelectorAll<HTMLInputElement>('[data-cam]').forEach((el) =>
-      el.addEventListener('input', () => {
-        const key = el.dataset.cam as 'uptiltDeg' | 'fovHorizontalDeg';
-        s.camera[key] = Number(el.value);
-        const label = el.nextElementSibling;
-        if (label) label.textContent = `${el.value}°`;
-        this.commit();
-      }),
-    );
-    this.root.querySelector<HTMLSelectElement>('[data-view]')?.addEventListener('change', (e) => {
-      s.camera.view = (e.target as HTMLSelectElement).value === 'chase' ? 'chase' : 'fpv';
-      this.commit();
-    });
-    this.root.querySelectorAll<HTMLInputElement>('[data-gfx]').forEach((el) =>
-      el.addEventListener('change', () => {
-        const key = el.dataset.gfx as 'shadows' | 'showDebug' | 'gridTextures';
-        s.graphics[key] = el.checked;
-        this.commit();
-      }),
-    );
-    this.root.querySelectorAll<HTMLInputElement>('[data-audio]').forEach((el) =>
-      el.addEventListener('input', () => {
-        const key = el.dataset.audio as 'volume' | 'own' | 'others';
-        s.audio[key] = Number(el.value);
-        const label = el.nextElementSibling;
-        if (label) label.textContent = `${Math.round(s.audio[key] * 100)}%`;
-        this.commit();
-      }),
-    );
-    this.root.querySelector<HTMLInputElement>('[data-mute]')?.addEventListener('change', (e) => {
-      s.audio.muted = (e.target as HTMLInputElement).checked;
-      this.commit();
-    });
-    this.root.querySelector('[data-defaults]')?.addEventListener('click', () => {
-      Object.assign(s, defaultSettings(), { rates: structuredClone(DEFAULT_RATES), map: s.map, drone: s.drone });
-      this.commit();
-      this.renderSettings();
-    });
-    this.root.querySelector('[data-done]')?.addEventListener('click', () => this.show(this.home));
-    this.root.querySelector('[data-controller]')?.addEventListener('click', () => this.show('controller'));
-    this.root.querySelector('[data-buttons]')?.addEventListener('click', () => this.show('buttons'));
-    this.root.querySelector('[data-touch]')?.addEventListener('click', () => this.show('touch'));
-    this.root.querySelector<HTMLSelectElement>('[data-assist]')?.addEventListener('change', (e) => {
-      s.flightAssist = (e.target as HTMLSelectElement).value as Settings['flightAssist'];
-      this.commit();
-    });
-  }
-
   /**
    * Touch controls (ADR-0044): on a touch device it replaces Controller setup. Sticks, flight assist, the four
    * ways to fire, and how the controls look. Saved per device.
@@ -836,7 +732,7 @@ export class Menu {
       this.callbacks.onEditTouchLayout();
     });
     this.root.querySelector('[data-treset]')?.addEventListener('click', () => {
-      s.touch = { ...DEFAULT_TOUCH };
+      s.touch = { ...DEFAULT_TOUCH, layout: s.touch.layout };
       this.commit();
       this.renderTouch();
     });
@@ -848,8 +744,6 @@ export class Menu {
     this.callbacks.onSettingsChanged();
   }
 }
-
-const ASSIST_LABELS = { acro: 'Acro (no assist)', horizon: 'Horizon', angle: 'Angle' } as const;
 
 /** Google's "G" mark, as their sign-in branding guidelines specify for a "Sign in with Google" button. */
 const GOOGLE_G = `<svg class="signin-logo" viewBox="0 0 48 48" aria-hidden="true">

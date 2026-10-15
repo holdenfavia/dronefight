@@ -31,6 +31,8 @@ export interface ControllerProfile {
   special?: SwitchBinding | null;
   /** Optional: switch between guns and missile pods when the special slot is taken (ADR-0033). */
   weaponSwitch?: SwitchBinding | null;
+  /** Optional: opens the pause menu and backs out of screens, like Esc (ADR-0068). */
+  menu?: SwitchBinding | null;
   /** Stick sensitivity for roll/pitch/yaw (1 = as calibrated). Thumbsticks often want less. */
   sensitivity?: number;
 }
@@ -140,6 +142,9 @@ export function guessedGamepadProfile(id: string, deadband: number): ControllerP
   return { ...standardGamepadProfile(id, deadband), sensitivity: 0.8 };
 }
 
+/** The standard layout's Start / Options / Menu button. */
+export const STANDARD_START_BUTTON = 9;
+
 /** Sensible default for gamepads the browser reports with the "standard" layout (Xbox/PlayStation). */
 export function standardGamepadProfile(id: string, deadband: number): ControllerProfile {
   const stick = (axis: number, invert: boolean): AxisCalibration => ({
@@ -167,6 +172,8 @@ export function standardGamepadProfile(id: string, deadband: number): Controller
     special: { kind: 'button', index: 6 },
     // Right bumper switches guns / missiles (ADR-0033).
     weaponSwitch: { kind: 'button', index: 5 },
+    // Start opens the menu (ADR-0068).
+    menu: { kind: 'button', index: STANDARD_START_BUTTON },
     // Thumbsticks are short and twitchy compared with radio gimbals.
     sensitivity: 0.8,
   };

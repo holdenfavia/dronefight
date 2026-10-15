@@ -37,6 +37,7 @@ import { Drone } from './sim/drone';
 import { ArenaColliders, createPhysics } from './sim/physics';
 import { Hud, type MarkerInfo, type NetHudInfo } from './ui/hud';
 import { Menu } from './ui/menu';
+import { MenuNav } from './ui/menuNav';
 import { Account } from './account/account';
 import { levelForXp, type XpReason } from '../../shared/progression';
 
@@ -267,6 +268,8 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
   const account = new Account(() => menuRef?.onAccountChange());
 
   let paused = true;
+  let fireLatch = false;
+  const menuNav = new MenuNav(menuRoot);
   const menu = new Menu(menuRoot, input, settings, net, {
     onFly: () => {
       paused = false;
@@ -597,6 +600,22 @@ export async function startGame(container: HTMLElement, hudRoot: HTMLElement, me
     // Touch and flight assist (ADR-0044, ADR-0045): set before reading the sticks.
     input.touchSettings = settings.touch;
     const control = input.poll(frameDt);
+    // The Menu button and menus from the radio (ADR-0068).
+    if (control.menuPressed) {
+      menu.back();
+      paused = menu.visible;
+    } else if (menu.navigable && (input.source === 'radio' || input.source === 'gamepad')) {
+      if (menuNav.update(control, frameDt) === 'back') {
+        menu.back();
+        paused = menu.visible;
+      }
+    } else menuNav.reset();
+    // Fire held when the menu closes (say, Resume selected with Fire) doesn't shoot until it's let go.
+    if (menu.visible) fireLatch = control.fire;
+    else if (fireLatch) {
+      if (control.fire) control.fire = false;
+      else fireLatch = false;
+    }
     // A room set to Acro only overrides your choice (ADR-0046); the X8 stays Horizon regardless.
     drone.setAssist(net.inRoom && net.match?.options.assist === 'acro' ? 'acro' : settings.flightAssist);
     touch.setVisible(!menu.visible && input.touchActive);

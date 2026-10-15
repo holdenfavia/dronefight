@@ -72,7 +72,13 @@ export const CAMERA_DEFAULTS = {
   chaseHeight: 0.7,
 } as const;
 
-/** Betaflight classic rates (RC rate, super rate, expo) per axis. */
+/**
+ * Betaflight's rate types (ADR-0068). The three numbers per axis are what Betaflight Configurator shows for
+ * that type: Betaflight = RC rate, super rate, expo; Actual = center rate (°/s), max rate (°/s), expo;
+ * Quick = RC rate, max rate (°/s), expo.
+ */
+export type RateType = 'betaflight' | 'actual' | 'quick';
+
 export interface AxisRates {
   rcRate: number;
   superRate: number;
@@ -80,12 +86,14 @@ export interface AxisRates {
 }
 
 export interface Rates {
+  type: RateType;
   roll: AxisRates;
   pitch: AxisRates;
   yaw: AxisRates;
 }
 
 export const DEFAULT_RATES: Rates = {
+  type: 'betaflight',
   roll: { rcRate: 1.0, superRate: 0.7, expo: 0.0 },
   pitch: { rcRate: 1.0, superRate: 0.7, expo: 0.0 },
   yaw: { rcRate: 1.0, superRate: 0.7, expo: 0.0 },

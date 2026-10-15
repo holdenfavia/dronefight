@@ -142,6 +142,8 @@ export function loadSettings(): Settings {
   if ((saved.settingsVersion ?? 0) < 2 && saved.graphics) saved.graphics = { ...saved.graphics, showDebug: false };
   return {
     rates: {
+      // Saves from before rate types (ADR-0068) are Betaflight rates.
+      type: saved.rates?.type === 'actual' || saved.rates?.type === 'quick' ? saved.rates.type : 'betaflight',
       roll: { ...d.rates.roll, ...saved.rates?.roll },
       pitch: { ...d.rates.pitch, ...saved.rates?.pitch },
       yaw: { ...d.rates.yaw, ...saved.rates?.yaw },
