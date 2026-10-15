@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { buildColliders, raycastArena } from '../raycast.js';
 import { explosiveBoxes } from '../props.js';
-import { MAP_ORDER, MAPS, pickSpawn, SPAWN_SAFE_DISTANCE } from './index.js';
+import { getMap, isMapId, MAP_NAMES, MAP_ORDER, MAPS, pickSpawn, SPAWN_SAFE_DISTANCE } from './index.js';
 
 describe('maps', () => {
+  it('builds each map once and keeps it; names and ids need no build', () => {
+    expect(getMap('yard')).toBe(getMap('yard'));
+    expect(MAPS.yard).toBe(getMap('yard'));
+    for (const id of MAP_ORDER) expect(isMapId(id)).toBe(true);
+    expect(isMapId('toString')).toBe(false);
+    for (const id of MAP_ORDER) expect(MAPS[id].name).toBe(MAP_NAMES[id]);
+  });
+
   for (const id of MAP_ORDER) {
     const map = MAPS[id];
     describe(map.name, () => {

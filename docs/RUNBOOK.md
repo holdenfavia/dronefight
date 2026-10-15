@@ -155,6 +155,7 @@ Maps are data in `shared/maps/` (ADR-0012), used by the client and the server, s
 - `downtown.ts`, `yard.ts`, `playground.ts`, `training.ts`: layout. The Playground uses the `grid*` materials (flat colors with a baked 1 m / 4 m grid, ADR-0019); other maps use the textured materials. Everything is boxes (`ArenaBox`); `boxes` collide, `decor` is scenery only.
 - Thin members (cables, guy wires, braces, arches) use `strut(out, a, b, thickness, mat)` from `builders.ts`. Keep new obstacles 15 m+ from spawns, off the mover routes, and on Training off the central lanes (|x| < 28).
 - Each map needs exactly 8 spawns. `shared/maps/maps.test.ts` checks every spawn has open space around and above it. Run `npm test` after moving things.
+- Maps build on first use: each map file exports a `buildX()` and `getMap(id)` (in `index.ts`) builds it once and keeps it (`MAPS.x` goes through `getMap`). Don't call `buildX()` directly: builders fill module-level arrays (Downtown's decor, explosives, terrain), so a second call would double them. Menus use `MAP_NAMES`, which never builds a map; add a new map to `MAP_ORDER`, `MAP_NAMES` and `BUILDERS`. Downtown takes ~0.25 s to build, the others a few ms.
 - Pick the map with **Map: … ▸** on the Play screen. It applies to solo flying and to rooms you create; people joining get the room's map.
 - Mountains, clouds and the sun glow are in `client/src/world/scenery.ts`; building textures in `textures.ts`.
 
@@ -249,6 +250,8 @@ VITE_SUPABASE_URL=https://<your-project>.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon public key>
 ```
 
+The client loads supabase-js (its own ~215 kB chunk) only when it's needed: pressing Sign in, a saved session in localStorage (`sb-<project ref>-auth-token`), or coming back from Google with `?code=`. Guests never download it. A plain local `npm run build` without these settings drops the Supabase code entirely; to see the production chunks, build with both variables set (values in `fly.toml`).
+
 Then `npm run deploy`. Google: while the OAuth app is in **Testing**, only accounts listed under **Audience → Test users** can sign in; **Publish app** opens it to everyone. The anon key is public by design; row-level security means a pilot can only read and write their own profile. **Never** put the `service_role` key in the client, `fly.toml` or git; when the server needs it (progression, step 3) it goes in with `fly secrets set`.
 
 **XP and levels (ADR-0032), one-time:**
@@ -310,5 +313,6 @@ After that, every update is just `npm run deploy` (it builds in Fly's builder; n
 - After any server restart (deploy, crash, trial stop) clients reconnect and rejoin their room code; the first one back recreates the room on the same map, so the group ends up together again. Scores reset (rooms live in memory, ADR-0005).
 - **Always deploy with `npm run deploy`** (`--ha=false`). Plain `fly deploy` on a new app creates two machines, which splits rooms between them. Fix with `fly scale count 1`.
 - Logs: `fly logs`. Status: `fly status`. Health: `https://<name>.fly.dev/healthz` returns `ok`.
+- **Bundle chunks:** `npm run build` splits `three`, `rapier` and `supabase` into their own chunks (`VENDOR_CHUNKS` in `vite.config.ts`). The rapier chunk is ~4.3 MB because `@dimforge/rapier3d-compat` inlines its WASM as base64, so the "chunks larger than 500 kB" warning for rapier (and three) is expected.
 - Try the production setup locally: `npm run build && PORT=8080 npm start`, then open http://localhost:8080.
 - Region is `primary_region` in `fly.toml` (`dfw` = Dallas, closest to both pilots). Pick one between the two pilots (`fly platform regions` lists them); after changing it, run `fly scale count 1 --region <new>` and remove the old machine.

@@ -12,7 +12,7 @@ import { SPECIAL_ORDER, SPECIALS, type SpecialId } from '../../../shared/special
 import { pilotColor } from '../../../shared/combat';
 import { BODY_ICONS, SPECIAL_ICONS, WEAPON_ICONS } from './icons';
 import type { Loadout } from '../../../shared/loadout';
-import { getMap, MAP_ORDER, type MapId } from '../../../shared/maps';
+import { MAP_NAMES, MAP_ORDER, type MapId } from '../../../shared/maps';
 import type { NetClient } from '../net/netClient';
 import { DEFAULT_TOUCH, saveSettings, type Settings, type TouchSettings } from '../settings';
 import { SettingsScreen } from './settingsScreen';
@@ -244,7 +244,7 @@ export class Menu {
   /** Pause menu (Escape during a game): resume, change drone, the room, settings, or leave. */
   private renderPause(): void {
     const inRoom = this.net.inRoom;
-    const where = inRoom ? `Room ${this.net.room} · ${this.net.map ? getMap(this.net.map).name : ''}` : `Solo · ${getMap(this.settings.map).name}`;
+    const where = inRoom ? `Room ${this.net.room} · ${this.net.map ? MAP_NAMES[this.net.map] : ''}` : `Solo · ${MAP_NAMES[this.settings.map]}`;
     this.root.innerHTML = `
       <div class="panel pause-menu">
         <div class="panel-head"><span class="kicker">Paused</span><h2>${escapeHtml(where)}</h2></div>
@@ -357,7 +357,7 @@ export class Menu {
       <div class="panel play">
         <div class="panel-head"><span class="kicker">Play</span><h2>Pick and go</h2></div>
         <button class="btn ghost" data-drone>Loadout: ${droneClass(this.settings.drone).name} ▸</button>
-        <button class="btn ghost" data-map>Map: ${getMap(this.settings.map).name} ▸</button>
+        <button class="btn ghost" data-map>Map: ${MAP_NAMES[this.settings.map]} ▸</button>
         <div class="play-modes">
           <button class="btn big" data-solo>Solo</button>
           <button class="btn big ghost" data-create ${busy ? 'disabled' : ''}>Create room</button>
@@ -506,7 +506,7 @@ export class Menu {
     const found = this.joining === net.room;
     this.root.innerHTML = `
       <div class="panel online prematch">
-        <div class="panel-head"><span class="kicker">${playing ? 'Match in progress' : 'Pre-match'}</span><h2>Room ${net.room} · ${net.map ? getMap(net.map).name : ''}</h2></div>
+        <div class="panel-head"><span class="kicker">${playing ? 'Match in progress' : 'Pre-match'}</span><h2>Room ${net.room} · ${net.map ? MAP_NAMES[net.map] : ''}</h2></div>
         <div class="pm-top">
           <div class="room-code">${net.room}</div>
           <div>
@@ -588,7 +588,7 @@ export class Menu {
         <div class="calib-sub">Mode</div>
         ${seg('mode', [['ffa', 'Free-for-all'], ['teams', 'Teams (Orange vs Lime)']], d.mode)}
         <div class="calib-sub">Map</div>
-        ${seg('map', MAP_ORDER.filter((m) => m !== 'training').map((m) => [m, getMap(m).name] as const), d.map)}
+        ${seg('map', MAP_ORDER.filter((m) => m !== 'training').map((m) => [m, MAP_NAMES[m]] as const), d.map)}
         <div class="rules-row">
           <div><div class="calib-sub">Kills to win</div>${seg('killsToWin', KILL_LIMITS.map((k) => [k, String(k)] as const), d.killsToWin)}</div>
           <div><div class="calib-sub">Time limit</div>${seg('timeLimitMin', TIME_LIMITS.map((t) => [t, t ? `${t} min` : 'Off'] as const), d.timeLimitMin)}</div>

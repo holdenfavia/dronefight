@@ -88,13 +88,16 @@ const EXPLOSIVES: ExplosiveDef[] = [
   { kind: 'water', pos: [100, 22.475 + 1.5, -70], size: [3, 3, 3], color: '#e9e9e6' },
 ];
 
-export const TRAINING: MapDef = {
-  id: 'training',
-  name: 'Training',
-  halfSize: HALF,
-  boxes: build(),
-  decor: [],
-  spawns: SPAWNS,
-  ground: 'concrete',
-  explosives: EXPLOSIVES,
-};
+/** Builds the map. Call it through getMap(), which builds each map once, on first use. */
+export function buildTraining(): MapDef {
+  return {
+    id: 'training',
+    name: 'Training',
+    halfSize: HALF,
+    boxes: build(),
+    decor: [],
+    spawns: SPAWNS,
+    ground: 'concrete',
+    explosives: EXPLOSIVES,
+  };
+}

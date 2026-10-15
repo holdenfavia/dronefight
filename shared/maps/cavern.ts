@@ -428,23 +428,26 @@ const EXPLOSIVES: ExplosiveDef[] = [
   { kind: 'propane', pos: [18, 1.2, -74], size: [2.4, 2.4, 6], yawDeg: 90 },
 ];
 
-export const CAVERN: MapDef = {
-  id: 'cavern',
-  name: 'Cavern',
-  halfSize: HALF,
-  boxes: build(),
-  decor: buildDecor(),
-  spawns: SPAWNS,
-  ground: 'rock',
-  explosives: EXPLOSIVES,
-  movers: carts(),
-  atmosphere: {
-    fog: '#323a46',
-    fogNear: 70,
-    fogFar: 560,
-    hemiSky: '#c4d2e6',
-    hemiGround: '#9a826e',
-    hemiIntensity: 2.4,
-    sunIntensity: 4.2,
-  },
-};
+/** Builds the map. Call it through getMap(), which builds each map once, on first use. */
+export function buildCavern(): MapDef {
+  return {
+    id: 'cavern',
+    name: 'Cavern',
+    halfSize: HALF,
+    boxes: build(),
+    decor: buildDecor(),
+    spawns: SPAWNS,
+    ground: 'rock',
+    explosives: EXPLOSIVES,
+    movers: carts(),
+    atmosphere: {
+      fog: '#323a46',
+      fogNear: 70,
+      fogFar: 560,
+      hemiSky: '#c4d2e6',
+      hemiGround: '#9a826e',
+      hemiIntensity: 2.4,
+      sunIntensity: 4.2,
+    },
+  };
+}

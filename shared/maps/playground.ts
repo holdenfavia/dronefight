@@ -567,14 +567,17 @@ function buildDecor(): ArenaBox[] {
   return out;
 }
 
-export const PLAYGROUND: MapDef = {
-  id: 'playground',
-  name: 'Playground',
-  halfSize: HALF,
-  boxes: build(),
-  decor: buildDecor(),
-  spawns: SPAWNS,
-  explosives: EXPLOSIVES,
-  ground: 'grid',
-  movers: [...coasterTrain(), ...dropTowerSeats()],
-};
+/** Builds the map. Call it through getMap(), which builds each map once, on first use. */
+export function buildPlayground(): MapDef {
+  return {
+    id: 'playground',
+    name: 'Playground',
+    halfSize: HALF,
+    boxes: build(),
+    decor: buildDecor(),
+    spawns: SPAWNS,
+    explosives: EXPLOSIVES,
+    ground: 'grid',
+    movers: [...coasterTrain(), ...dropTowerSeats()],
+  };
+}

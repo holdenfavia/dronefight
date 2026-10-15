@@ -160,15 +160,15 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 Make the codebase one system before the next content batch. Decisions: ADR-0065 to ADR-0068.
 
-- [ ] GitHub Actions: typecheck, tests and build on every push; deploy only a green main
-- [ ] Debug readout off by default; "Reset to defaults" resets only its own tab and asks first
-- [ ] Physical model is the only quad model: remove `stepFlight` and the `QUAD`/`RACER`/`X8` sets; colliders, arming and hover from the specs
-- [ ] Propellers as real props (ADR-0065); parts add real weight to a bare frame (ADR-0066); Loadout stats from headless runs of the real model
-- [ ] Menu input and stick navigation on every menu; Settings tabs; Betaflight / Actual / Quick rates with CLI paste (ADR-0068)
+- [x] GitHub Actions: typecheck, tests and build on every push; deploy only a green main
+- [x] Debug readout off by default; "Reset to defaults" resets only its own tab and asks first
+- [x] Physical model is the only quad model: remove `stepFlight` and the `QUAD`/`RACER`/`X8` sets; colliders, arming and hover from the specs
+- [x] Propellers as real props (ADR-0065); parts add real weight to a bare frame (ADR-0066); Loadout stats from headless runs of the real model
+- [x] Menu input and stick navigation on every menu; Settings tabs; Betaflight / Actual / Quick rates with CLI paste (ADR-0068)
 - [ ] Behavior on the data: specials as one module each, weapon fire groups as fields, body look/sound/camera as fields; one `loadoutKey()`; drop `MatchPlayer.drone`
 - [ ] Typed game event bus; split `game.ts`, `combatClient.ts`, `match.ts`; menu screen stack and one file per screen; CSS split by screen, overridden rules deleted
 - [ ] Solo as a room in the page; Training bots as match pilots; host can add bots online; no XP from bots (ADR-0067)
-- [ ] Build maps on first use; load Supabase on demand; split the bundle
+- [x] Build maps on first use (import ~0.3 s → ~0.03 s); load Supabase only for sign-in or a saved session; split the bundle (three, rapier, supabase)
 - [ ] Screens: "Solo map" on Play, pre-match button hierarchy and Add a bot, compact Loadout on iPhone, Map in the solo pause menu, battery / flight mode / armed timer on the HUD
 - [ ] Protocol-version guard test; `docs/ARCHITECTURE.md`
 - [ ] Play-test props, weights and bots; tune
