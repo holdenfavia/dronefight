@@ -61,6 +61,44 @@ button {
   color: var(--paper);
   text-shadow: 4px 4px 0 var(--orange), 0 6px 24px rgba(0, 0, 0, 0.5);
 }
+.wip-tag {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 2px 12px;
+  border: 2px dashed var(--orange);
+  border-radius: 4px;
+  background: rgba(16, 17, 19, 0.7);
+  font-size: 18px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--orange);
+}
+.wip-notice {
+  width: min(560px, 100%);
+  padding: 8px 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  background: rgba(16, 17, 19, 0.7);
+  font-size: 15px;
+  color: var(--muted);
+  text-align: center;
+}
+.wip-notice strong { color: var(--orange); text-transform: uppercase; letter-spacing: 0.08em; }
+.wip-corner {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 2px 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  background: rgba(16, 17, 19, 0.55);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--paper);
+}
 .tagline {
   margin-top: 6px;
   font-size: 20px;

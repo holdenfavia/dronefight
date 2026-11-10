@@ -127,6 +127,8 @@ export class Ui {
     this.hud = hudRoot;
     this.banner = el('div', 'banner');
     this.hud.appendChild(this.banner);
+    // A small corner badge during play, so screenshots and clips never look final.
+    this.hud.appendChild(el('div', 'wip-corner', 'Work in progress · not final'));
     this.setup = loadSetup();
   }
 
@@ -150,7 +152,8 @@ export class Ui {
     const s = this.setup;
     const page = el('div', 'screen select');
     const header = el('div', 'title-row');
-    header.append(el('h1', 'logo', 'DRONEFIGHT'), el('div', 'tagline', 'Knock your friends off the roof'));
+    header.append(el('h1', 'logo', 'DRONEFIGHT'), el('div', 'wip-tag', 'Work in progress'));
+    page.appendChild(wipNotice());
     page.appendChild(header);
 
     const slots = el('div', 'slots');
@@ -265,7 +268,7 @@ export class Ui {
     resume.onclick = onResume;
     const quit = el('button', 'option', 'Quit to menu');
     quit.onclick = onQuit;
-    panel.append(el('h2', '', 'Paused'), resume, quit, this.controlsCard());
+    panel.append(el('h2', '', 'Paused'), resume, quit, this.controlsCard(), wipNotice());
     page.appendChild(panel);
     this.show(page);
   }
@@ -296,7 +299,7 @@ export class Ui {
     again.title = 'Enter';
     const menu = el('button', 'option', 'Change drones');
     menu.onclick = onMenu;
-    panel.append(again, menu);
+    panel.append(again, menu, wipNotice());
     page.appendChild(panel);
     this.show(page);
   }
@@ -359,6 +362,16 @@ export class Ui {
       if (text) this.banner.classList.add('pop');
     }
   }
+}
+
+/** Plain notice that the game is unfinished (owner's request, 2026-11-10). */
+function wipNotice(): HTMLElement {
+  const box = el('div', 'wip-notice');
+  box.append(
+    el('strong', '', 'Work in progress'),
+    el('span', '', ' · Placeholder art · Numbers and controls will change · Online play not built yet · Expect bugs'),
+  );
+  return box;
 }
 
 /** White at 0%, through yellow and orange, to dark red past 150%. */
