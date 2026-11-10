@@ -3,7 +3,8 @@
 // Drawn in local units around the body centre, y pointing down, nose toward +x.
 
 import type { FighterId } from '../../shared/fighter/fighters';
-import { PALETTE } from './config';
+import { FIGHTERS } from '../../shared/fighter/fighters';
+import { CHARACTER_ART, PALETTE } from './config';
 
 export interface DronePose {
   color: string;
@@ -15,6 +16,10 @@ export interface DronePose {
   flash: number;
   /** Props spinning hard (thrusting). */
   thrust: number;
+  /** 0..1, how fast the legs are running (stick figures). */
+  stride?: number;
+  /** An attack is landing: punch forward (stick figures). */
+  punch?: boolean;
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -193,7 +198,131 @@ function flipper(ctx: CanvasRenderingContext2D, pose: DronePose): void {
 }
 
 /** Draw a drone character at the current transform. */
+/**
+ * Placeholder stick figures (owner's request, 2026-11-10), sized to each drone's collision box.
+ * Each keeps a small drone nod: Freestyle wears a propeller cap, Racer a headband, Heavy is big and boxy,
+ * Flipper has a propeller on its cap and its feet.
+ */
+function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: DronePose): void {
+  const def = FIGHTERS[id];
+  const H = def.height + (id === 'heavy' ? 8 : 6);
+  const heavy = id === 'heavy';
+  const lw = Math.max(2, H * (heavy ? 0.12 : 0.09));
+  const headR = H * (heavy ? 0.15 : 0.17);
+  const headY = -0.5 * H + headR;
+  const neckY = headY + headR;
+  const shoulderY = neckY + H * 0.08;
+  const hipY = H * 0.12;
+  const footY = 0.5 * H;
+  const legLen = footY - hipY;
+  const armLen = H * 0.3;
+  const stride = pose.stride ?? 0;
+  const swing = Math.sin(pose.phase * 0.35) * 0.7 * stride;
+  const airborne = stride === 0 && pose.thrust > 0.4;
+  const hipW = heavy ? H * 0.1 : 0;
+
+  const limbs = new Path2D();
+  // Spine.
+  limbs.moveTo(0, neckY);
+  limbs.lineTo(0, hipY);
+  // Legs: running swing on the ground, tucked in the air.
+  const leg = (angle: number, side: number) => {
+    const kneeX = side * hipW + Math.sin(angle) * legLen * 0.5;
+    const kneeY = hipY + Math.cos(angle) * legLen * 0.5;
+    const bend = airborne ? 0.9 : 0.25;
+    limbs.moveTo(side * hipW, hipY);
+    limbs.lineTo(kneeX, kneeY);
+    limbs.lineTo(kneeX + Math.sin(angle - bend) * legLen * 0.5, kneeY + Math.cos(angle - bend) * legLen * 0.5);
+  };
+  if (airborne) { leg(0.6, 1); leg(-0.2, -1); } else { leg(swing + 0.15, 1); leg(-swing - 0.15, -1); }
+  // Arms: punch forward when attacking, up when flying, swinging when running.
+  const arm = (angle: number) => {
+    limbs.moveTo(0, shoulderY);
+    limbs.lineTo(Math.sin(angle) * armLen, shoulderY + Math.cos(angle) * armLen);
+  };
+  if (pose.punch) { arm(Math.PI / 2); arm(0.4); }
+  else if (airborne) { arm(Math.PI * 0.8); arm(-Math.PI * 0.8); }
+  else { arm(-swing + 0.3); arm(swing - 0.3); }
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Dark outline under the color so figures read against any background.
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.lineWidth = lw + 2.5;
+  ctx.stroke(limbs);
+  ctx.strokeStyle = pose.color;
+  ctx.lineWidth = lw;
+  ctx.stroke(limbs);
+
+  // Head.
+  ctx.fillStyle = PALETTE.white;
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (heavy) ctx.roundRect(-headR, headY - headR, headR * 2, headR * 2, headR * 0.3);
+  else ctx.arc(0, headY, headR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  // Eye, facing forward; shut while blinking or stunned.
+  ctx.fillStyle = PALETTE.ink;
+  if (pose.blink > 0.5) ctx.fillRect(headR * 0.25, headY - 0.5, headR * 0.5, 1.5);
+  else {
+    ctx.beginPath();
+    ctx.arc(headR * 0.45, headY - headR * 0.1, Math.max(1.2, headR * 0.18), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Hat and accents.
+  const capY = headY - headR;
+  const propeller = (x: number, y: number, span: number) => {
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y - 4);
+    ctx.stroke();
+    const w = Math.sin(pose.phase) * span;
+    ctx.strokeStyle = pose.color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x - w, y - 4);
+    ctx.lineTo(x + w, y - 4);
+    ctx.stroke();
+  };
+  if (id === 'freestyle' || id === 'flipper') {
+    ctx.fillStyle = pose.color;
+    ctx.beginPath();
+    ctx.arc(0, capY + headR * 0.45, headR * 0.95, Math.PI, 0);
+    ctx.fill();
+    ctx.fillRect(0, capY + headR * 0.3, headR * 1.4, headR * 0.25);
+    propeller(0, capY + headR * 0.1, headR * 1.3);
+  }
+  if (id === 'flipper') {
+    // Reversible motors: little props on the feet too.
+    ctx.fillStyle = pose.color;
+    ctx.beginPath();
+    ctx.arc(0, footY + 1, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (id === 'racer') {
+    ctx.fillStyle = pose.color;
+    ctx.fillRect(-headR, headY - headR * 0.55, headR * 2, headR * 0.4);
+    ctx.fillRect(-headR * 1.8, headY - headR * 0.6, headR * 0.9, headR * 0.25);
+  }
+  if (heavy) {
+    ctx.fillStyle = pose.color;
+    ctx.fillRect(-headR, capY - 2, headR * 2, 4);
+  }
+  ctx.restore();
+}
+
 export function drawDrone(ctx: CanvasRenderingContext2D, id: FighterId, pose: DronePose): void {
+  if (CHARACTER_ART === 'stick') {
+    stickFigure(ctx, id, pose);
+    drawFlash(ctx, id, pose);
+    return;
+  }
   switch (id) {
     case 'freestyle':
       freestyle(ctx, pose);
@@ -208,13 +337,18 @@ export function drawDrone(ctx: CanvasRenderingContext2D, id: FighterId, pose: Dr
       flipper(ctx, pose);
       break;
   }
+  drawFlash(ctx, id, pose);
+}
+
+function drawFlash(ctx: CanvasRenderingContext2D, id: FighterId, pose: DronePose): void {
   if (pose.flash > 0) {
     // Damage flash: a white burst over the body.
     ctx.save();
     ctx.globalAlpha = pose.flash * 0.75;
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.ellipse(0, 0, id === 'heavy' ? 44 : 28, id === 'heavy' ? 26 : 16, 0, 0, Math.PI * 2);
+    if (CHARACTER_ART === 'stick') ctx.ellipse(0, 0, id === 'heavy' ? 28 : 18, id === 'heavy' ? 30 : 22, 0, 0, Math.PI * 2);
+    else ctx.ellipse(0, 0, id === 'heavy' ? 44 : 28, id === 'heavy' ? 26 : 16, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }

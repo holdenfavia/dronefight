@@ -17,6 +17,9 @@ export const PALETTE = {
   purpleHorizon: '#d9b8ff',
 } as const;
 
+/** How the characters are drawn. 'stick' = placeholder stick figures (2026-11-10); 'drone' = the drone art. */
+export const CHARACTER_ART: 'stick' | 'drone' = 'stick';
+
 export const CAMERA = {
   /** World units shown vertically at zoom 1 (scaled to the window height). */
   baseHeight: 720,
