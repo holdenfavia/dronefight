@@ -17,11 +17,10 @@ Input: `$ARGUMENTS` optionally names what to check (a branch, commit range, or p
 
 3. **Check each change against:**
    - **Hard rules:** any violation is a blocker. Specifically look for:
-     - Unbounded queues or arrays of network snapshots, or replaying missed snapshots (Hard rule 1, ADR-0004)
-     - Per-frame allocations, real-time shadows or heavy post-processing on by default (Hard rule 2)
-     - Reads of `navigator.getGamepads()` / raw axes outside the input layer (Hard rule 3, ADR-0006)
-     - Assets or names from other games (Hard rule 4, ADR-0007)
-     - Login or install requirements (Hard rule 5)
+     - Per-frame allocations or heavy effects that could drop below 60 FPS (Hard rule 1)
+     - `Math.random()`, `Date`, `performance.now()` or rendering state inside `shared/fighter/` (Hard rule 2)
+     - Assets, characters, stage designs or names from other games (Hard rule 3, ADR-0007)
+     - Login or install requirements (Hard rule 4)
    - **Accepted ADRs:** does the code do what the Decision section says?
    - **Scope:** is this work on the roadmap's Current focus? Anything from SPEC "Out of scope"?
    - **Undocumented decisions:** did the code make a real design choice (new dependency, protocol change, new gameplay rule) that has no ADR?

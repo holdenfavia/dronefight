@@ -1,246 +1,34 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { WebSocket } from 'ws';
-import { NET, type DroneState, type ServerMessage } from '../../shared/protocol.js';
-import { startServer } from './index.js';
-import { RoomManager, type Connection } from './rooms.js';
-import { Progression } from './progression.js';
-import { XP } from '../../shared/progression.js';
+import { describe, expect, it } from 'vitest';
+import { parseClientMessage, type ServerMessage } from '../../shared/protocol.js';
+import { RoomManager, type Peer } from './rooms.js';
 
-class FakeConn implements Connection {
-  bufferedAmount = 0;
-  readonly inbox: ServerMessage[] = [];
-  send(data: string): void {
-    this.inbox.push(JSON.parse(data) as ServerMessage);
-  }
-  last<T extends ServerMessage['t']>(t: T): Extract<ServerMessage, { t: T }> | undefined {
-    return [...this.inbox].reverse().find((m) => m.t === t) as Extract<ServerMessage, { t: T }> | undefined;
-  }
+function peer(): Peer & { got: ServerMessage[] } {
+  const got: ServerMessage[] = [];
+  return { got, send: (d: string) => got.push(JSON.parse(d) as ServerMessage) };
 }
 
-const drone: DroneState = { ts: 1, p: [0, 1, 0], q: [0, 0, 0, 1], v: [0, 0, 0], m: 0.2, armed: true, crashed: false };
-
-function setup() {
-  let time = 1000;
-  const rooms = new RoomManager(() => time);
-  const a = new FakeConn();
-  const b = new FakeConn();
-  rooms.connect(a);
-  rooms.connect(b);
-  rooms.handle(a, { t: 'create', map: 'yard' });
-  const code = a.last('joined')?.room ?? '';
-  return { rooms, a, b, code, advance: (ms: number) => (time += ms) };
-}
-
-describe('RoomManager', () => {
-  it('creates a room with a two-digit code and lets a friend join', () => {
-    const { rooms, a, b, code } = setup();
-    expect(code).toMatch(/^[0-9]{2}$/);
-    rooms.handle(b, { t: 'join', room: code });
-    expect(b.last('joined')?.peers).toHaveLength(1);
-    expect(a.last('peer-joined')).toBeDefined();
+describe('rooms', () => {
+  it('creates a room, lets a friend join by code and relays between them', () => {
+    const rooms = new RoomManager(() => 0.42);
+    const a = peer();
+    const b = peer();
+    rooms.handle(a, { t: 'create' });
+    expect(a.got.at(-1)).toEqual({ t: 'room', code: '42', you: 0, members: [0] });
+    rooms.handle(b, { t: 'join', code: '42' });
+    expect(b.got.at(-1)).toEqual({ t: 'room', code: '42', you: 1, members: [0, 1] });
+    rooms.handle(b, { t: 'relay', data: { hi: 1 } });
+    expect(a.got.at(-1)).toEqual({ t: 'relay', from: 1, data: { hi: 1 } });
+    rooms.leave(a);
+    rooms.leave(b);
+    expect(rooms.stats()).toEqual({ rooms: 0, players: 0 });
   });
 
-  it('codes stay unique: 100 rooms all get different codes', () => {
-    const { rooms, code } = setup();
-    const codes = new Set<string>();
-    for (let i = 0; i < 99; i++) {
-      const c = new FakeConn();
-      rooms.connect(c);
-      rooms.handle(c, { t: 'create', map: 'yard' });
-      codes.add(c.last('joined')!.room);
-    }
-    expect(codes.size).toBe(99);
-    expect(codes.has(code)).toBe(false);
-  });
-
-  it('after a server restart, pilots rejoining by code end up in the same room again', () => {
-    // A fresh server (the old one's rooms are gone).
-    const rooms = new RoomManager(() => 0);
-    const a = new FakeConn();
-    const b = new FakeConn();
-    rooms.connect(a);
-    rooms.connect(b);
-    rooms.handle(a, { t: 'join', room: '42', map: 'playground' });
-    rooms.handle(b, { t: 'join', room: '42', map: 'yard' });
-    expect(a.last('joined')).toMatchObject({ room: '42', map: 'playground' });
-    expect(b.last('joined')).toMatchObject({ room: '42', map: 'playground' });
-    expect(b.last('joined')?.peers).toHaveLength(1);
-    // Typing a code that doesn't exist (no map) still says so.
-    const c = new FakeConn();
-    rooms.connect(c);
-    rooms.handle(c, { t: 'join', room: '43' });
-    expect(c.last('error')?.code).toBe('room-not-found');
-  });
-
-  it('a signed-in pilot (valid token) earns XP for a kill and is told about it (ADR-0032)', async () => {
-    const fetch = (async (url: string | URL, init?: RequestInit) => {
-      const u = String(url);
-      const auth = ((init?.headers ?? {}) as Record<string, string>).authorization;
-      if (u.endsWith('/auth/v1/user')) return new Response(JSON.stringify(auth === 'Bearer tokA' ? { id: 'uA' } : {}), { status: auth === 'Bearer tokA' ? 200 : 401 });
-      if (u.includes('/rest/v1/progress')) return new Response(JSON.stringify([{ xp: 450 }]));
-      return new Response('1', { status: 200 });
-    }) as typeof globalThis.fetch;
-    const progression = new Progression({ url: 'https://x.supabase.co', secretKey: 'k', fetch, flushMs: 60_000, log: () => {} });
-    let time = 0;
-    const rooms = new RoomManager(() => time, Math.random, progression);
-    const a = new FakeConn();
-    const b = new FakeConn();
-    rooms.connect(a);
-    rooms.connect(b);
-    rooms.handle(a, { t: 'auth', token: 'tokA' });
-    rooms.handle(b, { t: 'auth', token: 'forged' });
-    await new Promise((r) => setTimeout(r, 10));
-    expect(a.last('progress')?.xp).toBe(450);
-    expect(b.last('progress')).toBeUndefined();
-    rooms.handle(a, { t: 'create', map: 'yard' });
-    rooms.handle(b, { t: 'join', room: a.last('joined')!.room });
-    rooms.handle(a, { t: 'start' });
-    expect(a.last('match')?.m.players.find((p) => p.level !== undefined)?.level).toBe(1);
-    // B (a guest) crashes right after A shot them: A gets the kill.
-    time = 3000;
-    const ids = a.last('match')!.m.players.map((p) => p.id);
-    const aId = a.last('joined')!.you;
-    const bId = ids.find((id) => id !== aId)!;
-    const match = (rooms as unknown as { rooms: Map<string, { match: { hit(by: string, d: number, t: unknown, n: number): void; pilots: Map<string, unknown> } }> }).rooms.values().next().value!.match;
-    match.hit(aId, 10, match.pilots.get(bId), time);
-    rooms.handle(b, { t: 'state', s: { ...drone, crashed: true } });
-    const xp = a.last('xp');
-    expect(xp).toMatchObject({ gained: XP.kill, reason: 'kill', xp: 450 + XP.kill });
-    // 550 XP crosses level 2 (500): the level updates for everyone.
-    expect(b.last('match')?.m.players.find((p) => p.id === aId)?.level).toBe(2);
-    // The guest earns nothing.
-    expect(b.last('xp')).toBeUndefined();
-  });
-
-  it('rejects unknown and full rooms', () => {
-    const { rooms, b, code } = setup();
-    rooms.handle(b, { t: 'join', room: 'ZZZZ' });
-    expect(b.last('error')?.code).toBe('room-not-found');
-    rooms.handle(b, { t: 'join', room: code });
-    // Fill the room to 10 (ADR-0026); the 11th is turned away.
-    expect(NET.maxPlayersPerRoom).toBe(10);
-    for (let i = 2; i < NET.maxPlayersPerRoom; i++) {
-      const c = new FakeConn();
-      rooms.connect(c);
-      rooms.handle(c, { t: 'join', room: code });
-      expect(c.last('joined')?.room).toBe(code);
-    }
-    const late = new FakeConn();
-    rooms.connect(late);
-    rooms.handle(late, { t: 'join', room: code });
-    expect(late.last('error')?.code).toBe('room-full');
-  });
-
-  it('forwards state stamped with server time, only to the other player', () => {
-    const { rooms, a, b, code, advance } = setup();
-    rooms.handle(b, { t: 'join', room: code });
-    advance(50);
-    rooms.handle(a, { t: 'state', s: drone });
-    const snap = b.last('snap');
-    expect(snap?.st).toBe(1050);
-    expect(snap?.s).toEqual(drone);
-    expect(a.last('snap')).toBeUndefined();
-  });
-
-  it('drops (never queues) snapshots for a backed-up connection', () => {
-    const { rooms, a, b, code } = setup();
-    rooms.handle(b, { t: 'join', room: code });
-    const before = b.inbox.length;
-    b.bufferedAmount = NET.maxBufferedBytes + 1;
-    for (let i = 0; i < 100; i++) rooms.handle(a, { t: 'state', s: drone });
-    expect(b.inbox.length).toBe(before);
-    expect(rooms.stats().droppedSnapshots).toBe(100);
-    b.bufferedAmount = 0;
-    rooms.handle(a, { t: 'state', s: { ...drone, ts: 999 } });
-    expect(b.inbox.length).toBe(before + 1);
-    expect(b.last('snap')?.s.ts).toBe(999);
-  });
-
-  it('tells the other player and cleans up when someone leaves', () => {
-    const { rooms, a, b, code } = setup();
-    rooms.handle(b, { t: 'join', room: code });
-    rooms.disconnect(b);
-    expect(a.last('peer-left')).toBeDefined();
-    rooms.disconnect(a);
-    expect(rooms.stats()).toMatchObject({ rooms: 0, players: 0 });
-  });
-});
-
-describe('server over real WebSockets', () => {
-  let close: (() => void) | undefined;
-  afterEach(() => close?.());
-
-  it('relays state between two clients in a room', async () => {
-    const { wss } = startServer(0);
-    close = () => wss.close();
-    await new Promise((r) => wss.once('listening', r));
-    const port = (wss.address() as { port: number }).port;
-
-    const open = async () => {
-      const ws = new WebSocket(`ws://localhost:${port}`);
-      const inbox: ServerMessage[] = [];
-      ws.on('message', (d) => inbox.push(JSON.parse(d.toString()) as ServerMessage));
-      await new Promise((r) => ws.once('open', r));
-      const waitFor = async (t: ServerMessage['t']) => {
-        for (let i = 0; i < 100; i++) {
-          const m = inbox.find((x) => x.t === t);
-          if (m) return m;
-          await new Promise((r) => setTimeout(r, 10));
-        }
-        throw new Error(`timed out waiting for ${t}`);
-      };
-      return { ws, waitFor };
-    };
-
-    const a = await open();
-    const b = await open();
-    a.ws.send(JSON.stringify({ t: 'create', map: 'yard' }));
-    const joined = (await a.waitFor('joined')) as Extract<ServerMessage, { t: 'joined' }>;
-    b.ws.send(JSON.stringify({ t: 'join', room: joined.room.toLowerCase() }));
-    await b.waitFor('joined');
-    a.ws.send(JSON.stringify({ t: 'state', s: drone }));
-    const snap = (await b.waitFor('snap')) as Extract<ServerMessage, { t: 'snap' }>;
-    expect(snap.s.p).toEqual([0, 1, 0]);
-    a.ws.close();
-    b.ws.close();
-  });
-});
-
-describe('away from keyboard (ADR-0051)', () => {
-  it('warns 30 s before, then removes an idle pilot; the others stay', () => {
-    const { rooms, a, b, code, advance } = setup();
-    rooms.handle(b, { t: 'join', room: code });
-    // A keeps flying around; B sits still on the pad.
-    let x = 0;
-    const step = (ms: number) => {
-      for (let t = 0; t < ms; t += 10_000) {
-        advance(10_000);
-        x += 10;
-        rooms.handle(a, { t: 'state', s: { ...drone, p: [x, 5, 0] } });
-        rooms.handle(b, { t: 'state', s: drone });
-        rooms.tick();
-      }
-    };
-    // Their first state counts as arriving (10 s in), so idle time runs from there.
-    step(NET.afkKickMs - NET.afkWarnMs + 10_000);
-    expect(b.last('afk')?.kickInMs).toBeLessThanOrEqual(NET.afkWarnMs);
-    expect(a.last('afk')).toBeUndefined();
-    step(NET.afkWarnMs);
-    expect(b.last('kicked')?.reason).toBe('afk');
-    expect(a.last('peer-left')).toBeDefined();
-    expect(a.last('kicked')).toBeUndefined();
-  });
-
-  it('moving, firing or using the menu counts as being here', () => {
-    const { rooms, a, b, code, advance } = setup();
-    rooms.handle(b, { t: 'join', room: code });
-    for (let i = 0; i < 10; i++) {
-      advance(NET.afkKickMs / 4);
-      rooms.handle(a, { t: 'ready', ready: i % 2 === 0 });
-      rooms.handle(b, { t: 'state', s: { ...drone, p: [i * 5, 1, 0] } });
-      rooms.tick();
-    }
-    expect(a.last('kicked')).toBeUndefined();
-    expect(b.last('kicked')).toBeUndefined();
+  it('rejects unknown rooms and bad messages', () => {
+    const rooms = new RoomManager();
+    const a = peer();
+    rooms.handle(a, { t: 'join', code: '07' });
+    expect(a.got.at(-1)?.t).toBe('error');
+    expect(parseClientMessage('{"t":"join","code":"7"}')).toBeNull();
+    expect(parseClientMessage('nope')).toBeNull();
   });
 });

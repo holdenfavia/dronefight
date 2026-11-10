@@ -1,0 +1,786 @@
+// Side-view renderer (ADR-0070): Canvas 2D, a camera that frames every fighter, parallax city
+// backdrop, stage art, drones, hit effects and screen shake.
+
+import { FIGHTERS, type MoveId } from '../../shared/fighter/fighters';
+import { centerY, fighterDef, hitboxWorld, isAlive, moveActive, type Fighter, type GameEvent, type World } from '../../shared/fighter/sim';
+import { SHIELD } from '../../shared/fighter/config';
+import type { Platform } from '../../shared/fighter/stages';
+import { CAMERA, FEEL, PALETTE, SLOT_COLORS } from './config';
+import { drawDrone } from './drones';
+import { isPurpleSkyTime } from './purpleSky';
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  max: number;
+  size: number;
+  color: string;
+  kind: 'spark' | 'smoke' | 'dust' | 'ring' | 'star';
+  grow: number;
+}
+
+interface Building {
+  x: number;
+  w: number;
+  h: number;
+  windows: boolean;
+}
+
+/** Previous positions for smooth drawing between sim frames. */
+export interface Prev {
+  x: number;
+  y: number;
+}
+
+export class Renderer {
+  readonly canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+  private w = 1;
+  private h = 1;
+  private dpr = 1;
+  private cam = { x: 0, y: 150, zoom: 0.8 };
+  private shake = 0;
+  private particles: Particle[] = [];
+  private flashes = new Map<number, number>();
+  private koBeams: { x: number; y: number; color: string; life: number }[] = [];
+  private far: Building[] = [];
+  private near: Building[] = [];
+  private time = 0;
+  private purple = false;
+  private purpleCheck = 0;
+  private platforms: Platform[] = [];
+
+  constructor(parent: HTMLElement) {
+    this.canvas = document.createElement('canvas');
+    parent.appendChild(this.canvas);
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D is not available');
+    this.ctx = ctx;
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
+    let seed = 7;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let x = -2600; x < 2600; ) {
+      const w = 60 + rand() * 120;
+      this.far.push({ x, w, h: 160 + rand() * 360, windows: false });
+      x += w + rand() * 20;
+    }
+    for (let x = -2200; x < 2200; ) {
+      const w = 80 + rand() * 140;
+      this.near.push({ x, w, h: 120 + rand() * 420, windows: true });
+      x += w + 10 + rand() * 50;
+    }
+  }
+
+  resize(): void {
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.w = window.innerWidth;
+    this.h = window.innerHeight;
+    this.canvas.width = Math.round(this.w * this.dpr);
+    this.canvas.height = Math.round(this.h * this.dpr);
+    this.canvas.style.width = `${this.w}px`;
+    this.canvas.style.height = `${this.h}px`;
+  }
+
+  /** Reset effects and snap the camera, for a new match. */
+  reset(world: World): void {
+    this.particles = [];
+    this.koBeams = [];
+    this.flashes.clear();
+    this.shake = 0;
+    this.platforms = world.stage.platforms;
+    const target = this.cameraTarget(world);
+    this.cam = { ...target };
+  }
+
+  /** Turn sim events into effects. */
+  onEvents(world: World, events: readonly GameEvent[]): void {
+    for (const e of events) {
+      switch (e.type) {
+        case 'hit': {
+          const color = SLOT_COLORS[e.attacker] ?? '#fff';
+          const n = 6 + Math.min(20, Math.floor(e.dmg * 1.4));
+          for (let i = 0; i < n; i++) this.spark(e.x, e.y, color, 200 + e.kb * 6);
+          this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 14, max: 14, size: 10 + e.dmg * 2, color: '#fff', kind: 'ring', grow: 4 + e.kb * 0.05 });
+          if (e.dmg >= 10) this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 10, max: 10, size: 14 + e.dmg, color: '#fff6c9', kind: 'star', grow: 1 });
+          this.flashes.set(e.target, 1);
+          this.shake = Math.min(FEEL.maxShake, this.shake + e.kb * FEEL.shakePerKb);
+          break;
+        }
+        case 'shieldhit':
+          for (let i = 0; i < 5; i++) this.spark(e.x, e.y, '#bfe8ff', 220);
+          break;
+        case 'shieldbreak': {
+          const f = world.fighters[e.target]!;
+          for (let i = 0; i < 24; i++) this.spark(f.x, centerY(f), '#bfe8ff', 500);
+          this.shake = Math.min(FEEL.maxShake, this.shake + 10);
+          break;
+        }
+        case 'ko': {
+          const color = SLOT_COLORS[e.slot] ?? '#fff';
+          this.koBeams.push({ x: e.x, y: e.y, color, life: 50 });
+          for (let i = 0; i < 40; i++) this.spark(e.x, e.y, i % 2 ? color : '#fff', 900);
+          this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 30, max: 30, size: 30, color, kind: 'ring', grow: 16 });
+          this.shake = FEEL.maxShake;
+          break;
+        }
+        case 'jump': {
+          const f = world.fighters[e.slot]!;
+          for (let i = 0; i < (e.air ? 6 : 8); i++) {
+            this.particles.push({ x: f.x + (Math.random() - 0.5) * 30, y: f.y + (e.air ? 4 : 2), vx: (Math.random() - 0.5) * 160, vy: e.air ? -120 - Math.random() * 120 : 30 + Math.random() * 40, life: 22, max: 22, size: 5 + Math.random() * 6, color: e.air ? '#ffffffaa' : '#d8cbb8', kind: e.air ? 'smoke' : 'dust', grow: 0.4 });
+          }
+          if (e.air) this.particles.push({ x: f.x, y: f.y + 2, vx: 0, vy: -40, life: 12, max: 12, size: 12, color: '#ffffff', kind: 'ring', grow: 2.5 });
+          break;
+        }
+        case 'land': {
+          const f = world.fighters[e.slot]!;
+          for (let i = 0; i < (e.hard ? 12 : 5); i++) {
+            const dir = i % 2 ? 1 : -1;
+            this.particles.push({ x: f.x + dir * 10, y: f.y + 2, vx: dir * (60 + Math.random() * 160), vy: 20 + Math.random() * 50, life: 20, max: 20, size: 4 + Math.random() * 5, color: '#d8cbb8', kind: 'dust', grow: 0.3 });
+          }
+          break;
+        }
+        case 'explode':
+          for (let i = 0; i < 30; i++) this.spark(e.x, e.y, i % 3 ? PALETTE.orange : '#ffe27a', 600);
+          for (let i = 0; i < 10; i++) this.particles.push({ x: e.x + (Math.random() - 0.5) * 40, y: e.y + (Math.random() - 0.5) * 40, vx: (Math.random() - 0.5) * 100, vy: 40 + Math.random() * 80, life: 50, max: 50, size: 16 + Math.random() * 14, color: '#55504a', kind: 'smoke', grow: 0.6 });
+          this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 16, max: 16, size: e.r * 0.4, color: '#ffe27a', kind: 'ring', grow: e.r * 0.06 });
+          this.shake = Math.min(FEEL.maxShake, this.shake + 12);
+          break;
+        case 'respawn': {
+          const f = world.fighters[e.slot]!;
+          this.particles.push({ x: f.x, y: centerY(f), vx: 0, vy: 0, life: 24, max: 24, size: 10, color: SLOT_COLORS[e.slot] ?? '#fff', kind: 'ring', grow: 5 });
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }
+
+  private spark(x: number, y: number, color: string, speed: number): void {
+    const a = Math.random() * Math.PI * 2;
+    const s = speed * (0.3 + Math.random() * 0.7);
+    this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 14 + Math.random() * 14, max: 28, size: 2 + Math.random() * 3, color, kind: 'spark', grow: 0 });
+  }
+
+  private cameraTarget(world: World): { x: number; y: number; zoom: number } {
+    const main = world.stage.platforms[0]!;
+    let x1 = main.x1 + 100;
+    let x2 = main.x2 - 100;
+    let y1 = main.y - 40;
+    let y2 = main.y + 200;
+    for (const f of world.fighters) {
+      if (!isAlive(f)) continue;
+      x1 = Math.min(x1, f.x);
+      x2 = Math.max(x2, f.x);
+      y1 = Math.min(y1, f.y);
+      y2 = Math.max(y2, f.y + fighterDef(f).height);
+    }
+    const b = world.stage.blast;
+    const m = CAMERA.blastMargin;
+    x1 = Math.max(b.left - m, x1 - CAMERA.padding);
+    x2 = Math.min(b.right + m, x2 + CAMERA.padding);
+    y1 = Math.max(b.bottom - m, y1 - CAMERA.padding * 0.7);
+    y2 = Math.min(b.top + m, y2 + CAMERA.padding * 0.8);
+    const unit = this.h / CAMERA.baseHeight;
+    const zoom = Math.max(CAMERA.minZoom, Math.min(CAMERA.maxZoom, Math.min(this.w / unit / (x2 - x1), CAMERA.baseHeight / (y2 - y1))));
+    return { x: (x1 + x2) / 2, y: (y1 + y2) / 2, zoom };
+  }
+
+  /** Pixels per world unit. */
+  private get scale(): number {
+    return this.cam.zoom * (this.h / CAMERA.baseHeight);
+  }
+
+  private sx(x: number): number {
+    return (x - this.cam.x) * this.scale + this.w / 2;
+  }
+
+  private sy(y: number): number {
+    return this.h / 2 - (y - this.cam.y) * this.scale;
+  }
+
+  /** Advance effects by one sim frame. */
+  tick(world: World): void {
+    this.time++;
+    const t = this.cameraTarget(world);
+    this.cam.x += (t.x - this.cam.x) * CAMERA.follow;
+    this.cam.y += (t.y - this.cam.y) * CAMERA.follow;
+    this.cam.zoom += (t.zoom - this.cam.zoom) * CAMERA.follow;
+    this.shake *= FEEL.shakeDecay;
+    if (this.shake < 0.3) this.shake = 0;
+    for (const [slot, v] of this.flashes) {
+      const next = v - 0.12;
+      if (next <= 0) this.flashes.delete(slot);
+      else this.flashes.set(slot, next);
+    }
+    const keep: Particle[] = [];
+    for (const p of this.particles) {
+      p.life--;
+      if (p.life <= 0) continue;
+      p.x += p.vx / 60;
+      p.y += p.vy / 60;
+      if (p.kind === 'spark') { p.vx *= 0.9; p.vy = p.vy * 0.9 - 12; }
+      else if (p.kind === 'smoke' || p.kind === 'dust') { p.vx *= 0.94; p.vy *= 0.94; }
+      p.size += p.grow;
+      keep.push(p);
+    }
+    this.particles = keep.length > 800 ? keep.slice(-800) : keep;
+    this.koBeams = this.koBeams.filter((b) => --b.life > 0);
+
+    // Trails and smoke from the fighters themselves.
+    for (const f of world.fighters) {
+      if (!isAlive(f) || f.hitlag > 0) continue;
+      const cy = centerY(f);
+      if (f.action === 'hitstun' && f.lastKb > 70 && this.time % 2 === 0) {
+        this.particles.push({ x: f.x, y: cy, vx: 0, vy: 0, life: 30, max: 30, size: 8 + f.lastKb * 0.05, color: '#f2efe9', kind: 'smoke', grow: 0.35 });
+      }
+      if (f.percent >= FEEL.smokePercent && this.time % Math.max(3, 14 - Math.floor(f.percent / 20)) === 0) {
+        this.particles.push({ x: f.x - f.facing * 8, y: cy + 8, vx: (Math.random() - 0.5) * 30, vy: 60, life: 40, max: 40, size: 5, color: '#5a5650', kind: 'smoke', grow: 0.25 });
+      }
+    }
+  }
+
+  draw(world: World, prev: readonly Prev[], alpha: number): void {
+    const ctx = this.ctx;
+    if (++this.purpleCheck % 60 === 1) this.purple = isPurpleSkyTime();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.drawSky();
+    const sh = this.shake;
+    ctx.save();
+    if (sh > 0) ctx.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+    this.drawBackdrop();
+    this.drawStage(world);
+    this.drawParticles(false);
+    for (const p of world.projectiles) this.drawProjectile(p.kind, p.x, p.y, p.r, SLOT_COLORS[p.owner] ?? '#fff');
+    for (const f of world.fighters) {
+      if (!isAlive(f)) continue;
+      const pv = prev[f.slot];
+      const x = pv && f.hitlag === 0 ? pv.x + (f.x - pv.x) * alpha : f.x;
+      const y = pv && f.hitlag === 0 ? pv.y + (f.y - pv.y) * alpha : f.y;
+      this.drawFighter(f, x, y);
+    }
+    this.drawParticles(true);
+    this.drawKoBeams();
+    ctx.restore();
+    this.drawOffscreen(world);
+  }
+
+  private drawSky(): void {
+    const ctx = this.ctx;
+    const g = ctx.createLinearGradient(0, 0, 0, this.h);
+    g.addColorStop(0, this.purple ? PALETTE.purpleTop : PALETTE.skyTop);
+    g.addColorStop(0.75, this.purple ? PALETTE.purpleHorizon : PALETTE.skyHorizon);
+    g.addColorStop(1, this.purple ? '#f0dcff' : '#ffe9c9');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, this.w, this.h);
+    // Sun glow, barely moving with the camera.
+    const sunX = this.w * 0.72 - this.cam.x * 0.03;
+    const sunY = this.h * 0.62 + this.cam.y * 0.02;
+    const r = this.h * 0.5;
+    const sg = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, r);
+    sg.addColorStop(0, 'rgba(255,248,226,0.95)');
+    sg.addColorStop(0.08, 'rgba(255,236,190,0.75)');
+    sg.addColorStop(1, 'rgba(255,200,140,0)');
+    ctx.fillStyle = sg;
+    ctx.fillRect(0, 0, this.w, this.h);
+    // Drifting clouds.
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    for (let i = 0; i < 6; i++) {
+      const cx = ((i * 397 + this.time * (0.15 + i * 0.03) - this.cam.x * 0.08) % (this.w + 400) + this.w + 400) % (this.w + 400) - 200;
+      const cy = this.h * (0.12 + (i % 3) * 0.09) + this.cam.y * 0.05;
+      const s = this.h * (0.05 + (i % 2) * 0.02);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, s * 3, s, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + s * 1.5, cy - s * 0.5, s * 1.8, s * 0.9, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /** Parallax layers: hills and two rows of city. */
+  private drawBackdrop(): void {
+    const ctx = this.ctx;
+    const k = this.h / CAMERA.baseHeight;
+    // Each layer stands on its own horizon (a fraction of the screen height) and drifts a little with the camera.
+    const layer = (parallax: number, zoomK: number, horizon: number) => {
+      const s = (0.5 + this.cam.zoom * 0.5) * zoomK * k;
+      const base = this.h * horizon + (this.cam.y - 150) * parallax * s;
+      return {
+        x: (x: number) => this.w / 2 + (x - this.cam.x * parallax) * s,
+        y: (y: number) => base - y * s,
+        s,
+      };
+    };
+    // Hills.
+    const hills = layer(0.05, 0.5, 0.78);
+    ctx.fillStyle = this.purple ? '#8a63c9' : '#9fb6c9';
+    ctx.beginPath();
+    ctx.moveTo(0, this.h);
+    for (let px = 0; px <= this.w + 20; px += 20) {
+      const wx = (px - this.w / 2) / hills.s + this.cam.x * 0.08;
+      const hy = 130 + Math.sin(wx * 0.004) * 90 + Math.sin(wx * 0.011 + 2) * 40;
+      ctx.lineTo(px, hills.y(hy));
+    }
+    ctx.lineTo(this.w, this.h);
+    ctx.fill();
+
+    const city = (list: Building[], parallax: number, zoomK: number, horizon: number, color: string, windowColor: string) => {
+      const L = layer(parallax, zoomK, horizon);
+      ctx.fillStyle = color;
+      for (const b of list) {
+        const x = L.x(b.x);
+        const w = b.w * L.s;
+        if (x + w < 0 || x > this.w) continue;
+        const top = L.y(b.h);
+        ctx.fillRect(x, top, w, this.h - top + 2);
+        if (b.windows) {
+          ctx.fillStyle = windowColor;
+          const step = 22 * L.s;
+          for (let wy = top + step * 0.6; wy < this.h; wy += step) {
+            for (let wx = x + step * 0.4; wx < x + w - step * 0.4; wx += step) {
+              if (((wx * 13 + wy * 7) | 0) % 5 === 0) continue;
+              ctx.fillRect(wx, wy, step * 0.45, step * 0.5);
+            }
+          }
+          ctx.fillStyle = color;
+        }
+      }
+    };
+    city(this.far, 0.15, 0.55, 0.92, this.purple ? '#6c4aa8' : '#7f97ad', '');
+    city(this.near, 0.3, 0.7, 1.02, this.purple ? '#3e2a66' : '#51667a', this.purple ? 'rgba(255,214,255,0.25)' : 'rgba(255,236,200,0.22)');
+  }
+
+  private drawStage(world: World): void {
+    const ctx = this.ctx;
+    const s = this.scale;
+    const id = world.stage.id;
+    const main = world.stage.platforms[0]!;
+    // What holds the main platform up.
+    if (id === 'rooftop') {
+      // The building under the roof, all the way down.
+      const x = this.sx(main.x1 + 20);
+      const w = (main.x2 - main.x1 - 40) * s;
+      const top = this.sy(main.y - main.depth);
+      ctx.fillStyle = '#2b2f35';
+      ctx.fillRect(x, top, w, this.h - top + 40);
+      ctx.fillStyle = 'rgba(255,236,200,0.28)';
+      const step = 34 * s;
+      for (let wy = top + step * 0.5; wy < this.h + 40; wy += step) {
+        for (let wx = x + step * 0.3; wx < x + w - step * 0.5; wx += step) ctx.fillRect(wx, wy, step * 0.5, step * 0.55);
+      }
+      // Rooftop clutter.
+      this.box(-300, main.y, 70, 34, '#4b5058');
+      this.box(-290, main.y + 34, 50, 10, '#5e646d');
+      this.box(230, main.y, 50, 50, '#4b5058');
+      ctx.strokeStyle = '#26282b';
+      ctx.lineWidth = Math.max(1, 3 * s);
+      ctx.beginPath();
+      ctx.moveTo(this.sx(330), this.sy(main.y));
+      ctx.lineTo(this.sx(330), this.sy(main.y + 150));
+      ctx.stroke();
+      ctx.fillStyle = (this.time >> 5) % 2 ? '#ff3b30' : '#661814';
+      ctx.beginPath();
+      ctx.arc(this.sx(330), this.sy(main.y + 152), Math.max(2, 5 * s), 0, Math.PI * 2);
+      ctx.fill();
+    } else if (id === 'helipad') {
+      // A truss tower under the pad.
+      ctx.strokeStyle = '#3a3e44';
+      ctx.lineWidth = Math.max(1, 6 * s);
+      const tx1 = this.sx(-90);
+      const tx2 = this.sx(90);
+      const top = this.sy(main.y - main.depth);
+      ctx.beginPath();
+      ctx.moveTo(tx1, top);
+      ctx.lineTo(tx1, this.h + 40);
+      ctx.moveTo(tx2, top);
+      ctx.lineTo(tx2, this.h + 40);
+      for (let y = 0; y < 12; y++) {
+        const y1 = this.sy(main.y - main.depth - y * 90);
+        const y2 = this.sy(main.y - main.depth - (y + 1) * 90);
+        ctx.moveTo(tx1, y1);
+        ctx.lineTo(tx2, y2);
+        ctx.moveTo(tx2, y1);
+        ctx.lineTo(tx1, y2);
+      }
+      ctx.stroke();
+    } else {
+      // Two crane towers holding the arms.
+      for (const side of [-1, 1]) {
+        const cx = side * 400;
+        ctx.strokeStyle = '#e8a21a';
+        ctx.lineWidth = Math.max(1, 5 * s);
+        const x1 = this.sx(cx - 20);
+        const x2 = this.sx(cx + 20);
+        ctx.beginPath();
+        ctx.moveTo(x1, this.sy(170));
+        ctx.lineTo(x1, this.h + 40);
+        ctx.moveTo(x2, this.sy(170));
+        ctx.lineTo(x2, this.h + 40);
+        for (let y = 170; y > -900; y -= 50) {
+          ctx.moveTo(x1, this.sy(y));
+          ctx.lineTo(x2, this.sy(y - 50));
+        }
+        ctx.stroke();
+        // Counterweight above.
+        this.box(cx - 30, 180, 60, 30, '#3a3e44');
+      }
+      const top = this.sy(main.y - main.depth);
+      ctx.fillStyle = '#2b2f35';
+      ctx.fillRect(this.sx(-200), top, 400 * s, this.h - top + 40);
+    }
+
+    for (const p of world.stage.platforms) this.drawPlatform(p, id);
+  }
+
+  private box(x: number, y: number, w: number, h: number, color: string): void {
+    const ctx = this.ctx;
+    ctx.fillStyle = color;
+    ctx.fillRect(this.sx(x), this.sy(y + h), w * this.scale, h * this.scale);
+  }
+
+  private drawPlatform(p: Platform, stage: string): void {
+    const ctx = this.ctx;
+    const s = this.scale;
+    const x = this.sx(p.x1);
+    const w = (p.x2 - p.x1) * s;
+    const top = this.sy(p.y);
+    if (p.solid) {
+      const d = p.depth * s;
+      ctx.fillStyle = stage === 'helipad' ? '#33373d' : '#3b4047';
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x + w, top);
+      ctx.lineTo(x + w - 18 * s, top + d);
+      ctx.lineTo(x + 18 * s, top + d);
+      ctx.closePath();
+      ctx.fill();
+      // Grid on the face (the v1 grid textures).
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let gx = p.x1 + 40; gx < p.x2; gx += 40) {
+        ctx.moveTo(this.sx(gx), top);
+        ctx.lineTo(this.sx(gx), top + d);
+      }
+      for (let gy = 20; gy < p.depth; gy += 20) {
+        ctx.moveTo(x + 10 * s, top + gy * s);
+        ctx.lineTo(x + w - 10 * s, top + gy * s);
+      }
+      ctx.stroke();
+      // Surface and hazard stripe.
+      ctx.fillStyle = '#e9e6df';
+      ctx.fillRect(x, top - 2, w, 6 * s + 2);
+      const stripe = 16 * s;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, top + 6 * s, w, 8 * s);
+      ctx.clip();
+      ctx.fillStyle = PALETTE.ink;
+      ctx.fillRect(x, top + 6 * s, w, 8 * s);
+      ctx.fillStyle = PALETTE.orange;
+      for (let sx = x - stripe; sx < x + w + stripe; sx += stripe * 2) {
+        ctx.beginPath();
+        ctx.moveTo(sx, top + 14 * s);
+        ctx.lineTo(sx + stripe, top + 6 * s);
+        ctx.lineTo(sx + stripe * 2, top + 6 * s);
+        ctx.lineTo(sx + stripe, top + 14 * s);
+        ctx.fill();
+      }
+      ctx.restore();
+      if (stage === 'helipad') {
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = Math.max(1, 3 * s);
+        ctx.beginPath();
+        ctx.ellipse(this.sx(0), top + 1, 110 * s, 4 * s, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        for (let i = -4; i <= 4; i++) {
+          ctx.fillStyle = (this.time >> 4) % 9 === i + 4 ? '#ffe27a' : '#a8ff7a';
+          ctx.fillRect(this.sx(i * 95) - 2 * s, top - 4 * s, 4 * s, 3 * s);
+        }
+      }
+    } else {
+      // Steel girder in orange, with rivets.
+      const h = 10 * s;
+      ctx.fillStyle = stage === 'cranes' ? '#e8a21a' : PALETTE.orange;
+      ctx.fillRect(x, top, w, 3 * s);
+      ctx.fillRect(x, top + h - 3 * s, w, 3 * s);
+      ctx.fillRect(x, top, w, h * 0.3);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(x, top + 3 * s, w, h - 6 * s);
+      ctx.fillStyle = PALETTE.ink;
+      for (let rx = p.x1 + 10; rx < p.x2; rx += 20) ctx.fillRect(this.sx(rx) - s, top + h * 0.5 - s, 2 * s, 2 * s);
+      // Cables to the sky.
+      ctx.strokeStyle = 'rgba(30,30,30,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + 6 * s, top);
+      ctx.lineTo(x + w / 2, 0);
+      ctx.lineTo(x + w - 6 * s, top);
+      ctx.stroke();
+    }
+  }
+
+  private drawProjectile(kind: 'shot' | 'bomb', x: number, y: number, r: number, color: string): void {
+    const ctx = this.ctx;
+    const s = this.scale;
+    const px = this.sx(x);
+    const py = this.sy(y);
+    if (kind === 'shot') {
+      const g = ctx.createRadialGradient(px, py, 0, px, py, r * 2.2 * s);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.35, color);
+      g.addColorStop(1, color + '00');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(px, py, r * 2.2 * s, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = PALETTE.ink;
+      ctx.beginPath();
+      ctx.arc(px, py, r * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = (this.time >> 2) % 2 ? '#ff3b30' : color;
+      ctx.beginPath();
+      ctx.arc(px, py - r * 0.6 * s, r * 0.35 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private pose(f: Fighter): { tilt: number; spin: number } {
+    const def = fighterDef(f);
+    if (f.action === 'hitstun') return { tilt: 0, spin: (f.frame * 0.35 + f.slot) * (f.lastKb > 60 ? 1 : 0.3) };
+    if (f.action === 'roll') return { tilt: 0, spin: (f.frame / f.duration) * Math.PI * 2 };
+    if (f.action === 'attack' && f.move) {
+      const m = def.moves[f.move];
+      const total = m.startup + m.active + m.endlag;
+      const t = Math.min(1, f.frame / total);
+      const wind = Math.min(1, f.frame / Math.max(1, m.startup));
+      const tilts: Partial<Record<MoveId, number>> = {
+        ftilt: 0.45 * wind, fair: 0.6 * wind, sspecial: 0.5,
+        utilt: -0.7 * wind, uair: -0.8 * wind, bair: -0.6 * wind, dtilt: 0.3 * wind, jab: 0.2 * wind,
+        dair: 1.0 * wind, dspecial: m.slam ? 1.4 : 0.2,
+      };
+      if (f.move === 'nair') return { tilt: 0, spin: t * Math.PI * 2 };
+      if (f.move === 'uspecial') return { tilt: -0.2, spin: 0 };
+      return { tilt: (tilts[f.move] ?? 0) * (1 - Math.max(0, t - 0.7) / 0.3), spin: 0 };
+    }
+    const lean = Math.max(-1, Math.min(1, f.vx / def.airSpeed)) * f.facing;
+    return { tilt: lean * 0.28, spin: 0 };
+  }
+
+  private drawFighter(f: Fighter, x: number, y: number): void {
+    const ctx = this.ctx;
+    const def = fighterDef(f);
+    const color = SLOT_COLORS[f.slot] ?? '#fff';
+    const cx = this.sx(x);
+    const cy = this.sy(y + def.height / 2);
+    const s = this.scale;
+
+    if (f.action === 'respawn') {
+      // Hovering respawn pad.
+      ctx.fillStyle = color + 'aa';
+      ctx.fillRect(cx - 40 * s, this.sy(y) + 2 * s, 80 * s, 5 * s);
+      ctx.fillStyle = color + '33';
+      ctx.fillRect(cx - 40 * s, this.sy(y) + 7 * s, 80 * s, 60 * s);
+    }
+
+    // Shadow on the platform below.
+    const ground = this.groundBelow(f, x);
+    if (ground !== null && y - ground < 400) {
+      const k = 1 - (y - ground) / 400;
+      ctx.fillStyle = `rgba(0,0,0,${0.25 * k})`;
+      ctx.beginPath();
+      ctx.ellipse(cx, this.sy(ground) + 2 * s, def.halfW * s * (0.6 + 0.4 * k), 4 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const { tilt, spin } = this.pose(f);
+    const invisible = f.invincible > 0 && f.action !== 'respawn' && (this.time >> 2) % 2 === 0;
+    ctx.save();
+    ctx.translate(cx + (f.hitlag > 0 && f.action === 'hitstun' ? (Math.random() - 0.5) * 6 : 0), cy);
+    ctx.scale(s * f.facing, s);
+    ctx.rotate(tilt + spin);
+    if (invisible) ctx.globalAlpha = 0.45;
+    const thrust = f.grounded ? 0.2 : f.vy > 0 ? 1 : 0.5;
+    drawDrone(ctx, f.id, {
+      color,
+      phase: this.time * (0.9 + thrust * 0.8) + f.slot,
+      blink: this.blinkAmount(f.slot) + (f.action === 'hitstun' || f.action === 'shieldbreak' ? 1 : 0),
+      flash: this.flashes.get(f.slot) ?? 0,
+      thrust,
+    });
+    ctx.restore();
+
+    // Shield bubble.
+    if (f.action === 'shield' || f.action === 'shieldstun') {
+      const r = def.hurtR * (0.7 + 0.7 * (f.shieldHp / SHIELD.maxHp)) * s;
+      ctx.fillStyle = color + '44';
+      ctx.strokeStyle = color + 'cc';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    if (f.action === 'shieldbreak' && this.time % 20 < 10) {
+      this.label('DIZZY', cx, cy - def.height * s - 10, '#ffe27a');
+    }
+
+    // Swing arc on active frames, so you can see what's hitting.
+    if (moveActive(f)) {
+      const box = hitboxWorld(f);
+      if (box) {
+        ctx.save();
+        ctx.globalAlpha = 0.55;
+        const g = ctx.createRadialGradient(this.sx(box.x), this.sy(box.y), 0, this.sx(box.x), this.sy(box.y), box.r * s);
+        g.addColorStop(0, '#ffffffcc');
+        g.addColorStop(0.6, color + '88');
+        g.addColorStop(1, color + '00');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(this.sx(box.x), this.sy(box.y), box.r * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Player tag above the drone.
+    this.label(`P${f.slot + 1}`, cx, cy - (def.height / 2 + 26) * s - 8, color, true);
+  }
+
+  private blinkAmount(slot: number): number {
+    const t = (this.time + slot * 97) % 240;
+    return t < 6 ? Math.sin((t / 6) * Math.PI) : 0;
+  }
+
+  private groundBelow(f: Fighter, x: number): number | null {
+    let best: number | null = null;
+    for (const p of this.platforms) {
+      if (x >= p.x1 && x <= p.x2 && p.y <= f.y + 1 && (best === null || p.y > best)) best = p.y;
+    }
+    return best;
+  }
+
+  private label(text: string, x: number, y: number, color: string, arrow = false): void {
+    const ctx = this.ctx;
+    ctx.font = `800 ${Math.round(Math.max(12, this.h * 0.022))}px 'Barlow Condensed', 'Arial Narrow', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+    if (arrow) {
+      ctx.beginPath();
+      ctx.moveTo(x - 5, y + 1);
+      ctx.lineTo(x + 5, y + 1);
+      ctx.lineTo(x, y + 7);
+      ctx.fill();
+    }
+  }
+
+  private drawParticles(front: boolean): void {
+    const ctx = this.ctx;
+    const s = this.scale;
+    for (const p of this.particles) {
+      const isFront = p.kind === 'spark' || p.kind === 'ring' || p.kind === 'star';
+      if (isFront !== front) continue;
+      const a = p.life / p.max;
+      const x = this.sx(p.x);
+      const y = this.sy(p.y);
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.kind === 'smoke' ? a * 0.7 : a));
+      if (p.kind === 'ring') {
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = Math.max(1, 4 * a * s);
+        ctx.beginPath();
+        ctx.arc(x, y, p.size * s, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (p.kind === 'star') {
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        const r = p.size * s;
+        for (let i = 0; i < 8; i++) {
+          const ang = (i / 8) * Math.PI * 2;
+          const rr = i % 2 ? r * 0.3 : r;
+          ctx.lineTo(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr);
+        }
+        ctx.fill();
+      } else if (p.kind === 'spark') {
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = Math.max(1, p.size * s * 0.6);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - (p.vx / 60) * s * 1.5, y + (p.vy / 60) * s * 1.5);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(x, y, p.size * s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private drawKoBeams(): void {
+    const ctx = this.ctx;
+    for (const b of this.koBeams) {
+      const x = this.sx(b.x);
+      const y = this.sy(b.y);
+      const a = b.life / 50;
+      // A burst of light shooting from the blast zone back toward the middle of the screen.
+      const ang = Math.atan2(this.h / 2 - y, this.w / 2 - x);
+      const len = Math.max(this.w, this.h) * 0.9;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(ang);
+      const g = ctx.createLinearGradient(0, 0, len, 0);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.15, b.color);
+      g.addColorStop(1, b.color + '00');
+      ctx.globalAlpha = a;
+      ctx.fillStyle = g;
+      const spread = 40 + (1 - a) * 160;
+      ctx.beginPath();
+      ctx.moveTo(0, -8);
+      ctx.lineTo(len, -spread);
+      ctx.lineTo(len, spread);
+      ctx.lineTo(0, 8);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  /** Bubbles at the screen edge for fighters out of view. */
+  private drawOffscreen(world: World): void {
+    const ctx = this.ctx;
+    for (const f of world.fighters) {
+      if (!isAlive(f)) continue;
+      const def = FIGHTERS[f.id];
+      const x = this.sx(f.x);
+      const y = this.sy(f.y + def.height / 2);
+      const m = 40;
+      if (x > -10 && x < this.w + 10 && y > -10 && y < this.h + 10) continue;
+      const bx = Math.max(m, Math.min(this.w - m, x));
+      const by = Math.max(m, Math.min(this.h - m, y));
+      const color = SLOT_COLORS[f.slot] ?? '#fff';
+      ctx.fillStyle = 'rgba(20,21,22,0.75)';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(bx, by, 28, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(bx, by);
+      const k = 0.6 * (28 / (def.halfW + 6));
+      ctx.scale(k * f.facing, k);
+      drawDrone(ctx, f.id, { color, phase: this.time, blink: 0, flash: 0, thrust: 1 });
+      ctx.restore();
+    }
+  }
+}
