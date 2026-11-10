@@ -611,6 +611,8 @@ export class Renderer {
       blink: this.blinkAmount(f.slot) + (f.action === 'hitstun' || f.action === 'shieldbreak' ? 1 : 0),
       flash: this.flashes.get(f.slot) ?? 0,
       thrust,
+      stride: f.grounded && Math.abs(f.vx) > 30 ? Math.min(1, Math.abs(f.vx) / def.walkSpeed) : 0,
+      punch: moveActive(f),
     });
     ctx.restore();
 

@@ -54,7 +54,7 @@ Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Cr
 
 ## Look and sound
 
-- Bright sky over a parallax city, orange / black / white (ADR-0007), drones in v1's style with a camera "eye" and props in the player's color (one color per slot: orange, lime, cyan, pink; ADR-0026). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
+- Bright sky over a parallax city, orange / black / white (ADR-0007), characters drawn as **placeholder stick figures** for now (owner's request; the drone art is kept behind `CHARACTER_ART` in `client/src/config.ts`), each in the player's color (one color per slot: orange, lime, cyan, pink; ADR-0026). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
 - Menus: bold condensed caps on dark translucent panels with orange accents (ADR-0039).
 - All sound synthesized in the browser (ADR-0010).
 
