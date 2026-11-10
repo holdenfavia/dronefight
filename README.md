@@ -1,54 +1,51 @@
 # dronefight
 
-A browser FPV drone dogfighting game, built by pilots who fly real FPV.
+A side-view drone brawler for playing with friends. Little drone characters knock each other off a rooftop: hits build up percent damage, the more damage the further you fly, and anyone knocked off the screen loses a life. Two players on one keyboard, plus computer opponents.
 
-Open a link, share a room code with friends, plug in your radio, and fight in acro mode in a bright industrial arena. No install, no account.
-
-> **Status:** Playable online at https://dronefight.fly.dev. Free-for-all rooms of up to 10 pilots, five drone bodies with loadouts (weapons, specials, propellers, wing jets), four maps, optional Google sign-in. Now: play-testing, balancing and accounts/progression (Phase 5). See the [roadmap](docs/ROADMAP.md).
-
-_"dronefight" is a working title._
+> **Status:** restarted on 2026-11-10 as a platform fighter (ADR-0070). Four drones, three stages, CPUs, local 2-player. Next: tuning with friends, then online rooms. See the [roadmap](docs/ROADMAP.md).
+>
+> **Looking for the old 3D FPV dogfighting game?** It's kept whole on the [`archive/dronefight-v1`](../../tree/archive/dronefight-v1) branch. What it was and how to bring it back: [docs/legacy/DRONEFIGHT_V1.md](docs/legacy/DRONEFIGHT_V1.md).
 
 ## Features
 
-- **Real acro flight:** Betaflight-style rates (RC rate, super rate, expo), adjustable camera uptilt and FOV
-- **Your own radio:** DJI FPV Remote Controller 2, EdgeTX/OpenTX radios, or any USB gamepad, with a mapping and calibration screen
-- **Free-for-all online:** create a room, share the 2-digit code, up to 10 pilots
-- **Low-latency netcode:** the other pilot is shown in near real time (target 100–200 ms, never above 250 ms)
-- **Dogfighting:** server-decided hits, first to 10 kills, destructible props, a flyable missile
-- **Loadouts:** bodies with real weight and thrust, a weapon per hardpoint, specials, propellers and jets
+- **Four drones:** Freestyle (all-rounder), Racer (tiny and fast), Heavy (X8, huge and strong), Flipper (3D quad, floaty, slams down)
+- **Platform-fighter rules:** percent damage, knockback, stocks, shields, dodges, spikes, recovery
+- **Two players on one keyboard**, up to four drones with CPU opponents (Easy, Normal, Hard)
+- **Three stages:** Rooftop, Helipad, Crane Yard
+- No install, no account, all sound synthesized in the browser
 
 ## Tech stack
 
 | Part | Choice |
 |---|---|
-| Rendering | [Three.js](https://threejs.org) (WebGPU with WebGL2 fallback) |
+| Rendering | Canvas 2D |
 | Language / build | TypeScript + [Vite](https://vite.dev) |
-| Physics | Custom acro flight model + [Rapier](https://rapier.rs) for collisions |
-| Multiplayer | Node.js WebSocket server with room codes |
-| Input | Browser Gamepad API through a calibration layer |
+| Game logic | Deterministic 60 Hz simulation in `shared/fighter/` (ready for online play) |
+| Server | Node.js, WebSocket rooms by two-digit code, on Fly.io |
 
 The reasoning behind each choice is in [`docs/decisions/`](docs/decisions/README.md).
 
 ## Getting started
 
-### Prerequisites
-
-- **git**
 - **Node.js 26** (see `.node-version`; 22+ works): `brew install node` or [nodejs.org](https://nodejs.org)
-- **Chrome or Edge** (best gamepad support)
-
-### Run it
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:5173 in Chrome or Edge, run **Controller setup** once, then **Fly**. Controls, tests and tuning notes are in [RUNBOOK.md](docs/RUNBOOK.md).
+Open http://localhost:5173 in Chrome or Edge and press **Fight!**
 
-### Connect your radio
+| | Player 1 | Player 2 |
+|---|---|---|
+| Move | A / D | ← / → |
+| Jump | W | ↑ |
+| Drop / fast fall | S | ↓ |
+| Attack | F | K |
+| Special | G | L |
+| Shield / dodge | H | ; |
 
-Plug it in over USB-C (use a data cable), then check that the sticks move at [gamepad-tester.com](https://gamepad-tester.com). Radio-specific steps are in [RUNBOOK.md](docs/RUNBOOK.md#connecting-a-radio).
+Attacks and specials change with the direction you hold. **Up + Special** gets you back to the stage. Tuning notes are in [RUNBOOK.md](docs/RUNBOOK.md).
 
 ## Project docs
 

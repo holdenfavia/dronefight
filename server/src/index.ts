@@ -1,28 +1,20 @@
-// dronefight room server (ADR-0005): WebSocket, room codes, latest-state-wins relay (ADR-0004).
+// dronefight server (ADR-0021): serves the built client and the room WebSocket on one port.
 import { createServer } from 'node:http';
-import { performance } from 'node:perf_hooks';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DEFAULT_SERVER_PORT, PROTOCOL_VERSION } from '../../shared/constants.js';
 import { parseClientMessage, type ServerMessage } from '../../shared/protocol.js';
-import { Progression } from './progression.js';
 import { RoomManager } from './rooms.js';
 import { serveStatic } from './static.js';
 
 const HEARTBEAT_MS = 10_000;
-/** Match timers and in-flight rounds advance at this rate. */
-const TICK_HZ = 60;
-const MAX_MESSAGE_BYTES = 2048;
+const MAX_MESSAGE_BYTES = 4096;
 
-/** The built client (`npm run build`). Served from the same port as the WebSocket when present (ADR-0021). */
+/** The built client (`npm run build`). */
 const CLIENT_DIR = fileURLToPath(new URL('../../dist/client/', import.meta.url));
 
-export function startServer(
-  port: number,
-  staticDir: string | null = null,
-  progression: Progression = new Progression(),
-): { wss: WebSocketServer; rooms: RoomManager } {
-  const rooms = new RoomManager(() => performance.now(), Math.random, progression);
+export function startServer(port: number, staticDir: string | null = null): { wss: WebSocketServer; rooms: RoomManager } {
+  const rooms = new RoomManager();
   const http = createServer((req, res) => {
     if (req.url === '/healthz') {
       res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
@@ -38,9 +30,7 @@ export function startServer(
   wss.on('connection', (socket) => {
     alive.set(socket, true);
     socket.on('pong', () => alive.set(socket, true));
-    rooms.connect(socket);
-    socket.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL_VERSION, st: performance.now() } satisfies ServerMessage));
-
+    socket.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL_VERSION } satisfies ServerMessage));
     socket.on('message', (data) => {
       const msg = parseClientMessage(data.toString());
       if (!msg) {
@@ -49,8 +39,8 @@ export function startServer(
       }
       rooms.handle(socket, msg);
     });
-    socket.on('close', () => rooms.disconnect(socket));
-    socket.on('error', () => rooms.disconnect(socket));
+    socket.on('close', () => rooms.leave(socket));
+    socket.on('error', () => rooms.leave(socket));
   });
 
   // Drop connections that stop answering, so dead players leave their room.
@@ -64,13 +54,10 @@ export function startServer(
       socket.ping();
     }
   }, HEARTBEAT_MS);
-  const tick = setInterval(() => rooms.tick(), 1000 / TICK_HZ);
   wss.on('close', () => {
     clearInterval(heartbeat);
-    clearInterval(tick);
     http.close();
   });
-
   return { wss, rooms };
 }
 
@@ -78,16 +65,6 @@ const isMain = !!process.argv[1] && import.meta.url === pathToFileURL(process.ar
 if (isMain) {
   const port = Number(process.env.PORT ?? DEFAULT_SERVER_PORT);
   const serveClient = process.env.SERVE_CLIENT === '1';
-  // XP (ADR-0032): needs the project URL and its secret key (a Fly secret); otherwise off.
-  const progression = new Progression({ url: process.env.SUPABASE_URL, secretKey: process.env.SUPABASE_SECRET_KEY });
-  const { rooms } = startServer(port, serveClient ? CLIENT_DIR : null, progression);
-  console.log(`dronefight server listening on port ${port}${serveClient ? ' (serving the client)' : ''}; progression ${progression.enabled ? 'on' : 'off'}`);
-  // Write pending XP before the machine stops (deploys, sleeping when idle).
-  const shutdown = () => void progression.flushAll().finally(() => process.exit(0));
-  process.once('SIGINT', shutdown);
-  process.once('SIGTERM', shutdown);
-  setInterval(() => {
-    const s = rooms.stats();
-    if (s.players > 0) console.log(`rooms=${s.rooms} players=${s.players} droppedSnapshots=${s.droppedSnapshots}`);
-  }, 30_000);
+  startServer(port, serveClient ? CLIENT_DIR : null);
+  console.log(`dronefight server listening on port ${port}${serveClient ? ' (serving the client)' : ''}`);
 }

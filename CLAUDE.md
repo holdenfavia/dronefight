@@ -1,6 +1,6 @@
 # dronefight
 
-Browser-based FPV drone dogfighting game for a group of friends who fly real FPV. Three.js + TypeScript client, Node WebSocket server, room codes, free-for-all up to 10 pilots.
+Browser-based side-view drone brawler (platform fighter) for a group of friends: up to 4 drones, two players on one keyboard plus CPUs. TypeScript + Canvas 2D client, deterministic fight sim in `shared/fighter/`, Node WebSocket server with room codes. The old 3D FPV game (v1) is archived on the `archive/dronefight-v1` branch; see `docs/legacy/DRONEFIGHT_V1.md` (ADR-0070).
 
 The spec and the decision index below are loaded every session. They are the source of truth.
 
@@ -10,7 +10,7 @@ The spec and the decision index below are loaded every session. They are the sou
 ## Before starting any task
 
 1. Read `docs/ROADMAP.md` and work on the **Current focus** unless the user says otherwise.
-2. Read the full decision file for any decision the task touches (e.g. networking work → `docs/decisions/0004-*.md`).
+2. Read the full decision file for any decision the task touches (e.g. the game's rules → `docs/decisions/0070-*.md`). ADRs marked "v1, archived" no longer apply.
 3. For how to run, test or deploy, use `docs/RUNBOOK.md`.
 
 ## Conflict rule (most important)
@@ -19,7 +19,7 @@ If a request, a plan, or code you are about to write contradicts `SPEC.md` (espe
 
 - **Stop before implementing.** Do not quietly work around it or "fix" the spec to match the code.
 - Tell the user in this form:
-  > **Spec conflict:** this contradicts **ADR-0004 (latest state wins)** — *<one-line quote or summary>*. Options: (a) keep the decision and do X instead, (b) change the decision via `/decide`.
+  > **Spec conflict:** this contradicts **ADR-0070 (keyboard only)** — *<one-line quote or summary>*. Options: (a) keep the decision and do X instead, (b) change the decision via `/decide`.
 - Proceed only after the user picks. If they change the decision, run `/decide` first, then implement.
 
 This applies to background agents and subagents too. If you cannot ask the user, do not implement the conflicting part. Report it in your result instead.
@@ -35,5 +35,6 @@ This applies to background agents and subagents too. If you cannot ask the user,
 ## Code conventions
 
 - TypeScript, strict mode. Match the style of surrounding code.
-- Game feel (rates, physics constants, netcode timings) lives in named config constants, not magic numbers.
-- Commit messages: imperative mood, reference ADRs when relevant (e.g. `Add snapshot interpolation (ADR-0004)`).
+- Game feel (knockback, movement, frame data, camera) lives in named config constants (`shared/fighter/config.ts`, `shared/fighter/fighters.ts`, `client/src/config.ts`), not magic numbers.
+- Keep `shared/fighter/` deterministic: no `Math.random()`, `Date` or `performance.now()` there.
+- Commit messages: imperative mood, reference ADRs when relevant (e.g. `Add ledge hang (ADR-0070)`).
