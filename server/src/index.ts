@@ -24,6 +24,11 @@ export function startServer(port: number, staticDir: string | null = null): { ws
     else res.writeHead(404).end();
   });
   const wss = new WebSocketServer({ server: http, maxPayload: MAX_MESSAGE_BYTES });
+  // Port already taken (e.g. `npm run server` running beside `npm run dev`): say so instead of crashing.
+  http.on('error', (e: NodeJS.ErrnoException) => {
+    if (e.code === 'EADDRINUSE') console.warn(`dronefight server: port ${port} is already in use; using the server already running there`);
+    else console.error('dronefight server:', e);
+  });
   http.listen(port);
   const alive = new WeakMap<WebSocket, boolean>();
 

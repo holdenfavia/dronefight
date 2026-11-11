@@ -5,7 +5,7 @@ import { FIGHTERS, type MoveId } from '../../shared/fighter/fighters';
 import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, rageFraction, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
 import { SHIELD } from '../../shared/fighter/config';
 import type { Platform } from '../../shared/fighter/stages';
-import { ATTACK_COLORS, CAMERA, FEEL, PALETTE, SLOT_COLORS } from './config';
+import { ATTACK_COLORS, CAMERA, CPU_TAG, FEEL, PALETTE, SLOT_COLORS } from './config';
 import { moveLook, type MoveLook } from './moveLooks';
 import { drawFighterFigure } from './figures';
 import { isPurpleSkyTime } from './purpleSky';
@@ -91,6 +91,9 @@ export class Renderer {
     this.canvas.style.width = `${this.w}px`;
     this.canvas.style.height = `${this.h}px`;
   }
+
+  /** Over-head tags by slot (setTags). */
+  private tags: { text: string; cpu: boolean }[] = [];
 
   /** Reset effects and snap the camera, for a new match. */
   reset(world: World): void {
@@ -1125,8 +1128,11 @@ export class Renderer {
       }
     }
 
-    // Player tag above the fighter.
-    this.label(`P${f.slot + 1}`, cx, cy - (def.height / 2 + 26) * s - 8, color, true);
+    // Tag above the fighter: people get "P1" and an arrow, CPUs a muted "CPU 3" (ADR-0075).
+    const tag = this.tags[f.slot] ?? { text: `P${f.slot + 1}`, cpu: false };
+    const tagY = cy - (def.height / 2 + 26) * s - 8;
+    if (tag.cpu) this.label(tag.text, cx, tagY, CPU_TAG.color, false, CPU_TAG.scale);
+    else this.label(tag.text, cx, tagY, color, true);
   }
 
   /** Which stick-figure attack pose to show, and how far through its swing. */
@@ -1220,9 +1226,14 @@ export class Renderer {
     return best;
   }
 
-  private label(text: string, x: number, y: number, color: string, arrow = false): void {
+  /** The tag over each fighter's head, by slot. */
+  setTags(tags: readonly { text: string; cpu: boolean }[]): void {
+    this.tags = [...tags];
+  }
+
+  private label(text: string, x: number, y: number, color: string, arrow = false, scale = 1): void {
     const ctx = this.ctx;
-    ctx.font = `800 ${Math.round(Math.max(12, this.h * 0.022))}px 'Barlow Condensed', 'Arial Narrow', sans-serif`;
+    ctx.font = `800 ${Math.round(Math.max(12, this.h * 0.022) * scale)}px 'Barlow Condensed', 'Arial Narrow', sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.lineWidth = 4;

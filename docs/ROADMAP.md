@@ -32,7 +32,9 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 ## Phase 2 — Online with friends
 
 - [ ] Decide netcode (rollback vs delay-based lockstep; inputs only) via `/decide`
-- [ ] Create/join room by two-digit code in the menu, invite link
+- [x] Title screen, main menu, roster-grid character select, CPU tags (ADR-0075)
+- [x] Create/join room by two-digit code in the menu, invite link, lobby with picks and ready (ADR-0075)
+- [ ] Start online fights from the lobby (after the netcode decision)
 - [ ] Each player on their own computer; mix of local and online players
 - [ ] Deploy and play over the internet
 

@@ -10,7 +10,8 @@ A **side-view platform fighter** to play with friends: an original cast of ten f
 
 - Desktop browsers (Chrome/Edge primary; Safari/Firefox best-effort), **keyboard only** (ADR-0070).
 - Up to **4 fighters** per match: **one player per keyboard** (ADR-0071), CPUs (Easy, Normal, Hard) fill the rest. No local 2-player until online play.
-- Online play with friends by two-digit room code comes next (ADR-0005); the server already groups players by code.
+- Boot to a title screen and main menu (Fight, Online, Controls), then a **roster-grid character select** with four player panels; CPUs are tagged **CPU** with their level everywhere (ADR-0075).
+- Online play with friends by two-digit room code comes next (ADR-0005): the **lobby** works (create/join by code, invite link `?room=NN`, see each other's picks and ready state); online fights wait for the netcode decision (ADR-0075).
 
 ## Rules (ADR-0070)
 

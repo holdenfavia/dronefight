@@ -3,6 +3,21 @@
 /** One color per slot: orange and lime first (ADR-0026). */
 export const SLOT_COLORS = ['#ff6a13', '#9be22d', '#2ec5ff', '#ff4fa3'] as const;
 
+/** Menu layout (ADR-0075). */
+export const MENU = {
+  /** Height (px) of a fighter portrait on the roster grid. */
+  tileSize: 52,
+  /** Roster columns when the layout can't be measured. */
+  rosterColumns: 6,
+} as const;
+
+/** CPU tag over a CPU's head (ADR-0075): muted so people stand out. */
+export const CPU_TAG = {
+  color: '#c9c6bf',
+  /** Text size relative to a player's tag. */
+  scale: 0.85,
+} as const;
+
 export const PALETTE = {
   orange: '#ff6a13',
   ink: '#141516',

@@ -3,12 +3,13 @@
 import './styles.css';
 import { botInput, createBot, type Bot } from '../../shared/fighter/bot';
 import { DT } from '../../shared/fighter/config';
-import { FIGHTERS } from '../../shared/fighter/fighters';
+import { FIGHTER_IDS, FIGHTERS } from '../../shared/fighter/fighters';
 import { createWorld, NO_INPUT, step, type GameEvent, type Input, type World } from '../../shared/fighter/sim';
 import { Sfx } from './audio';
 import { Keyboard } from './input';
 import { Renderer, type Prev } from './render';
-import { Ui, slotLabel, type MatchSetup } from './ui';
+import { NetClient } from './net';
+import { Ui, slotTag, type MatchSetup } from './ui';
 
 /** Frames the "GO!" and "GAME!" banners stay up. */
 const GO_FRAMES = 50;
@@ -21,10 +22,11 @@ type Mode = 'menu' | 'game' | 'paused' | 'results';
 const keyboard = new Keyboard();
 const sfx = new Sfx();
 const renderer = new Renderer(document.getElementById('stage')!);
+const net = new NetClient('brawler');
 const ui = new Ui(document.getElementById('menu')!, document.getElementById('hud')!, {
   onFight: (setup) => startMatch(setup),
   onClick: () => { sfx.unlock(); sfx.click(); },
-});
+}, net);
 
 let mode: Mode = 'menu';
 let world: World = attractWorld();
@@ -46,18 +48,22 @@ function attractWorld(): World {
 
 function startMatch(setup: MatchSetup): void {
   matchSetup = setup;
-  const active = setup.slots.filter((s) => s.kind !== 'off');
+  // Random picks are drawn here, on the client, so the sim stays deterministic (Hard rule 2).
+  const active = setup.slots
+    .filter((s) => s.kind !== 'off')
+    .map((s) => ({ ...s, fighter: s.random ? FIGHTER_IDS[Math.floor(Math.random() * FIGHTER_IDS.length)]! : s.fighter }));
   const seed = (Math.random() * 1e9) | 0;
   world = createWorld(setup.stage, active.map((s) => ({ id: s.fighter })), setup.stocks, seed);
   bots = active.map((s, i) => (s.kind === 'bot' ? createBot(i, s.level, seed) : null));
   human = active.map((s) => s.kind === 'p1');
-  names = active.map((s) => `${slotLabel(s).replace(/^CPU.*/, 'CPU')} ${FIGHTERS[s.fighter].name}`);
+  names = active.map((s) => `${slotTag(s)} ${FIGHTERS[s.fighter].name}`);
+  renderer.setTags(active.map((s) => ({ text: slotTag(s), cpu: s.kind === 'bot' })));
   prev = world.fighters.map((f) => ({ x: f.x, y: f.y }));
   goTimer = 0;
   overTimer = 0;
   mode = 'game';
   ui.hideMenu();
-  ui.startHud(world, names);
+  ui.startHud(world, names, active.map((s) => s.kind === 'bot'));
   renderer.reset(world);
   keyboard.reset();
   sfx.unlock();
@@ -66,7 +72,7 @@ function startMatch(setup: MatchSetup): void {
 function pause(): void {
   if (mode !== 'game') return;
   mode = 'paused';
-  ui.showPause(resume, toMenu);
+  ui.showPause(resume, () => toMenu('main'));
 }
 
 function resume(): void {
@@ -76,20 +82,23 @@ function resume(): void {
   keyboard.takePressed();
 }
 
-function toMenu(): void {
+/** Back to the menus with CPUs fighting behind them; `screen` picks which menu. */
+function toMenu(screen: 'select' | 'main' = 'main'): void {
   mode = 'menu';
   ui.hideHud();
   world = attractWorld();
   attractBots = world.fighters.map((f) => createBot(f.slot, 2, 3));
   prev = world.fighters.map((f) => ({ x: f.x, y: f.y }));
   renderer.reset(world);
-  ui.showSelect();
+  renderer.setTags(world.fighters.map(() => ({ text: 'CPU', cpu: true })));
+  if (screen === 'select') ui.showSelect();
+  else ui.showMain();
 }
 
 function showResults(): void {
   mode = 'results';
   ui.setBanner('');
-  ui.showResults(world, names, () => matchSetup && startMatch(matchSetup), toMenu);
+  ui.showResults(world, names, () => matchSetup && startMatch(matchSetup), () => toMenu('select'), () => toMenu('main'));
 }
 
 function pan(x: number): number {
@@ -156,23 +165,20 @@ function stepAttract(): void {
 }
 
 function handleKeys(): void {
+  const typing = document.activeElement instanceof HTMLInputElement;
   for (const code of keyboard.takePressed()) {
     sfx.unlock();
-    if (code === 'KeyM') sfx.setMuted(!sfx.muted);
-    else if (code === 'KeyF' && mode !== 'game') toggleFullscreen();
-    else if (code === 'Escape') {
-      if (mode === 'game') pause();
-      else if (mode === 'paused') resume();
-    } else if (code === 'Enter' || code === 'NumpadEnter') {
-      if (mode === 'menu') ui.fight();
-      else if (mode === 'results' && matchSetup) startMatch(matchSetup);
-      else if (mode === 'paused') resume();
-    } else if (mode === 'menu') {
-      // Pick your fighter with A / D or the side arrows.
-      const p1 = ui.currentSetup.slots.findIndex((s) => s.kind === 'p1');
-      const dir = code === 'KeyD' || code === 'ArrowRight' ? 1 : code === 'KeyA' || code === 'ArrowLeft' ? -1 : 0;
-      if (p1 >= 0 && dir !== 0) { sfx.click(); ui.cycleFighter(p1, dir); }
+    // Typing a room code: leave the keys to the text box.
+    if (typing) continue;
+    if (code === 'KeyM') { sfx.setMuted(!sfx.muted); continue; }
+    if (code === 'KeyF' && mode !== 'game') { toggleFullscreen(); continue; }
+    if (mode === 'game') {
+      if (code === 'Escape') pause();
+      continue;
     }
+    if (mode === 'paused' && code === 'Escape') { resume(); continue; }
+    // Every menu screen (title, main, select, online, pause, results) handles its own keys (ADR-0075).
+    ui.menuKey(code);
   }
 }
 
@@ -209,5 +215,14 @@ document.addEventListener('visibilitychange', () => {
 });
 
 renderer.reset(world);
-ui.showSelect();
+renderer.setTags(world.fighters.map(() => ({ text: 'CPU', cpu: true })));
+// An invite link (?room=42) opens the lobby and joins; otherwise boot to the title screen (ADR-0075).
+const invite = new URLSearchParams(location.search).get('room');
+if (invite && /^\d{2}$/.test(invite)) {
+  ui.showOnline();
+  net.join(invite);
+  history.replaceState(null, '', location.pathname);
+} else {
+  ui.showTitle();
+}
 requestAnimationFrame(frame);
