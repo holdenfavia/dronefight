@@ -101,7 +101,10 @@ export class Sfx {
     this.burst(0.06, 0.15, 400, 1, pan);
   }
 
-  shot(kind: 'shot' | 'bomb' | 'mine' | 'gust', pan: number): void {
+  shot(kind: 'shot' | 'bomb' | 'mine' | 'gust' | 'hazard', look: string, pan: number): void {
+    if (look === 'bullet') { this.burst(0.12, 0.5, 2400, 0.8, pan); this.tone('square', 900, 120, 0.1, 0.18, pan); return; }
+    if (look === 'note') { this.tone('triangle', 660, 660, 0.18, 0.2, pan); this.tone('triangle', 990, 990, 0.14, 0.12, pan); return; }
+    if (look === 'wisp') { this.tone('sine', 520, 260, 0.4, 0.15, pan); return; }
     if (kind === 'shot') this.tone('square', 1400, 400, 0.08, 0.12, pan);
     else if (kind === 'gust') this.burst(0.35, 0.3, 700, 0.4, pan);
     else this.tone('sine', 300, 180, 0.15, 0.2, pan);
@@ -116,6 +119,14 @@ export class Sfx {
   grab(pan: number): void {
     this.tone('square', 260, 160, 0.07, 0.15, pan);
     this.burst(0.05, 0.15, 1200, 1, pan);
+  }
+
+  /** Status effects: a cursed warble, a slow drone, a quick riff, a reload click. */
+  status(kind: 'curse' | 'slow' | 'haste' | 'reload', pan: number): void {
+    if (kind === 'curse') this.tone('sine', 300, 600, 0.35, 0.15, pan);
+    else if (kind === 'slow') this.tone('sine', 440, 220, 0.5, 0.15, pan);
+    else if (kind === 'haste') { this.tone('triangle', 660, 660, 0.08, 0.15, pan); this.tone('triangle', 880, 880, 0.16, 0.12, pan); }
+    else this.burst(0.05, 0.3, 3000, 1, pan);
   }
 
   explode(pan: number): void {

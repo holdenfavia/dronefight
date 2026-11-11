@@ -170,3 +170,17 @@ export const SHIELD_DROP_FRAMES = 7;
 
 /** Spark's rewind: frames of position history kept (the move snaps back by its own `back`). */
 export const REWIND_HISTORY_FRAMES = 60;
+
+/** Reflected projectiles (the Chef's pan flip) fly back a little faster and harder. */
+export const REFLECT = {
+  speedMult: 1.15,
+  damageMult: 1.25,
+  /** At least this many frames of flight after the reflect. */
+  extraLife: 40,
+} as const;
+
+/** Status effects: the Bard's lullaby (slow) and tempo song (haste). */
+export const STATUS = {
+  slowMult: 0.6,
+  hasteMult: 1.35,
+} as const;

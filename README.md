@@ -2,13 +2,13 @@
 
 A side-view platform fighter for playing with friends. Four original fighters knock each other off a rooftop: hits build up percent damage, the more damage the further you fly, and anyone knocked off the screen loses a life. One player per keyboard (WASD move, arrows attack, Q specials), plus computer opponents.
 
-> **Status:** restarted on 2026-11-10 as a platform fighter (ADR-0070). Four fighters (ADR-0072), three stages, CPUs. Next: tuning with friends, then online rooms. See the [roadmap](docs/ROADMAP.md).
+> **Status:** restarted on 2026-11-10 as a platform fighter (ADR-0070). Ten fighters (ADR-0072, ADR-0073), three stages, CPUs. Next: tuning with friends, then online rooms. See the [roadmap](docs/ROADMAP.md).
 >
 > **Looking for the old 3D FPV dogfighting game?** It's kept whole on the [`archive/dronefight-v1`](../../tree/archive/dronefight-v1) branch. What it was and how to bring it back: [docs/legacy/DRONEFIGHT_V1.md](docs/legacy/DRONEFIGHT_V1.md).
 
 ## Features
 
-- **Four fighters:** Brawler (fast fists, builds rage), Blade (sword, the tip hits hardest), Spark (caster: fireballs, homing orb, blink, rewind), Titan (huge, armored, grabs and slams)
+- **Ten fighters:** Brawler (fast fists, builds rage), Blade (sword, the tip hits hardest), Spark (caster: fireballs, homing orb, blink, rewind), Titan (huge, armored, grabs and slams), Ninja (shadow step, smoke bombs), Gunslinger (six shots, lasso), Chef (food, pan reflect, boiling pot), Ghost (swaps your controls, fades), Yo-yo Kid (returning yo-yo, tether), Bard (songs that speed up and slow down)
 - **Platform-fighter rules:** percent damage, knockback, stocks, shields, dodges, spikes, recovery
 - **One player per keyboard**, up to four fighters with CPU opponents (Easy, Normal, Hard)
 - **Three stages:** Rooftop, Helipad, Crane Yard

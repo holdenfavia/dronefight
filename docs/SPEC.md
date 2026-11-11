@@ -4,7 +4,7 @@ _Source of truth for what the game is **now**. Change only via `/decide`; detail
 
 ## Vision
 
-A **side-view platform fighter** to play with friends: an original cast of fighters knock each other off a rooftop (ADR-0072). Pick up and play on a keyboard, no install, no account. Fun first.
+A **side-view platform fighter** to play with friends: an original cast of ten fighters knock each other off a rooftop (ADR-0072, ADR-0073). Pick up and play on a keyboard, no install, no account. Fun first.
 
 ## Players and platform
 
@@ -34,13 +34,13 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 
 ## Moves (ADR-0071)
 
-- **Every fighter has its own moveset and gimmick** (ADR-0072): jab (combos), tilts, charged smashes, five aerials, four specials, grab, pummel and four throws, get-up attack.
+- **Every fighter has its own moveset and gimmick** (ADR-0072, ADR-0073): jab (combos), tilts, charged smashes, five aerials, four specials, grab, pummel and four throws, get-up attack.
 - **Defense:** shield (drains, breaks into a dizzy stun), **parry** by shielding just as a hit lands, rolls and spot dodge, one air dodge per jump (dashes if a direction is held).
 - **Launched:** press E just before hitting the floor to **tech**, or get knocked down (get up, roll or attack). Mash to escape grabs.
-- Super armor (Titan), counters (Brawler, Blade), stale moves (repeats get weaker), trades, a short input buffer.
+- Super armor (Titan), counters (Brawler, Blade, Gunslinger), reflects (Chef), status effects (daze, swapped controls, slow, haste), stale moves (repeats get weaker), trades, a short input buffer.
 - Recovering near a stage corner (holding toward it, or during a recovery special) pulls you up onto it.
 
-## Fighters (ADR-0072; numbers in `shared/fighter/fighters.ts`)
+## Fighters (ADR-0072, ADR-0073; numbers in `shared/fighter/fighters.ts`)
 
 | Fighter | Weight | Air jumps | Style and gimmick |
 |---|---|---|---|
@@ -48,6 +48,12 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 | Blade | 95 | 1 | long sword reach; **tip** hits are strong, up close is weak; sword wave, lunge, parry stance |
 | Spark | 85 | 2 | floaty caster; fireball, homing orb, **blink** teleport, **rewind** |
 | Titan | 150 | 1 | huge and slow, **armored** ground attacks; boulder, **sky carry** grab-and-slam, earthquake |
+| Ninja | 82 | 2 | fast; throwing stars, **shadow step** behind you, vanish, smoke bomb that dazes |
+| Gunslinger | 98 | 1 | **six shots then reload**, long lasso grab, shotgun jump, quick-draw counter |
+| Chef | 108 | 1 | frying pan; **food toss** (tomato, pie, meatball), **pan flip reflects**, boiling pot hazard |
+| Ghost | 75 | 3 | floaty; long swipes, **possess** swaps your left and right, fade through attacks |
+| Yo-yo Kid | 88 | 2 | combos and juggles; yo-yo reach out and back, **returning yo-yo**, **tether** recovery |
+| Bard | 92 | 2 | guitar; sound waves, **tempo song** speeds up, **lullaby** slows foes, amp slams |
 
 ## Stages
 
@@ -55,7 +61,7 @@ Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Cr
 
 ## Look and sound
 
-- Bright sky over a parallax city, orange / black / white (ADR-0007), characters drawn as **placeholder stick figures** for now (owner's request), each with its own silhouette (gloves, sword, pointed hat, huge build) in the player's color (one color per slot: orange, lime, cyan, pink; ADR-0026). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
+- Bright sky over a parallax city, orange / black / white (ADR-0007), characters drawn as **placeholder stick figures** for now (owner's request), each with its own silhouette (gloves, sword, pointed hat, huge build, hood, cowboy hat, toque, sheet, cap and yo-yo, guitar) in the player's color (one color per slot: orange, lime, cyan, pink; ADR-0026). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
 - Menus: bold condensed caps on dark translucent panels with orange accents (ADR-0039).
 - All sound synthesized in the browser (ADR-0010).
 

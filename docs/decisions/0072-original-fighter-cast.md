@@ -1,6 +1,6 @@
 # ADR-0072: An original cast of fighters replaces the drones
 
-- **Status:** Accepted
+- **Status:** Accepted (roster grown to ten by ADR-0073, 2026-11-10)
 - **Date:** 2026-11-10
 - **Amends:** ADR-0070 (the theme and roster: no longer drones), ADR-0071 (the per-drone movesets)
 

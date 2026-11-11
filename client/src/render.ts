@@ -58,6 +58,7 @@ export class Renderer {
   private purple = false;
   private purpleCheck = 0;
   private platforms: Platform[] = [];
+  private lastWorld: World | null = null;
 
   constructor(parent: HTMLElement) {
     this.canvas = document.createElement('canvas');
@@ -185,11 +186,25 @@ export class Renderer {
           break;
         }
         case 'explode':
+          if (e.look !== 'bomb') { this.splat(e.x, e.y, e.r, e.look); break; }
           for (let i = 0; i < 30; i++) this.spark(e.x, e.y, i % 3 ? PALETTE.orange : '#ffe27a', 600);
           for (let i = 0; i < 10; i++) this.particles.push({ x: e.x + (Math.random() - 0.5) * 40, y: e.y + (Math.random() - 0.5) * 40, vx: (Math.random() - 0.5) * 100, vy: 40 + Math.random() * 80, life: 50, max: 50, size: 16 + Math.random() * 14, color: '#55504a', kind: 'smoke', grow: 0.6 });
           this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 16, max: 16, size: e.r * 0.4, color: '#ffe27a', kind: 'ring', grow: e.r * 0.06 });
           this.shake = Math.min(FEEL.maxShake, this.shake + 12);
           break;
+        case 'reflect':
+          for (let i = 0; i < 12; i++) this.spark(e.x, e.y, '#ffffff', 380);
+          this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 14, max: 14, size: 12, color: '#ffffff', kind: 'ring', grow: 5 });
+          this.popup(world.fighters[e.slot]!, 'REFLECT!', '#ffffff');
+          break;
+        case 'status': {
+          const f = world.fighters[e.slot]!;
+          const text = { curse: 'CURSED', slow: 'SLOWED', haste: 'TEMPO!', reload: 'RELOADED' }[e.status];
+          const color = { curse: ATTACK_COLORS.curse, slow: ATTACK_COLORS.slow, haste: ATTACK_COLORS.haste, reload: ATTACK_COLORS.special.gunslinger }[e.status];
+          this.popup(f, text, color);
+          this.particles.push({ x: f.x, y: centerY(f), vx: 0, vy: 0, life: 18, max: 18, size: 12, color, kind: 'ring', grow: 4 });
+          break;
+        }
         case 'warp': {
           // Blink and rewind: a puff where it left, a burst where it arrived, a faint streak between.
           const f = world.fighters[e.slot]!;
@@ -256,6 +271,19 @@ export class Renderer {
       default:
         break;
     }
+  }
+
+  /** Smoke bombs and thrown food burst into their own kind of mess. */
+  private splat(x: number, y: number, r: number, look: string): void {
+    const color = look === 'smoke' ? '#c9c9c9' : look === 'tomato' ? '#e8322a' : look === 'pie' ? '#f5e6c8' : '#7a4a2a';
+    if (look === 'smoke') {
+      for (let i = 0; i < 16; i++) {
+        this.particles.push({ x: x + (Math.random() - 0.5) * r, y: y + (Math.random() - 0.5) * r * 0.8, vx: (Math.random() - 0.5) * 120, vy: 20 + Math.random() * 60, life: 60, max: 60, size: 18 + Math.random() * 16, color: '#bdbdbd', kind: 'smoke', grow: 0.5 });
+      }
+      return;
+    }
+    for (let i = 0; i < 18; i++) this.spark(x, y, i % 3 ? color : '#ffffff', 420);
+    this.particles.push({ x, y, vx: 0, vy: 0, life: 14, max: 14, size: r * 0.4, color, kind: 'ring', grow: r * 0.05 });
   }
 
   private ember(x: number, y: number, color: string, speed: number): void {
@@ -432,6 +460,7 @@ export class Renderer {
     this.drawBackdrop();
     this.drawStage(world);
     this.drawParticles(false);
+    this.lastWorld = world;
     for (const p of world.projectiles) this.drawProjectile(p, ATTACK_COLORS.special[world.fighters[p.owner]!.id] ?? SLOT_COLORS[p.owner] ?? '#fff', SLOT_COLORS[p.owner] ?? '#fff');
     for (const f of world.fighters) {
       if (!isAlive(f)) continue;
@@ -711,6 +740,7 @@ export class Renderer {
     const px = this.sx(p.x);
     const py = this.sy(p.y);
     const r = p.r;
+    if (this.drawLook(p, px, py, r * s, color)) return;
     if (p.kind === 'shot') {
       const g = ctx.createRadialGradient(px, py, 0, px, py, r * 2.2 * s);
       g.addColorStop(0, '#ffffff');
@@ -766,6 +796,145 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(px, py - r * 0.6 * s, r * 0.35 * s, 0, Math.PI * 2);
       ctx.fill();
+    }
+  }
+
+  /** Projectiles with their own look. Returns false to fall back to the plain kinds. */
+  private drawLook(p: Projectile, px: number, py: number, r: number, color: string): boolean {
+    const ctx = this.ctx;
+    const ink = PALETTE.ink;
+    const ball = (fill: string, rr = r) => {
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(px, py, rr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    };
+    switch (p.look) {
+      case 'star': {
+        // A spinning four-point throwing star.
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(p.age * 0.6);
+        ctx.fillStyle = '#c9d1d9';
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          const rr = i % 2 ? r * 0.45 : r * 1.5;
+          ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        return true;
+      }
+      case 'bullet': {
+        const d = Math.sign(p.vx) || 1;
+        ctx.strokeStyle = color + '88';
+        ctx.lineWidth = r * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(px - d * r * 6, py);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+        ball('#ffe9a8', r * 0.8);
+        return true;
+      }
+      case 'smoke':
+        ball('#4a4a4a');
+        ctx.fillStyle = '#ff6a13';
+        ctx.fillRect(px - 1.5, py - r - 4, 3, 5);
+        return true;
+      case 'tomato':
+        ball('#e8322a');
+        ctx.fillStyle = '#3fae49';
+        ctx.fillRect(px - 2, py - r - 2, 4, 3);
+        return true;
+      case 'pie':
+        ball('#f5e6c8');
+        ctx.fillStyle = '#c0552b';
+        ctx.beginPath();
+        ctx.arc(px, py, r * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+        return true;
+      case 'meatball':
+        ball('#7a4a2a');
+        return true;
+      case 'pot': {
+        // A pot on the boil: steam and bubbles.
+        ctx.fillStyle = '#3a3e44';
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(px - r, py - r * 0.6, r * 2, r * 1.6, r * 0.3);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.fillRect(px - r * 0.85, py - r * 0.6, r * 1.7, r * 0.3);
+        if (p.stuck && this.time % 6 === 0) {
+          this.particles.push({ x: p.x + (Math.random() - 0.5) * p.r, y: p.y + p.r * 0.8, vx: (Math.random() - 0.5) * 30, vy: 60 + Math.random() * 40, life: 30, max: 30, size: 6 + Math.random() * 6, color: '#ffffffaa', kind: 'smoke', grow: 0.4 });
+        }
+        return true;
+      }
+      case 'wisp': {
+        const g = this.ctx.createRadialGradient(px, py, 0, px, py, r * 1.8);
+        g.addColorStop(0, '#ffffff');
+        g.addColorStop(0.4, ATTACK_COLORS.curse);
+        g.addColorStop(1, ATTACK_COLORS.curse + '00');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(px, py, r * 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        if (this.time % 3 === 0) this.particles.push({ x: p.x, y: p.y, vx: -p.vx * 0.2, vy: 20, life: 18, max: 18, size: p.r * 0.6, color: ATTACK_COLORS.curse, kind: 'wisp', grow: 0.4 });
+        return true;
+      }
+      case 'yoyo': {
+        // The string runs back to the thrower's hand.
+        const owner = this.lastWorld?.fighters[p.owner];
+        if (owner) {
+          ctx.strokeStyle = PALETTE.ink;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(this.sx(owner.x + owner.facing * 10), this.sy(centerY(owner) + 4));
+          ctx.lineTo(px, py);
+          ctx.stroke();
+        }
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(p.age * 0.5);
+        ball(color);
+        ctx.strokeStyle = ink;
+        ctx.beginPath();
+        ctx.moveTo(-r, 0);
+        ctx.lineTo(r, 0);
+        ctx.stroke();
+        ctx.restore();
+        return true;
+      }
+      case 'note': {
+        // A music note riding a sound wave.
+        ctx.strokeStyle = color + 'aa';
+        ctx.lineWidth = 3;
+        const d = Math.sign(p.vx) || 1;
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.arc(px - d * i * 9, py, r * (0.7 + i * 0.25), d > 0 ? -0.8 : Math.PI - 0.8, d > 0 ? 0.8 : Math.PI + 0.8);
+          ctx.stroke();
+        }
+        ctx.fillStyle = ink;
+        ctx.beginPath();
+        ctx.ellipse(px, py + r * 0.3, r * 0.35, r * 0.27, -0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(px + r * 0.28, py - r * 0.7, 2, r);
+        ctx.fillRect(px + r * 0.28, py - r * 0.7, r * 0.4, 2);
+        return true;
+      }
+      default:
+        return false;
     }
   }
 
@@ -917,6 +1086,42 @@ export class Renderer {
         ctx.arc(this.sx(box.x), this.sy(box.y), box.r * s, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+      }
+    }
+
+    // Status effects: a curse swirl, slow zzz, haste streaks.
+    const headY = cy - (def.height / 2 + 8) * s;
+    if (f.cursed > 0) {
+      ctx.strokeStyle = ATTACK_COLORS.curse;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let i = 0; i < 18; i++) {
+        const a = this.time * 0.25 + i * 0.6;
+        const rr = 3 + i * 0.7;
+        const x = cx + Math.cos(a) * rr * s;
+        const y = headY - 6 * s + Math.sin(a) * rr * 0.5 * s;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    if (f.slowed > 0 && this.time % 30 < 20) this.label('z z', cx + 18 * s, headY - 4 * s, ATTACK_COLORS.slow);
+    if (f.hasted > 0 && Math.abs(f.vx) > 60) {
+      ctx.strokeStyle = ATTACK_COLORS.haste;
+      ctx.lineWidth = 2;
+      const back = -Math.sign(f.vx);
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.moveTo(cx + back * (def.halfW + 4) * s, cy + i * 10 * s);
+        ctx.lineTo(cx + back * (def.halfW + 22) * s, cy + i * 10 * s);
+        ctx.stroke();
+      }
+    }
+    // Gunslinger: shots left.
+    const maxAmmo = def.ammo;
+    if (maxAmmo) {
+      for (let i = 0; i < maxAmmo; i++) {
+        ctx.fillStyle = i < f.ammo ? ATTACK_COLORS.special.gunslinger : '#00000055';
+        ctx.fillRect(cx + (i - maxAmmo / 2) * 6 * s, cy + (def.height / 2 + 6) * s, 4 * s, 4 * s);
       }
     }
 

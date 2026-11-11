@@ -54,7 +54,14 @@ export const ATTACK_COLORS = {
   grab: '#ffffff',
   counter: '#ffffff',
   /** Each fighter's specials have their own energy. */
-  special: { brawler: '#ff3b3b', blade: '#bfe9ff', spark: '#3fd0ff', titan: '#c9934f' },
+  special: {
+    brawler: '#ff3b3b', blade: '#bfe9ff', spark: '#3fd0ff', titan: '#c9934f',
+    ninja: '#6f7bff', gunslinger: '#ffd23f', chef: '#ff7b54', ghost: '#c8fff0', yoyo: '#ff4fd8', bard: '#4dd4a8',
+  },
+  /** Status effects shown over a fighter. */
+  curse: '#b06bff',
+  slow: '#7fb8ff',
+  haste: '#ffe066',
   /** The Brawler's full-rage hit. */
   rage: '#ff3b3b',
   /** A sword-tip hit. */
