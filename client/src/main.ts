@@ -1,4 +1,4 @@
-// dronefight: a side-view drone brawler (ADR-0070). Up to four drones, two players on one keyboard plus CPUs.
+// dronefight: a side-view drone brawler (ADR-0070, ADR-0071). Up to four drones: you on the keyboard plus CPUs.
 
 import './styles.css';
 import { botInput, createBot, type Bot } from '../../shared/fighter/bot';
@@ -6,7 +6,7 @@ import { DT } from '../../shared/fighter/config';
 import { FIGHTERS } from '../../shared/fighter/fighters';
 import { createWorld, NO_INPUT, step, type GameEvent, type Input, type World } from '../../shared/fighter/sim';
 import { Sfx } from './audio';
-import { Keyboard, type Scheme } from './input';
+import { Keyboard } from './input';
 import { Renderer, type Prev } from './render';
 import { Ui, slotLabel, type MatchSetup } from './ui';
 
@@ -29,7 +29,7 @@ const ui = new Ui(document.getElementById('menu')!, document.getElementById('hud
 let mode: Mode = 'menu';
 let world: World = attractWorld();
 let bots: (Bot | null)[] = [];
-let schemes: (Scheme[] | null)[] = [];
+let human: boolean[] = [];
 let names: string[] = [];
 let prev: Prev[] = [];
 let goTimer = 0;
@@ -49,11 +49,9 @@ function startMatch(setup: MatchSetup): void {
   const active = setup.slots.filter((s) => s.kind !== 'off');
   const seed = (Math.random() * 1e9) | 0;
   world = createWorld(setup.stage, active.map((s) => ({ id: s.fighter })), setup.stocks, seed);
-  const humans = active.filter((s) => s.kind === 'p1' || s.kind === 'p2');
   bots = active.map((s, i) => (s.kind === 'bot' ? createBot(i, s.level, seed) : null));
-  // A lone player can use either side of the keyboard.
-  schemes = active.map((s) => (s.kind === 'p1' || s.kind === 'p2' ? (humans.length === 1 ? ['p1', 'p2'] : [s.kind]) : null));
-  names = active.map((s) => `${slotLabel(s).replace('Player ', 'P').replace(/^CPU.*/, 'CPU')} ${FIGHTERS[s.fighter].name}`);
+  human = active.map((s) => s.kind === 'p1');
+  names = active.map((s) => `${slotLabel(s).replace(/^CPU.*/, 'CPU')} ${FIGHTERS[s.fighter].name}`);
   prev = world.fighters.map((f) => ({ x: f.x, y: f.y }));
   goTimer = 0;
   overTimer = 0;
@@ -61,6 +59,7 @@ function startMatch(setup: MatchSetup): void {
   ui.hideMenu();
   ui.startHud(world, names);
   renderer.reset(world);
+  keyboard.reset();
   sfx.unlock();
 }
 
@@ -105,6 +104,11 @@ function playEvents(events: readonly GameEvent[]): void {
         else sfx.hit(e.dmg, pan(e.x));
         break;
       case 'shieldhit': sfx.shieldHit(pan(e.x)); break;
+      case 'parry': sfx.parry(pan(e.x)); break;
+      case 'counter': sfx.parry(pan(e.x)); break;
+      case 'grab': sfx.grab(pan(world.fighters[e.slot]!.x)); break;
+      case 'throw': sfx.swing(pan(world.fighters[e.slot]!.x)); break;
+      case 'tech': sfx.land(pan(world.fighters[e.slot]!.x)); break;
       case 'shieldbreak': sfx.shieldBreak(0); break;
       case 'ko': sfx.ko(pan(e.x)); break;
       case 'jump': sfx.jump(e.air, pan(world.fighters[e.slot]!.x)); break;
@@ -120,11 +124,11 @@ function playEvents(events: readonly GameEvent[]): void {
 
 function stepGame(): void {
   prev = world.fighters.map((f) => ({ x: f.x, y: f.y }));
+  const player = keyboard.read();
   const inputs: Input[] = world.fighters.map((_f, i) => {
     const bot = bots[i];
     if (bot) return botInput(bot, world);
-    const sch = schemes[i];
-    return sch ? keyboard.read(sch) : { ...NO_INPUT };
+    return human[i] ? player : { ...NO_INPUT };
   });
   const before = Math.ceil(world.countdown / 60);
   step(world, inputs);
@@ -134,6 +138,7 @@ function stepGame(): void {
   renderer.onEvents(world, world.events);
   renderer.tick(world);
   ui.updateHud(world);
+  ui.setPrimed(keyboard.primed);
   if (world.countdown > 0) ui.setBanner(String(after));
   else if (goTimer > 0) { goTimer--; ui.setBanner('GO!'); }
   else if (world.over) ui.setBanner('GAME!');
@@ -161,12 +166,10 @@ function handleKeys(): void {
       else if (mode === 'results' && matchSetup) startMatch(matchSetup);
       else if (mode === 'paused') resume();
     } else if (mode === 'menu') {
-      // Each player picks their drone from their side of the keyboard.
-      const slots = ui.currentSetup.slots;
-      const p1 = slots.findIndex((s) => s.kind === 'p1');
-      const p2 = slots.findIndex((s) => s.kind === 'p2');
-      if (p1 >= 0 && (code === 'KeyA' || code === 'KeyD')) { sfx.click(); ui.cycleFighter(p1, code === 'KeyD' ? 1 : -1); }
-      if (p2 >= 0 && (code === 'ArrowLeft' || code === 'ArrowRight')) { sfx.click(); ui.cycleFighter(p2, code === 'ArrowRight' ? 1 : -1); }
+      // Pick your drone with A / D or the side arrows.
+      const p1 = ui.currentSetup.slots.findIndex((s) => s.kind === 'p1');
+      const dir = code === 'KeyD' || code === 'ArrowRight' ? 1 : code === 'KeyA' || code === 'ArrowLeft' ? -1 : 0;
+      if (p1 >= 0 && dir !== 0) { sfx.click(); ui.cycleFighter(p1, dir); }
     }
   }
 }

@@ -2,7 +2,7 @@
 // backdrop, stage art, drones, hit effects and screen shake.
 
 import { FIGHTERS, type MoveId } from '../../shared/fighter/fighters';
-import { centerY, fighterDef, hitboxWorld, isAlive, moveActive, type Fighter, type GameEvent, type World } from '../../shared/fighter/sim';
+import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
 import { SHIELD } from '../../shared/fighter/config';
 import type { Platform } from '../../shared/fighter/stages';
 import { CAMERA, FEEL, PALETTE, SLOT_COLORS } from './config';
@@ -46,6 +46,8 @@ export class Renderer {
   private particles: Particle[] = [];
   private flashes = new Map<number, number>();
   private koBeams: { x: number; y: number; color: string; life: number }[] = [];
+  /** Floating words: PARRY!, COUNTER!, TECH. */
+  private popups: { x: number; y: number; text: string; color: string; life: number }[] = [];
   private far: Building[] = [];
   private near: Building[] = [];
   private time = 0;
@@ -89,6 +91,7 @@ export class Renderer {
   reset(world: World): void {
     this.particles = [];
     this.koBeams = [];
+    this.popups = [];
     this.flashes.clear();
     this.shake = 0;
     this.platforms = world.stage.platforms;
@@ -107,9 +110,27 @@ export class Renderer {
           this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 14, max: 14, size: 10 + e.dmg * 2, color: '#fff', kind: 'ring', grow: 4 + e.kb * 0.05 });
           if (e.dmg >= 10) this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 10, max: 10, size: 14 + e.dmg, color: '#fff6c9', kind: 'star', grow: 1 });
           this.flashes.set(e.target, 1);
+          if (e.armored) this.popup(world.fighters[e.target]!, 'ARMOR', '#ffb36b');
           this.shake = Math.min(FEEL.maxShake, this.shake + e.kb * FEEL.shakePerKb);
           break;
         }
+        case 'parry':
+        case 'counter': {
+          const slot = e.type === 'parry' ? e.target : e.slot;
+          for (let i = 0; i < 14; i++) this.spark(e.x, e.y, '#ffffff', 420);
+          this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 18, max: 18, size: 14, color: '#bff4ff', kind: 'ring', grow: 6 });
+          this.popup(world.fighters[slot]!, e.type === 'parry' ? 'PARRY!' : 'COUNTER!', '#bff4ff');
+          this.shake = Math.min(FEEL.maxShake, this.shake + 6);
+          break;
+        }
+        case 'grab': {
+          const f = world.fighters[e.target]!;
+          this.particles.push({ x: f.x, y: centerY(f), vx: 0, vy: 0, life: 10, max: 10, size: 12, color: SLOT_COLORS[e.slot] ?? '#fff', kind: 'ring', grow: 3 });
+          break;
+        }
+        case 'tech':
+          this.popup(world.fighters[e.slot]!, 'TECH', '#ffe27a');
+          break;
         case 'shieldhit':
           for (let i = 0; i < 5; i++) this.spark(e.x, e.y, '#bfe8ff', 220);
           break;
@@ -158,6 +179,10 @@ export class Renderer {
           break;
       }
     }
+  }
+
+  private popup(f: Fighter, text: string, color: string): void {
+    this.popups.push({ x: f.x, y: f.y + fighterDef(f).height + 40, text, color, life: 40 });
   }
 
   private spark(x: number, y: number, color: string, speed: number): void {
@@ -230,6 +255,7 @@ export class Renderer {
     }
     this.particles = keep.length > 800 ? keep.slice(-800) : keep;
     this.koBeams = this.koBeams.filter((b) => --b.life > 0);
+    this.popups = this.popups.filter((p) => { p.y += 0.8; return --p.life > 0; });
 
     // Trails and smoke from the fighters themselves.
     for (const f of world.fighters) {
@@ -255,7 +281,7 @@ export class Renderer {
     this.drawBackdrop();
     this.drawStage(world);
     this.drawParticles(false);
-    for (const p of world.projectiles) this.drawProjectile(p.kind, p.x, p.y, p.r, SLOT_COLORS[p.owner] ?? '#fff');
+    for (const p of world.projectiles) this.drawProjectile(p, SLOT_COLORS[p.owner] ?? '#fff');
     for (const f of world.fighters) {
       if (!isAlive(f)) continue;
       const pv = prev[f.slot];
@@ -265,6 +291,11 @@ export class Renderer {
     }
     this.drawParticles(true);
     this.drawKoBeams();
+    for (const p of this.popups) {
+      ctx.globalAlpha = Math.min(1, p.life / 12);
+      this.label(p.text, this.sx(p.x), this.sy(p.y), p.color);
+      ctx.globalAlpha = 1;
+    }
     ctx.restore();
     this.drawOffscreen(world);
   }
@@ -523,12 +554,13 @@ export class Renderer {
     }
   }
 
-  private drawProjectile(kind: 'shot' | 'bomb', x: number, y: number, r: number, color: string): void {
+  private drawProjectile(p: Projectile, color: string): void {
     const ctx = this.ctx;
     const s = this.scale;
-    const px = this.sx(x);
-    const py = this.sy(y);
-    if (kind === 'shot') {
+    const px = this.sx(p.x);
+    const py = this.sy(p.y);
+    const r = p.r;
+    if (p.kind === 'shot') {
       const g = ctx.createRadialGradient(px, py, 0, px, py, r * 2.2 * s);
       g.addColorStop(0, '#ffffff');
       g.addColorStop(0.35, color);
@@ -537,12 +569,28 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(px, py, r * 2.2 * s, 0, Math.PI * 2);
       ctx.fill();
+    } else if (p.kind === 'gust') {
+      // Curved wind lines.
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = 3 * s;
+      const d = p.vx >= 0 ? 1 : -1;
+      for (let i = -1; i <= 1; i++) {
+        ctx.globalAlpha = 0.4 + 0.3 * Math.sin(this.time * 0.5 + i);
+        ctx.beginPath();
+        ctx.arc(px - d * 10 * s, py + i * 12 * s, r * (0.6 + 0.15 * Math.abs(i)) * s, d > 0 ? -0.9 : Math.PI - 0.9, d > 0 ? 0.9 : Math.PI + 0.9);
+        ctx.stroke();
+      }
+      ctx.restore();
     } else {
+      // Bombs and mines; a mine blinks faster once it's armed.
       ctx.fillStyle = PALETTE.ink;
       ctx.beginPath();
-      ctx.arc(px, py, r * s, 0, Math.PI * 2);
+      if (p.kind === 'mine') ctx.ellipse(px, py, r * 1.3 * s, r * 0.8 * s, 0, 0, Math.PI * 2);
+      else ctx.arc(px, py, r * s, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = (this.time >> 2) % 2 ? '#ff3b30' : color;
+      const armed = p.kind !== 'mine' || p.age >= 30;
+      ctx.fillStyle = (this.time >> (armed ? 2 : 4)) % 2 ? '#ff3b30' : color;
       ctx.beginPath();
       ctx.arc(px, py - r * 0.6 * s, r * 0.35 * s, 0, Math.PI * 2);
       ctx.fill();
@@ -552,19 +600,31 @@ export class Renderer {
   private pose(f: Fighter): { tilt: number; spin: number } {
     const def = fighterDef(f);
     if (f.action === 'hitstun') return { tilt: 0, spin: (f.frame * 0.35 + f.slot) * (f.lastKb > 60 ? 1 : 0.3) };
-    if (f.action === 'roll') return { tilt: 0, spin: (f.frame / f.duration) * Math.PI * 2 };
+    if (f.action === 'roll' || ((f.action === 'tech' || f.action === 'getup') && f.vx !== 0)) {
+      return { tilt: 0, spin: (f.frame / Math.max(1, f.duration)) * Math.PI * 2 * (f.vx * f.facing >= 0 ? 1 : -1) };
+    }
+    if (f.action === 'down') return { tilt: -1.45, spin: 0 };
+    if (f.action === 'getup' || f.action === 'tech') return { tilt: -1.45 * (1 - f.frame / Math.max(1, f.duration)), spin: 0 };
+    if (f.action === 'held') return { tilt: 0.5 + Math.sin(f.frame * 0.9) * 0.15, spin: 0 };
+    if (f.action === 'holding') return { tilt: 0.25, spin: 0 };
     if (f.action === 'attack' && f.move) {
-      const m = def.moves[f.move];
-      const total = m.startup + m.active + m.endlag;
-      const t = Math.min(1, f.frame / total);
-      const wind = Math.min(1, f.frame / Math.max(1, m.startup));
+      const m = def.moves[f.move]!;
+      const startup = Math.max(1, (m.hitboxes?.[0]?.from ?? m.throwHit?.frame ?? m.projectile?.frame ?? 4) - 1);
+      const t = Math.min(1, f.frame / m.frames);
+      const wind = Math.min(1, f.frame / startup);
       const tilts: Partial<Record<MoveId, number>> = {
-        ftilt: 0.45 * wind, fair: 0.6 * wind, sspecial: 0.5,
-        utilt: -0.7 * wind, uair: -0.8 * wind, bair: -0.6 * wind, dtilt: 0.3 * wind, jab: 0.2 * wind,
-        dair: 1.0 * wind, dspecial: m.slam ? 1.4 : 0.2,
+        jab: 0.2 * wind, jab2: 0.3 * wind, jab3: 0.5 * wind,
+        ftilt: 0.45 * wind, utilt: -0.7 * wind, dtilt: 0.3 * wind,
+        fsmash: f.frame <= startup ? -0.4 * wind : 0.8, usmash: -1.0 * wind, dsmash: 0.5 * wind,
+        fair: 0.6 * wind, bair: -0.6 * wind, uair: -0.8 * wind, dair: 1.0 * wind,
+        sspecial: 0.5, sspecialAir: 0.6, dspecial: m.slam ? 1.4 : 0.2, dspecialAir: 1.4,
+        grab: 0.35 * wind, pummel: 0.4, fthrow: 0.6 * wind, bthrow: -0.9 * wind, uthrow: -1.0 * wind, dthrow: 1.0 * wind,
+        cmdthrow: -1.1 * wind, counterhit: 0.7, slamland: 0.3,
       };
-      if (f.move === 'nair') return { tilt: 0, spin: t * Math.PI * 2 };
-      if (f.move === 'uspecial') return { tilt: -0.2, spin: 0 };
+      if (f.move === 'nair' || f.move === 'getupattack') return { tilt: 0, spin: t * Math.PI * 2 };
+      if (f.move === 'dsmash' && f.id === 'flipper') return { tilt: 0, spin: t * Math.PI * 4 };
+      if (f.move === 'uspecial') return { tilt: -0.2, spin: f.id === 'flipper' ? t * Math.PI * 2 : 0 };
+      if (f.move === 'dspecial' && m.counter) return { tilt: -0.3, spin: 0 };
       return { tilt: (tilts[f.move] ?? 0) * (1 - Math.max(0, t - 0.7) / 0.3), spin: 0 };
     }
     const lean = Math.max(-1, Math.min(1, f.vx / def.airSpeed)) * f.facing;
@@ -632,9 +692,29 @@ export class Renderer {
     }
 
     // Swing arc on active frames, so you can see what's hitting.
-    if (moveActive(f)) {
-      const box = hitboxWorld(f);
-      if (box) {
+    // Charging: a growing, pulsing glow.
+    const charge = chargeFraction(f);
+    if (charge > 0) {
+      const r = (def.hurtR + 6 + charge * 18 + Math.sin(this.time * 0.8) * 3) * s;
+      ctx.strokeStyle = charge >= 1 ? '#fff6c9' : color;
+      ctx.lineWidth = 2 + charge * 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Counter stance: a white outline.
+    if (f.action === 'attack' && f.move) {
+      const c = def.moves[f.move]!.counter;
+      if (c && f.frame >= c.from && f.frame <= c.to) {
+        ctx.strokeStyle = '#ffffffcc';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, (def.hurtR + 8) * s, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    for (const box of activeHitboxes(f)) {
+      {
         ctx.save();
         ctx.globalAlpha = 0.55;
         const g = ctx.createRadialGradient(this.sx(box.x), this.sy(box.y), 0, this.sx(box.x), this.sy(box.y), box.r * s);
