@@ -20,7 +20,7 @@ npm run dev        # game at http://localhost:5173 (Chrome or Edge)
 | `npm test` | Unit tests (fighter sim, bots, rooms) |
 | `npm run typecheck` | Type-check client, shared and server |
 | `npm run build` | Production build to `dist/client` |
-| `npm run server` | Room server on port 8787 (not used by the game yet) |
+| `npm run server` | Room server on port 8787 alone (`npm run dev` already starts it) |
 
 ### Playing
 
@@ -43,7 +43,14 @@ The menu has four slots. Click a slot's top button to cycle **You → CPU Easy/N
 
 - `shared/fighter/sim.ts`: the fight (fixed 60 Hz step). No rendering, no randomness except the world's seeded generator, so the server can run it too.
 - `client/src/main.ts`: game loop and modes; `render.ts`: camera, stages, effects; `figures.ts`: the stick-figure fighters; `ui.ts`: menus and HUD; `audio.ts`: synthesized sound; `input.ts`: keyboard maps.
-- `server/src/`: static hosting, `/healthz`, rooms by code (`rooms.ts`).
+- `server/src/`: static hosting, `/healthz`, rooms by code with their lobby (`rooms.ts`), online fights (`match.ts`, ADR-0076). `shared/online.ts`: input bits, world snapshots, online constants.
+
+### Online fights (ADR-0076)
+
+- Try it locally: `npm run dev`, open the game in two browser windows (or two computers on the same network: `npm run dev -- --host`, then `http://<your-ip>:5173`), Online, Make a room in one, join with the code in the other, Ready in both, Start.
+- If a fight drifts (rare last-digit float differences between a browser and Node), the client takes the server's snapshot within a second; the console logs it at the Debug (Verbose) level with the field that differed.
+- `World` must stay plain JSON (no Maps, class instances or Infinity), or snapshots break; `shared/online.test.ts` checks a restored world plays on identically.
+- Bump `PROTOCOL_VERSION` in `shared/constants.ts` whenever `shared/protocol.ts` or `shared/online.ts` message shapes change; old pages are told to refresh.
 
 ## Deploy (Fly.io, ADR-0021)
 

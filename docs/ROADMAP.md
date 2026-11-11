@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current focus:** Phase 1 — tune the feel of the new cast (ADR-0071, ADR-0072), then online play so friends can fight each other. The v1 roadmap is on the `archive/dronefight-v1` branch.
+**Current focus:** Phase 2 — online fights are built (ADR-0076); deploy and play them with friends, then keep tuning the feel of the cast (Phase 1). The v1 roadmap is on the `archive/dronefight-v1` branch.
 
 Check items off as they land. Add items as they're discovered. Moving to a new phase updates **Current focus**.
 
@@ -31,11 +31,12 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 ## Phase 2 — Online with friends
 
-- [ ] Decide netcode (rollback vs delay-based lockstep; inputs only) via `/decide`
+- [x] Decide netcode: the server runs the fight and sends every frame's inputs; snapshots heal drift (ADR-0076)
 - [x] Title screen, main menu, roster-grid character select, CPU tags (ADR-0075)
 - [x] Create/join room by two-digit code in the menu, invite link, lobby with picks and ready (ADR-0075)
-- [ ] Start online fights from the lobby (after the netcode decision)
-- [ ] Each player on their own computer; mix of local and online players
+- [x] Start online fights from the lobby; host's stage, stocks and CPUs; leavers replaced by CPUs; late joiners watch (ADR-0076)
+- [x] Each player on their own computer
+- [ ] Play a real match over the internet and check the input delay; add prediction or rollback if it feels laggy
 - [ ] Deploy and play over the internet
 
 ## Later

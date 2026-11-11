@@ -1,6 +1,6 @@
 # ADR-0075: Title screen, main menu, roster character select and an online lobby
 
-- **Status:** Accepted
+- **Status:** Accepted (lobby moved to the server, online fights built: ADR-0076)
 - **Date:** 2026-11-11
 - **Amends:** ADR-0070 (the single select screen)
 
