@@ -130,7 +130,7 @@ export class Ui {
     this.hud.appendChild(this.banner);
     // A small corner badge during play, so screenshots and clips never look final.
     this.hud.appendChild(el('div', 'wip-corner', 'Work in progress · not final'));
-    this.primed = this.hud.appendChild(el('div', 'primed', 'Q · next arrow is a special'));
+    this.primed = this.hud.appendChild(el('div', 'primed', 'Space · next arrow is a special'));
     this.setup = loadSetup();
   }
 
@@ -230,7 +230,7 @@ export class Ui {
       row('Jump (again in the air)', k.jump),
       row('Fast fall · hold to drop through', k.down),
       row('Attack that way', k.arrows),
-      row('Special: hold Q, or tap Q then an arrow', `${k.special} + ${k.arrows}`),
+      row('Special: hold Space, or tap Space then an arrow', `${k.special} + ${k.arrows}`),
       row('Smash: move key + same arrow, hold to charge', `${k.move} + ← →`),
       row('Grab, then an arrow throws', k.grab),
       row('Shield · with a direction: dodge', k.shield),
@@ -238,7 +238,7 @@ export class Ui {
     const you = this.setup.slots.find((x) => x.kind === 'p1');
     if (you) {
       const sp = FIGHTERS[you.fighter].specials;
-      card.appendChild(el('div', 'tips', `${FIGHTERS[you.fighter].name} specials: Q + forward arrow ${sp.neutral} · Q + back arrow (or move key + arrow) ${sp.side} · Q + ↑ ${sp.up} · Q + ↓ ${sp.down}.`));
+      card.appendChild(el('div', 'tips', `${FIGHTERS[you.fighter].name} specials: Space + forward arrow ${sp.neutral} · Space + back arrow (or move key + arrow) ${sp.side} · Space + ↑ ${sp.up} · Space + ↓ ${sp.down}.`));
     }
     card.appendChild(el('div', 'tips', 'The forward arrow with no movement key held is the neutral move: a jab (tap again to combo), a neutral aerial or a neutral special. Press E right as a hit lands to parry. Launched hard? Press E just before you hit the floor to tech. Mash any key to break out of a grab. ? while holding someone hits them. Esc pauses, M mutes, F fullscreen.'));
     return card;
@@ -356,7 +356,7 @@ export class Ui {
     });
   }
 
-  /** Show that Q is primed (the next arrow is a special). */
+  /** Show that Space is primed (the next arrow is a special). */
   setPrimed(on: boolean): void {
     this.primed.classList.toggle('on', on);
   }

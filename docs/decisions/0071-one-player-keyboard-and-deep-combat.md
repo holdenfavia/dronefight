@@ -1,6 +1,6 @@
 # ADR-0071: One player per keyboard (arrows attack, Q special) and a deeper combat system
 
-- **Status:** Accepted (the per-drone movesets superseded by ADR-0072, 2026-11-10)
+- **Status:** Accepted (the per-drone movesets superseded by ADR-0072, 2026-11-10; special key superseded by ADR-0074, 2026-11-11)
 - **Date:** 2026-11-10
 - **Amends:** ADR-0070 (controls, local players, moves)
 

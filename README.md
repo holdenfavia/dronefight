@@ -1,6 +1,6 @@
 # dronefight
 
-A side-view platform fighter for playing with friends. Four original fighters knock each other off a rooftop: hits build up percent damage, the more damage the further you fly, and anyone knocked off the screen loses a life. One player per keyboard (WASD move, arrows attack, Q specials), plus computer opponents.
+A side-view platform fighter for playing with friends. Ten original fighters knock each other off a rooftop: hits build up percent damage, the more damage the further you fly, and anyone knocked off the screen loses a life. One player per keyboard (WASD move, arrows attack, Space specials), plus computer opponents.
 
 > **Status:** restarted on 2026-11-10 as a platform fighter (ADR-0070). Ten fighters (ADR-0072, ADR-0073), three stages, CPUs. Next: tuning with friends, then online rooms. See the [roadmap](docs/ROADMAP.md).
 >
@@ -40,11 +40,11 @@ Open http://localhost:5173 in Chrome or Edge and press **Fight!**
 |---|---|
 | Move / jump / fast fall | A D / W / S |
 | Attack that way (move key + same arrow = smash, hold to charge) | ← → ↑ ↓ |
-| Special that way | hold Q, or tap Q to prime the next arrow |
+| Special that way | hold Space, or tap Space to prime the next arrow |
 | Shield / dodge | E (+ direction) |
 | Grab, then an arrow throws | ? |
 
-Each fighter has its own moveset and gimmick. **Q + ↑** gets you back to the stage. Tuning notes are in [RUNBOOK.md](docs/RUNBOOK.md).
+Each fighter has its own moveset and gimmick. **Space + ↑** gets you back to the stage. Tuning notes are in [RUNBOOK.md](docs/RUNBOOK.md).
 
 ## Project docs
 
