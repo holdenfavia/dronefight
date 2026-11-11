@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current focus:** Phase 1 — play it with friends on one keyboard and tune the feel. The v1 roadmap is on the `archive/dronefight-v1` branch.
+**Current focus:** Phase 1 — tune the feel of the new combat (ADR-0071), then online play so friends can fight each other. The v1 roadmap is on the `archive/dronefight-v1` branch.
 
 Check items off as they land. Add items as they're discovered. Moving to a new phase updates **Current focus**.
 
@@ -17,10 +17,11 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 ## Phase 1 — Feel (now)
 
-- [ ] Play 2-player matches with friends; note what feels off
+- [ ] Play against CPUs; note what feels off
 - [ ] Tune knockback, hitstun and movement per drone (`shared/fighter/`)
 - [ ] Ledge hang (instead of the automatic pull-up) if recovery feels too easy
-- [ ] Smash-style charged attacks (hold attack) if tilts feel too weak to KO
+- [x] Charged smash attacks, own moveset per drone, grabs and throws, teching, parry, armor, counters, stale moves (ADR-0071)
+- [x] One player per keyboard: WASD move, arrows attack, Q specials, E shield, ? grab (ADR-0071)
 - [ ] Rebindable keys, in case two players' keys clash on some keyboards
 
 ## Phase 2 — Online with friends

@@ -1,6 +1,6 @@
 # dronefight
 
-A side-view drone brawler for playing with friends. Little drone characters knock each other off a rooftop: hits build up percent damage, the more damage the further you fly, and anyone knocked off the screen loses a life. Two players on one keyboard, plus computer opponents.
+A side-view drone brawler for playing with friends. Little drone characters knock each other off a rooftop: hits build up percent damage, the more damage the further you fly, and anyone knocked off the screen loses a life. One player per keyboard (WASD move, arrows attack, Q specials), plus computer opponents.
 
 > **Status:** restarted on 2026-11-10 as a platform fighter (ADR-0070). Four drones, three stages, CPUs, local 2-player. Next: tuning with friends, then online rooms. See the [roadmap](docs/ROADMAP.md).
 >
@@ -10,7 +10,7 @@ A side-view drone brawler for playing with friends. Little drone characters knoc
 
 - **Four drones:** Freestyle (all-rounder), Racer (tiny and fast), Heavy (X8, huge and strong), Flipper (3D quad, floaty, slams down)
 - **Platform-fighter rules:** percent damage, knockback, stocks, shields, dodges, spikes, recovery
-- **Two players on one keyboard**, up to four drones with CPU opponents (Easy, Normal, Hard)
+- **One player per keyboard**, up to four drones with CPU opponents (Easy, Normal, Hard)
 - **Three stages:** Rooftop, Helipad, Crane Yard
 - No install, no account, all sound synthesized in the browser
 
@@ -36,16 +36,15 @@ npm run dev
 
 Open http://localhost:5173 in Chrome or Edge and press **Fight!**
 
-| | Player 1 | Player 2 |
-|---|---|---|
-| Move | A / D | ← / → |
-| Jump | W | ↑ |
-| Drop / fast fall | S | ↓ |
-| Attack | F | K |
-| Special | G | L |
-| Shield / dodge | H | ; |
+| | Key |
+|---|---|
+| Move / jump / fast fall | A D / W / S |
+| Attack that way (move key + same arrow = smash, hold to charge) | ← → ↑ ↓ |
+| Special that way | hold Q, or tap Q to prime the next arrow |
+| Shield / dodge | E (+ direction) |
+| Grab, then an arrow throws | ? |
 
-Attacks and specials change with the direction you hold. **Up + Special** gets you back to the stage. Tuning notes are in [RUNBOOK.md](docs/RUNBOOK.md).
+Each drone has its own moveset. **Q + ↑** gets you back to the stage. Tuning notes are in [RUNBOOK.md](docs/RUNBOOK.md).
 
 ## Project docs
 

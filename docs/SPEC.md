@@ -4,12 +4,12 @@ _Source of truth for what the game is **now**. Change only via `/decide`; detail
 
 ## Vision
 
-A **side-view drone brawler** to play with friends: little drone characters knock each other off a rooftop. Pick up and play on one keyboard, no install, no account. Fun first.
+A **side-view drone brawler** to play with friends: little drone characters knock each other off a rooftop. Pick up and play on a keyboard, no install, no account. Fun first.
 
 ## Players and platform
 
 - Desktop browsers (Chrome/Edge primary; Safari/Firefox best-effort), **keyboard only** (ADR-0070).
-- Up to **4 drones** per match: two players share one keyboard, CPUs (Easy, Normal, Hard) fill the rest. A lone player can use either side of the keyboard.
+- Up to **4 drones** per match: **one player per keyboard** (ADR-0071), CPUs (Easy, Normal, Hard) fill the rest. No local 2-player until online play.
 - Online play with friends by two-digit room code comes next (ADR-0005); the server already groups players by code.
 
 ## Rules (ADR-0070)
@@ -19,34 +19,35 @@ A **side-view drone brawler** to play with friends: little drone characters knoc
 - KO credit goes to whoever last hit you within 8 s.
 - Hitlag (a freeze on every hit), screen shake and sparks scale with how hard the hit was.
 
-## Controls
+## Controls (ADR-0071)
 
-| | Player 1 | Player 2 |
-|---|---|---|
-| Move | A / D | ← / → |
-| Jump (again in the air) | W | ↑ |
-| Drop through / fast fall | S | ↓ |
-| Attack (+ direction) | F | K |
-| Special (+ direction) | G | L |
-| Shield / dodge | H | ; |
+| | Key |
+|---|---|
+| Move / jump (again in the air) | A D / W |
+| Fast fall, hold to drop through | S |
+| Attack that way | ← → ↑ ↓ (forward with no move key = neutral; move key + same arrow together = smash, hold to charge) |
+| Special that way | hold **Q**, or tap Q to prime the next arrow |
+| Shield · roll / spot dodge / air dodge | E (+ direction) |
+| Grab, then an arrow throws | ? |
 
 Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical keys (`event.code`), so any keyboard layout works.
 
-## Moves
+## Moves (ADR-0071)
 
-- **Attacks:** jab, side, up and down on the ground; neutral, forward, back, up and down (spike) in the air.
-- **Specials:** neutral = blaster shot, side = dash (also a recovery), up = thrust boost then a helpless fall, down = bomb (Flipper: slam spike).
-- **Defense:** shield (drains, breaks into a dizzy stun), roll and spot dodge from shield, one air dodge per jump.
-- Recovering near a stage corner (holding toward it, or during the up special) pulls you up onto it.
+- **Every drone has its own moveset:** jab (combos), tilts, charged smashes, five aerials, four specials, grab, pummel and four throws, get-up attack.
+- **Defense:** shield (drains, breaks into a dizzy stun), **parry** by shielding just as a hit lands, rolls and spot dodge, one air dodge per jump (dashes if a direction is held).
+- **Launched:** press E just before hitting the floor to **tech**, or get knocked down (get up, roll or attack). Mash to escape grabs.
+- Super armor (Heavy smashes), counters (Freestyle), stale moves (repeats get weaker), trades, a short input buffer.
+- Recovering near a stage corner (holding toward it, or during a recovery special) pulls you up onto it.
 
 ## Drones (numbers in `shared/fighter/fighters.ts`)
 
 | Drone | Weight | Air jumps | Notes |
 |---|---|---|---|
-| Freestyle (5") | 100 | 2 | all-rounder |
-| Racer (3") | 80 | 3 | tiny, fast, quick weak hits, rapid darts |
-| Heavy (X8) | 140 | 1 | huge, slow, strong, cannonball shot |
-| Flipper (3D quad) | 90 | 2 | floaty, two up specials, slam spike |
+| Freestyle (5") | 100 | 2 | all-rounder: charge blaster, barrel roll, aimed thrust, counter |
+| Racer (3") | 80 | 3 | tiny, fast: rapid jab and darts, two air dashes, proximity mine |
+| Heavy (X8) | 140 | 1 | huge, slow: armored smashes, cannonball, bear hug, ground pound |
+| Flipper (3D quad) | 90 | 2 | floaty, hovers: reverse gust, flip kick, two flip-ups, slam spike |
 
 ## Stages
 

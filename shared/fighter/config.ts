@@ -89,3 +89,81 @@ export const LEDGE = {
   climbFrames: 10,
   invincibleFrames: 14,
 } as const;
+
+/** Smash attacks: press a direction key and the matching attack together (ADR-0071). */
+export const SMASH = {
+  /** The direction key counts as "together" if pressed this many frames before the attack, or less. */
+  flickFrames: 5,
+} as const;
+
+/** Grabs and throws (ADR-0071). */
+export const GRAB = {
+  /** Frames a grab holds before letting go on its own, plus more the more damage the held drone has. */
+  holdBase: 70,
+  holdPerPercent: 0.8,
+  /** Each fresh key press by the held drone takes this many frames off. */
+  mash: 5,
+  /** Both drones stagger this long when the grab breaks. */
+  releaseFrames: 16,
+  /** Whiffed grab: extra lag is already in the move; grabbed drones are held this far apart (fraction of widths). */
+  holdOverlap: 0.75,
+} as const;
+
+/** Teching: press shield just before you hit the floor while launched. */
+export const TECH = {
+  /** A shield press this many frames before landing counts. */
+  window: 14,
+  /** Pressing again within this many frames of the last press doesn't count (no mashing). */
+  lockout: 40,
+  inPlaceFrames: 22,
+  rollFrames: 28,
+  rollDistance: 130,
+  invincibleFrames: 18,
+} as const;
+
+/** Lying on the floor after a missed tech. */
+export const KNOCKDOWN = {
+  /** Earliest frame you can get up. */
+  minFrames: 14,
+  /** Get up on your own after this long. */
+  maxFrames: 70,
+  getupFrames: 24,
+  getupInvincible: 18,
+  rollFrames: 30,
+  rollDistance: 150,
+} as const;
+
+/** Using the same move again and again weakens it (ADR-0071). */
+export const STALE = {
+  /** Remember this many of your last hits. */
+  queue: 8,
+  /** Damage and knockback lost per copy of the move in the queue. */
+  perUse: 0.06,
+  min: 0.6,
+} as const;
+
+/** Parry: shield on the exact frames a hit lands. */
+export const PARRY = {
+  /** The first frames of a shield. */
+  window: 5,
+  /** Extra freeze on the attacker, so the parry can punish. */
+  attackerLag: 14,
+} as const;
+
+/** Air dodge with a direction held: a quick dash that way. */
+export const AIRDODGE = {
+  speed: 780,
+  /** Frames the dash keeps its speed before gravity comes back. */
+  dashFrames: 12,
+  /** Landing lag after a directional air dodge. */
+  landLag: 10,
+} as const;
+
+/** Frames after an air jump in which an up special gives the jump back (W then Space). */
+export const UP_SPECIAL_JUMP_REFUND = 5;
+
+/** Dropping through a girder: hold down this long. */
+export const DROP_HOLD_FRAMES = 4;
+
+/** Shield release lag. */
+export const SHIELD_DROP_FRAMES = 7;

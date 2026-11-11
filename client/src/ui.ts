@@ -9,7 +9,8 @@ import { SLOT_COLORS } from './config';
 import { drawDrone } from './drones';
 import { KEY_LABELS } from './input';
 
-export type SlotKind = 'p1' | 'p2' | 'bot' | 'off';
+/** One player per keyboard (ADR-0071); CPUs fill the other slots. */
+export type SlotKind = 'p1' | 'bot' | 'off';
 
 export interface SlotSetup {
   kind: SlotKind;
@@ -23,7 +24,7 @@ export interface MatchSetup {
   stocks: number;
 }
 
-const STORAGE_KEY = 'dronefight.brawl.setup.v1';
+const STORAGE_KEY = 'dronefight.brawl.setup.v2';
 
 export function defaultSetup(): MatchSetup {
   return {
@@ -46,7 +47,7 @@ export function loadSetup(): MatchSetup {
     const d = defaultSetup();
     if (!Array.isArray(s.slots) || s.slots.length !== 4 || !STAGE_IDS.includes(s.stage)) return d;
     for (const slot of s.slots) {
-      if (!FIGHTER_IDS.includes(slot.fighter) || !['p1', 'p2', 'bot', 'off'].includes(slot.kind) || ![1, 2, 3].includes(slot.level)) return d;
+      if (!FIGHTER_IDS.includes(slot.fighter) || !['p1', 'bot', 'off'].includes(slot.kind) || ![1, 2, 3].includes(slot.level)) return d;
     }
     s.stocks = Math.max(1, Math.min(9, Math.round(s.stocks) || d.stocks));
     return s;
@@ -71,15 +72,14 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''):
 }
 
 export function slotLabel(slot: SlotSetup): string {
-  if (slot.kind === 'p1') return 'Player 1';
-  if (slot.kind === 'p2') return 'Player 2';
+  if (slot.kind === 'p1') return 'You';
   if (slot.kind === 'bot') return `CPU · ${BOT_LEVEL_NAMES[slot.level]}`;
   return 'Off';
 }
 
-/** Cycle a slot through Player 1, Player 2, CPU (three levels) and Off. */
+/** Cycle a slot through You, CPU (three levels) and Off. */
 function nextKind(slot: SlotSetup): void {
-  const order: [SlotKind, BotLevel][] = [['p1', 2], ['p2', 2], ['bot', 1], ['bot', 2], ['bot', 3], ['off', 2]];
+  const order: [SlotKind, BotLevel][] = [['p1', 2], ['bot', 1], ['bot', 2], ['bot', 3], ['off', 2]];
   const i = order.findIndex(([k, l]) => k === slot.kind && (k !== 'bot' || l === slot.level));
   const [kind, level] = order[(i + 1) % order.length]!;
   slot.kind = kind;
@@ -121,6 +121,7 @@ export class Ui {
   private cards: { percent: HTMLElement; stocks: HTMLElement; card: HTMLElement; lastPercent: number; lastStocks: number }[] = [];
   private setup: MatchSetup;
   private screen: HTMLElement | null = null;
+  private primed: HTMLElement;
 
   constructor(menuRoot: HTMLElement, hudRoot: HTMLElement, private handlers: MenuHandlers) {
     this.root = menuRoot;
@@ -129,6 +130,7 @@ export class Ui {
     this.hud.appendChild(this.banner);
     // A small corner badge during play, so screenshots and clips never look final.
     this.hud.appendChild(el('div', 'wip-corner', 'Work in progress · not final'));
+    this.primed = this.hud.appendChild(el('div', 'primed', 'Q · next arrow is a special'));
     this.setup = loadSetup();
   }
 
@@ -166,8 +168,8 @@ export class Ui {
       kind.onclick = () => {
         this.handlers.onClick();
         nextKind(slot);
-        // Only one Player 1 and one Player 2.
-        if (slot.kind === 'p1' || slot.kind === 'p2') {
+        // Only one player per keyboard.
+        if (slot.kind === 'p1') {
           for (const other of s.slots) if (other !== slot && other.kind === slot.kind) other.kind = 'bot';
         }
         this.commit();
@@ -182,10 +184,7 @@ export class Ui {
         next.onclick = () => { this.handlers.onClick(); this.cycleFighter(i, 1); };
         pick.append(prev, previewCanvas(slot.fighter, color), next);
         card.append(pick, el('div', 'fighter-name', def.name), el('div', 'blurb', def.blurb));
-        if (slot.kind === 'p1' || slot.kind === 'p2') {
-          const keys = KEY_LABELS[slot.kind];
-          card.appendChild(el('div', 'hint', `${keys.left} ${keys.right} to pick`));
-        }
+        if (slot.kind === 'p1') card.appendChild(el('div', 'hint', 'A D to pick'));
       } else {
         card.appendChild(el('div', 'empty', 'Click above to add a player or CPU'));
       }
@@ -220,25 +219,28 @@ export class Ui {
 
   private controlsCard(): HTMLElement {
     const card = el('div', 'controls');
-    const row = (label: string, p1: string, p2: string) => {
+    const row = (label: string, keys: string) => {
       const r = el('div', 'crow');
-      r.append(el('span', 'clabel', label), el('kbd', '', p1), el('kbd', '', p2));
+      r.append(el('span', 'clabel', label), el('kbd', '', keys));
       return r;
     };
-    const k1 = KEY_LABELS.p1;
-    const k2 = KEY_LABELS.p2;
-    const head = el('div', 'crow head');
-    head.append(el('span', 'clabel', ''), el('span', 'cp', 'Player 1'), el('span', 'cp', 'Player 2'));
+    const k = KEY_LABELS;
     card.append(
-      head,
-      row('Move', `${k1.left} ${k1.right}`, `${k2.left} ${k2.right}`),
-      row('Jump (again in the air)', k1.up, k2.up),
-      row('Drop / fast fall', k1.down, k2.down),
-      row('Attack (+ direction)', k1.attack, k2.attack),
-      row('Special (+ direction)', k1.special, k2.special),
-      row('Shield / dodge', k1.shield, k2.shield),
+      row('Move', k.move),
+      row('Jump (again in the air)', k.jump),
+      row('Fast fall · hold to drop through', k.down),
+      row('Attack that way', k.arrows),
+      row('Special: hold Q, or tap Q then an arrow', `${k.special} + ${k.arrows}`),
+      row('Smash: move key + same arrow, hold to charge', `${k.move} + ← →`),
+      row('Grab, then an arrow throws', k.grab),
+      row('Shield · with a direction: dodge', k.shield),
     );
-    card.appendChild(el('div', 'tips', 'Up + Special flies you back to the stage. Side + Special dashes. Down + Special drops a bomb (the Flipper slams down instead). The more damage a drone has, the further it flies. Knock them past the edge of the screen. Esc pauses, M mutes, F fullscreen.'));
+    const you = this.setup.slots.find((x) => x.kind === 'p1');
+    if (you) {
+      const sp = FIGHTERS[you.fighter].specials;
+      card.appendChild(el('div', 'tips', `${FIGHTERS[you.fighter].name} specials: Q + forward arrow ${sp.neutral} · Q + back arrow (or move key + arrow) ${sp.side} · Q + ↑ ${sp.up} · Q + ↓ ${sp.down}.`));
+    }
+    card.appendChild(el('div', 'tips', 'The forward arrow with no movement key held is the neutral move: a jab (tap again to combo), a neutral aerial or a neutral special. Press E right as a hit lands to parry. Launched hard? Press E just before you hit the floor to tech. Mash any key to break out of a grab. ? while holding someone hits them. Esc pauses, M mutes, F fullscreen.'));
     return card;
   }
 
@@ -352,6 +354,11 @@ export class Ui {
         c.card.classList.toggle('out', f.stocks <= 0);
       }
     });
+  }
+
+  /** Show that Q is primed (the next arrow is a special). */
+  setPrimed(on: boolean): void {
+    this.primed.classList.toggle('on', on);
   }
 
   setBanner(text: string): void {

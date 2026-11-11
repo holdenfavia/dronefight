@@ -24,10 +24,10 @@ npm run dev        # game at http://localhost:5173 (Chrome or Edge)
 
 ### Playing
 
-The menu has four slots. Click a slot's top button to cycle **Player 1 → Player 2 → CPU Easy/Normal/Hard → Off**; pick drones with the arrows (or A/D for Player 1, ←/→ for Player 2). Pick stage and stocks, then **Fight!** or Enter. Controls are on the menu and the pause screen (Esc).
+The menu has four slots. Click a slot's top button to cycle **You → CPU Easy/Normal/Hard → Off**; pick your drone with the arrows, A/D or ←/→. Pick stage and stocks, then **Fight!** or Enter. Controls are on the menu and the pause screen (Esc).
 
-- Two players share the keyboard: Player 1 on WASD + F/G/H, Player 2 on the arrows + K/L/;. On one keyboard, some laptops can't register many keys at once ("ghosting"); if a press gets dropped, try the alternates for Player 2: `,` `.` `/` or numpad 1 2 3.
-- Playing alone, either side of the keyboard works.
+- One player per keyboard (ADR-0071): WASD move, arrows attack, Q (held, or tapped to prime the next arrow) makes arrows specials, E shield/dodge, ? grab.
+- Tests in `shared/fighter/sim.test.ts` drive the sim with `Input` objects: `{ aimRight: true, attack: true }` is a right-arrow attack, `{ aimUp: true, special: true }` is Q + up.
 - The old game (v1) is on the `archive/dronefight-v1` branch: `git checkout archive/dronefight-v1 && npm install && npm run dev`. See `docs/legacy/DRONEFIGHT_V1.md`.
 
 ### Tuning the feel

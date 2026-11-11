@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { botInput, createBot } from './bot.js';
 import { MATCH } from './config.js';
 import { FIGHTER_IDS, FIGHTERS } from './fighters.js';
-import { createWorld, knockback, NO_INPUT, step, type Input, type World } from './sim.js';
+import { createWorld, knockback, NO_INPUT, step, type Fighter, type Input, type World } from './sim.js';
 import { STAGE_IDS } from './stages.js';
 
 function skipCountdown(world: World): void {
@@ -42,25 +42,28 @@ describe('fighter sim', () => {
     expect(knockback(100, 12, 140, 30, 100)).toBeLessThan(knockback(100, 12, 74, 30, 100));
   });
 
-  it('a forward tilt at high percent launches off the stage and takes a stock', () => {
+  it('a charged forward smash at high percent launches off the stage and takes a stock', () => {
     const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
     a!.x = 300; a!.facing = 1;
-    b!.x = 345; b!.percent = 140;
-    run(w, 2, (i) => [{ ...NO_INPUT, attack: i === 0 }]);
+    b!.x = 345; b!.percent = 110;
+    // Move key and arrow together = smash; hold the arrow to charge.
+    run(w, 20, () => [{ ...NO_INPUT, right: true, aimRight: true, attack: true }]);
+    expect(a!.move).toBe('fsmash');
     run(w, 240);
     expect(b!.stocks).toBe(MATCH.defaultStocks - 1);
     expect(a!.stats.kos).toBe(1);
   });
 
-  it('the same forward tilt at low percent does not KO', () => {
+  it('the forward tilt at low percent does not KO', () => {
     const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
     a!.x = 0; a!.facing = 1;
     b!.x = 45; b!.percent = 10;
-    run(w, 240, (i) => [{ ...NO_INPUT, attack: i === 0 }]);
+    // Aiming at them while holding the other way is a (turnaround) tilt, not a smash.
+    run(w, 240, (i) => [i === 0 ? { ...NO_INPUT, left: true, aimRight: true, attack: true } : NO_INPUT]);
     expect(b!.percent).toBeGreaterThan(10);
     expect(b!.stocks).toBe(MATCH.defaultStocks);
   });
@@ -71,7 +74,7 @@ describe('fighter sim', () => {
     const [a, b] = w.fighters;
     a!.x = 0; a!.facing = 1;
     b!.x = 45;
-    run(w, 30, (i) => [{ ...NO_INPUT, attack: i === 2 }, { ...NO_INPUT, shield: true }]);
+    run(w, 30, (i) => [{ ...NO_INPUT, attack: i === 12 }, { ...NO_INPUT, shield: true }]);
     expect(b!.percent).toBe(0);
     expect(b!.shieldHp).toBeLessThan(50);
   });
@@ -119,5 +122,228 @@ describe('fighter sim', () => {
       return w.fighters.map((f) => [f.x, f.y, f.percent, f.stocks]);
     };
     expect(play()).toEqual(play());
+  });
+
+  it('the arrow keys pick the attack: forward arrow standing still jabs, and tapping again combos', () => {
+    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+    skipCountdown(w);
+    const a = w.fighters[0]!;
+    step(w, [{ ...NO_INPUT, aimRight: true, attack: true }]);
+    expect(a.move).toBe('jab');
+    run(w, 6);
+    step(w, [{ ...NO_INPUT, aimRight: true, attack: true }]);
+    expect(a.move).toBe('jab2');
+    run(w, 40);
+    step(w, [{ ...NO_INPUT, aimUp: true, attack: true }]);
+    expect(a.move).toBe('utilt');
+    run(w, 40);
+    step(w, [{ ...NO_INPUT, aimLeft: true, attack: true }]);
+    expect(a.move).toBe('jab');
+    expect(a.facing).toBe(-1);
+  });
+
+  it('aimed specials: special with an arrow picks the direction', () => {
+    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+    skipCountdown(w);
+    const a = w.fighters[0]!;
+    a.facing = 1;
+    step(w, [{ ...NO_INPUT, aimRight: true, special: true }]);
+    expect(a.move).toBe('nspecial');
+    run(w, 60);
+    step(w, [{ ...NO_INPUT, aimLeft: true, special: true }]);
+    expect(a.move).toBe('sspecial');
+    expect(a.facing).toBe(-1);
+    run(w, 80);
+    step(w, [{ ...NO_INPUT, aimUp: true, special: true }]);
+    expect(a.move).toBe('uspecial');
+  });
+
+  it('charging a smash makes it hit harder', () => {
+    const hitWith = (chargeFrames: number) => {
+      const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+      skipCountdown(w);
+      const [a, b] = w.fighters;
+      a!.x = 0; a!.facing = 1;
+      b!.x = 50;
+      run(w, 130, (i) => [i <= 9 + chargeFrames ? { ...NO_INPUT, right: i === 0, aimRight: true, attack: true } : NO_INPUT]);
+      return b!.percent;
+    };
+    expect(hitWith(50)).toBeGreaterThan(hitWith(0) * 1.25);
+  });
+
+  it('grabs beat shields, and an arrow throws', () => {
+    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = 0; a!.facing = 1;
+    b!.x = 45;
+    run(w, 12, (i) => [{ ...NO_INPUT, grab: i === 0 }, { ...NO_INPUT, shield: true }]);
+    expect(a!.action).toBe('holding');
+    expect(b!.action).toBe('held');
+    step(w, [{ ...NO_INPUT, grab: true }, { ...NO_INPUT, shield: true }]);
+    expect(a!.move).toBe('pummel');
+    run(w, 20, () => [NO_INPUT, { ...NO_INPUT, shield: true }]);
+    expect(b!.percent).toBeGreaterThan(0);
+    expect(a!.action).toBe('holding');
+    step(w, [{ ...NO_INPUT, aimUp: true, attack: true }]);
+    expect(a!.move).toBe('uthrow');
+    run(w, 30);
+    expect(b!.grabbedBy).toBe(-1);
+    expect(b!.percent).toBeGreaterThan(7);
+    expect(b!.y).toBeGreaterThan(20);
+  });
+
+  it('mashing breaks out of a grab sooner', () => {
+    const heldFor = (mash: boolean) => {
+      const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+      skipCountdown(w);
+      const [a, b] = w.fighters;
+      a!.x = 0; a!.facing = 1;
+      b!.x = 45;
+      run(w, 10, (i) => [{ ...NO_INPUT, grab: i === 0 }]);
+      expect(a!.action).toBe('holding');
+      let frames = 0;
+      while (b!.grabbedBy >= 0 && frames < 400) {
+        step(w, [NO_INPUT, { ...NO_INPUT, left: mash && frames % 2 === 0 }]);
+        frames++;
+      }
+      return frames;
+    };
+    expect(heldFor(true)).toBeLessThan(heldFor(false) * 0.6);
+  });
+
+  it('launched drones tech with a well-timed shield press, and get knocked down without one', () => {
+    const landing = (tech: boolean) => {
+      const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+      skipCountdown(w);
+      const b = w.fighters[1]!;
+      b.x = 0; b.y = 40; b.grounded = false; b.action = 'hitstun'; b.duration = 60; b.tumbling = true; b.vy = -600;
+      let i = 0;
+      while (!b.grounded && i < 60) { step(w, [NO_INPUT, { ...NO_INPUT, shield: tech && i === 2 }]); i++; }
+      return b.action;
+    };
+    expect(landing(true)).toBe('tech');
+    expect(landing(false)).toBe('down');
+  });
+
+  it('a shield raised right as the hit lands parries it', () => {
+    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = 0; a!.facing = 1;
+    b!.x = 45;
+    const events: string[] = [];
+    // Jab comes out on frame 3; shield goes up 2 frames before.
+    for (let i = 0; i < 20; i++) {
+      step(w, [{ ...NO_INPUT, aimRight: true, attack: i === 0 }, { ...NO_INPUT, shield: i >= 1 }]);
+      events.push(...w.events.map((e) => e.type));
+    }
+    expect(events).toContain('parry');
+    expect(b!.shieldHp).toBeGreaterThan(47); // Only the drain from holding it.
+    expect(b!.percent).toBe(0);
+  });
+
+  it("the Freestyle's counter strikes back", () => {
+    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'heavy' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = 0; a!.facing = 1;
+    b!.x = 75; b!.facing = -1;
+    run(w, 60, (i) => [{ ...NO_INPUT, down: i < 2, special: i === 0 }, { ...NO_INPUT, aimLeft: true, attack: i === 3 }]);
+    expect(a!.percent).toBe(0);
+    expect(b!.percent).toBeGreaterThan(6);
+  });
+
+  it("the Heavy's smash has super armor while charging", () => {
+    const w = createWorld('helipad', [{ id: 'heavy' }, { id: 'racer' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = 0; a!.facing = 1;
+    b!.x = 60; b!.facing = -1;
+    run(w, 40, (i) => [{ ...NO_INPUT, right: true, aimRight: true, attack: true }, { ...NO_INPUT, aimLeft: true, attack: i === 4 }]);
+    expect(a!.percent).toBeGreaterThan(0);
+    expect(a!.action).toBe('attack');
+    expect(a!.move).toBe('fsmash');
+  });
+
+  it('using the same move over and over weakens it', () => {
+    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'heavy' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    const dmg: number[] = [];
+    for (let n = 0; n < 5; n++) {
+      a!.x = 0; a!.facing = 1; b!.x = 50; b!.y = 0; b!.lx = b!.ly = 0;
+      const before = b!.percent;
+      run(w, 60, (i) => [{ ...NO_INPUT, left: i === 0, aimRight: true, attack: i === 0 }]);
+      dmg.push(b!.percent - before);
+    }
+    expect(dmg[4]!).toBeLessThan(dmg[0]! * 0.85);
+  });
+
+  it("the Racer's mine sits on the floor and goes off when someone comes close", () => {
+    const w = createWorld('helipad', [{ id: 'racer' }, { id: 'heavy' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = 0; a!.facing = 1;
+    b!.x = 300;
+    run(w, 80, (i) => [{ ...NO_INPUT, aimDown: true, special: i === 0 }]);
+    const mine = w.projectiles.find((p) => p.kind === 'mine');
+    expect(mine?.stuck).toBe(true);
+    b!.x = mine!.x + 20;
+    run(w, 3);
+    expect(w.projectiles.some((p) => p.kind === 'mine')).toBe(false);
+    expect(b!.percent).toBeGreaterThan(5);
+  });
+
+  it("the Flipper's gust pushes without damage", () => {
+    const w = createWorld('helipad', [{ id: 'flipper' }, { id: 'freestyle' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = 0; a!.facing = 1;
+    b!.x = 140;
+    run(w, 40, (i) => [{ ...NO_INPUT, aimRight: true, special: i === 0 }]);
+    expect(b!.percent).toBe(0);
+    expect(b!.x).toBeGreaterThan(180);
+    expect(b!.lastHitBy).toBe(0);
+  });
+
+  it("the Heavy's bear hug grabs through a shield", () => {
+    const w = createWorld('helipad', [{ id: 'heavy' }, { id: 'freestyle' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = 0; a!.facing = 1;
+    b!.x = 100;
+    run(w, 80, (i) => [{ ...NO_INPUT, left: i === 0, aimRight: true, special: i === 0 }, { ...NO_INPUT, shield: true }]);
+    expect(b!.percent).toBeGreaterThan(12);
+  });
+
+  it('every drone has its own moveset', () => {
+    const sig = (id: (typeof FIGHTER_IDS)[number]) => JSON.stringify(FIGHTERS[id].moves);
+    const sigs = new Set(FIGHTER_IDS.map(sig));
+    expect(sigs.size).toBe(FIGHTER_IDS.length);
+    const specials = new Set(FIGHTER_IDS.flatMap((id) => Object.values(FIGHTERS[id].specials)));
+    expect(specials.size).toBeGreaterThanOrEqual(FIGHTER_IDS.length * 4 - 1);
+  });
+
+  it('every move of every drone runs to its end without getting stuck', () => {
+    const moves: Input[] = [
+      { ...NO_INPUT, aimRight: true, attack: true }, { ...NO_INPUT, aimUp: true, attack: true }, { ...NO_INPUT, aimDown: true, attack: true },
+      { ...NO_INPUT, right: true, aimRight: true, attack: true }, { ...NO_INPUT, up: true, aimUp: true, attack: true }, { ...NO_INPUT, down: true, aimDown: true, attack: true },
+      { ...NO_INPUT, aimRight: true, special: true }, { ...NO_INPUT, aimLeft: true, special: true }, { ...NO_INPUT, aimDown: true, special: true },
+      { ...NO_INPUT, grab: true },
+    ];
+    for (const id of FIGHTER_IDS) {
+      for (const m of moves) {
+        const w = createWorld('helipad', [{ id }, { id: 'freestyle' }]);
+        skipCountdown(w);
+        const f: Fighter = w.fighters[0]!;
+        f.x = 0; f.facing = 1;
+        w.fighters[1]!.x = 300;
+        step(w, [m]);
+        expect(f.action, `${id} ${JSON.stringify(m)}`).toBe('attack');
+        run(w, 150);
+        expect(['idle', 'land', 'air'], `${id} ${f.move}`).toContain(f.action);
+      }
+    }
   });
 });

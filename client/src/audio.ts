@@ -101,9 +101,21 @@ export class Sfx {
     this.burst(0.06, 0.15, 400, 1, pan);
   }
 
-  shot(kind: 'shot' | 'bomb', pan: number): void {
+  shot(kind: 'shot' | 'bomb' | 'mine' | 'gust', pan: number): void {
     if (kind === 'shot') this.tone('square', 1400, 400, 0.08, 0.12, pan);
+    else if (kind === 'gust') this.burst(0.35, 0.3, 700, 0.4, pan);
     else this.tone('sine', 300, 180, 0.15, 0.2, pan);
+  }
+
+  /** Parry and counter: a bright ring. */
+  parry(pan: number): void {
+    this.tone('sine', 1800, 2400, 0.25, 0.22, pan);
+    this.tone('triangle', 900, 1200, 0.2, 0.15, pan);
+  }
+
+  grab(pan: number): void {
+    this.tone('square', 260, 160, 0.07, 0.15, pan);
+    this.burst(0.05, 0.15, 1200, 1, pan);
   }
 
   explode(pan: number): void {
