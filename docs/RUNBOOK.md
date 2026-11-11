@@ -68,6 +68,7 @@ After that, every update is just `npm run deploy` (it builds in Fly's builder; n
 - **Sleep mode:** the server stops when nobody is connected and wakes on the next visit (first load after a quiet spell takes a second or two longer). `fly status` shows `stopped` when it's asleep; that's normal.
 - **Fly trial accounts stop the machine every 5 minutes** ("Trial machine stopping… add a credit card" in `fly logs`), which ends every room. Add a card at https://fly.io/trial.
 - **Always deploy with `npm run deploy`** (`--ha=false`). Plain `fly deploy` on a new app creates two machines, which splits rooms between them. Fix with `fly scale count 1`.
+- **`dial tcp [2a09:…]:443: connect: no route to host`** from `fly` means flyctl tried IPv6 on a network without it. Deploy with `GODEBUG=netdns=go npm run deploy` (Go's own resolver falls back to IPv4).
 - Logs: `fly logs`. Status: `fly status`. Health: `https://<name>.fly.dev/healthz` returns `ok`.
 - Try the production setup locally: `npm run build && PORT=8080 npm start`, then open http://localhost:8080.
 - Region is `primary_region` in `fly.toml` (`dfw` = Dallas, closest to both pilots). Pick one between the two pilots (`fly platform regions` lists them); after changing it, run `fly scale count 1 --region <new>` and remove the old machine.
