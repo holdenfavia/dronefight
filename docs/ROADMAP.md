@@ -26,6 +26,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Original cast instead of drones: Brawler, Blade, Spark, Titan, each with its own gimmick (ADR-0072)
 - [x] Six more fighters: Ninja, Gunslinger, Chef, Ghost, Yo-yo Kid, Bard (ADR-0073)
 - [ ] Real character art to replace the stick figures
+- [x] Specials on Space instead of Q (ADR-0074)
 - [ ] Rebindable keys, in case two players' keys clash on some keyboards
 
 ## Phase 2 — Online with friends

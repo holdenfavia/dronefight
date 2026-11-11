@@ -1,13 +1,13 @@
 // Keyboard controls (ADR-0071): one player per keyboard. WASD moves; the arrow keys attack in their
-// direction. Q makes arrows specials: hold it, or tap it once to prime the next arrow (owner's idea,
-// 2026-11-10). E shields and dodges, ? (the slash key) grabs. Key codes are physical keys, so the layout works
+// direction. Space makes arrows specials: hold it, or tap it once to prime the next arrow (owner's idea,
+// 2026-11-10; moved from Q to Space by ADR-0074). E shields and dodges, ? (the slash key) grabs. Key codes are physical keys, so the layout works
 // the same on any keyboard language.
 
 import { NO_INPUT, type Input } from '../../shared/fighter/sim';
 
 const MOVE = { left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS' } as const;
 const AIM = { aimLeft: 'ArrowLeft', aimRight: 'ArrowRight', aimUp: 'ArrowUp', aimDown: 'ArrowDown' } as const;
-const SPECIAL_KEY = 'KeyQ';
+const SPECIAL_KEY = 'Space';
 const GRAB_KEY = 'Slash'; // The ? key.
 const SHIELD_KEY = 'KeyE';
 
@@ -17,7 +17,7 @@ export const KEY_LABELS = {
   jump: 'W',
   down: 'S',
   arrows: '← → ↑ ↓',
-  special: 'Q',
+  special: 'Space',
   grab: '?',
   shield: 'E',
 } as const;
@@ -28,9 +28,9 @@ export class Keyboard {
   private down = new Set<string>();
   /** Keys pressed since the last call to takePressed (for menus). */
   private pressed: string[] = [];
-  /** Q was tapped since the last arrow: the next arrow is a special. */
+  /** Space was tapped since the last arrow: the next arrow is a special. */
   primed = false;
-  /** Arrow keys held as specials (pressed with Q held or primed); the rest are attacks. */
+  /** Arrow keys held as specials (pressed with Space held or primed); the rest are attacks. */
   private specialArrows = new Set<string>();
 
   constructor(target: Window = window) {

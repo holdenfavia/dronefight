@@ -26,7 +26,7 @@ A **side-view platform fighter** to play with friends: an original cast of ten f
 | Move / jump (again in the air) | A D / W |
 | Fast fall, hold to drop through | S |
 | Attack that way | ← → ↑ ↓ (forward with no move key = neutral; move key + same arrow together = smash, hold to charge) |
-| Special that way | hold **Q**, or tap Q to prime the next arrow |
+| Special that way | hold **Space**, or tap Space to prime the next arrow (ADR-0074) |
 | Shield · roll / spot dodge / air dodge | E (+ direction) |
 | Grab, then an arrow throws | ? |
 
