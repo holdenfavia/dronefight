@@ -46,3 +46,16 @@ export const AUDIO = {
   master: 0.5,
 } as const;
 
+
+/** Attack looks (ADR-0071 follow-up): colors that tell attacks apart at a glance. */
+export const ATTACK_COLORS = {
+  /** Smash attacks burn hot. */
+  smash: '#ffb020',
+  smashCore: '#fff2b0',
+  /** Spikes (sending down) are purple, so a meteor reads differently from a launcher. */
+  spike: '#a46bff',
+  grab: '#ffffff',
+  counter: '#ffffff',
+  /** Each drone's specials have their own energy. */
+  special: { freestyle: '#3fd0ff', racer: '#d6ff3a', heavy: '#ff4a1c', flipper: '#9ff6ff' },
+} as const;

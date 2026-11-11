@@ -148,7 +148,7 @@ export interface Projectile {
 }
 
 export type GameEvent =
-  | { type: 'hit'; x: number; y: number; dmg: number; kb: number; attacker: number; target: number; armored?: boolean }
+  | { type: 'hit'; x: number; y: number; dmg: number; kb: number; attacker: number; target: number; armored?: boolean; move?: MoveId }
   | { type: 'shieldhit'; x: number; y: number; target: number }
   | { type: 'shieldbreak'; target: number }
   | { type: 'parry'; x: number; y: number; target: number }
@@ -1256,7 +1256,7 @@ function throwHit(world: World, f: Fighter, t: NonNullable<MoveDef['throwHit']>)
     v.percent = Math.min(999, v.percent + t.hit.dmg);
     f.stats.damageDealt += t.hit.dmg;
     f.hitlag = v.hitlag = 3;
-    world.events.push({ type: 'hit', x: (f.x + v.x) / 2, y: centerY(v), dmg: t.hit.dmg, kb: 0, attacker: f.slot, target: v.slot });
+    world.events.push({ type: 'hit', x: (f.x + v.x) / 2, y: centerY(v), dmg: t.hit.dmg, kb: 0, attacker: f.slot, target: v.slot, move: 'pummel' });
     return;
   }
   f.grabbing = -1;
@@ -1464,7 +1464,7 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
   if (!opts.isThrow && tm?.armor && inRange(target.frame, tm.armor) && kb < tm.armor.kb) {
     target.hitlag = lag;
     if (opts.melee) attacker.hitlag = lag;
-    world.events.push({ type: 'hit', x, y, dmg, kb: kb * 0.3, attacker: attacker.slot, target: target.slot, armored: true });
+    world.events.push({ type: 'hit', x, y, dmg, kb: kb * 0.3, attacker: attacker.slot, target: target.slot, armored: true, move: opts.move });
     return;
   }
 
@@ -1507,7 +1507,7 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
 
   target.hitlag = lag;
   if (opts.melee) attacker.hitlag = lag;
-  world.events.push({ type: 'hit', x, y, dmg, kb, attacker: attacker.slot, target: target.slot });
+  world.events.push({ type: 'hit', x, y, dmg, kb, attacker: attacker.slot, target: target.slot, move: opts.move });
   // A little randomness in the spark only; the hit itself is deterministic.
   nextRandom(world.rng);
 }

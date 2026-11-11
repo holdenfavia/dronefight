@@ -5,6 +5,7 @@
 import type { FighterId } from '../../shared/fighter/fighters';
 import { FIGHTERS } from '../../shared/fighter/fighters';
 import { CHARACTER_ART, PALETTE } from './config';
+import type { AttackPose } from './moveLooks';
 
 export interface DronePose {
   color: string;
@@ -20,6 +21,9 @@ export interface DronePose {
   stride?: number;
   /** An attack is landing: punch forward (stick figures). */
   punch?: boolean;
+  /** The attack being done, and how far into its swing: 0 = wound up, 1 = fully out (stick figures). */
+  attack?: AttackPose;
+  strike?: number;
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -234,15 +238,85 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: DronePo
     limbs.lineTo(kneeX, kneeY);
     limbs.lineTo(kneeX + Math.sin(angle - bend) * legLen * 0.5, kneeY + Math.cos(angle - bend) * legLen * 0.5);
   };
-  if (airborne) { leg(0.6, 1); leg(-0.2, -1); } else { leg(swing + 0.15, 1); leg(-swing - 0.15, -1); }
-  // Arms: punch forward when attacking, up when flying, swinging when running.
-  const arm = (angle: number) => {
+  // Arms: angle 0 hangs down, PI/2 points forward, PI points up.
+  const arm = (angle: number, reach = 1) => {
     limbs.moveTo(0, shoulderY);
-    limbs.lineTo(Math.sin(angle) * armLen, shoulderY + Math.cos(angle) * armLen);
+    const elbowX = Math.sin(angle) * armLen * 0.5 * reach;
+    const elbowY = shoulderY + Math.cos(angle) * armLen * 0.5 * reach;
+    limbs.lineTo(elbowX, elbowY);
+    limbs.lineTo(Math.sin(angle) * armLen * reach, shoulderY + Math.cos(angle) * armLen * reach);
   };
-  if (pose.punch) { arm(Math.PI / 2); arm(0.4); }
-  else if (airborne) { arm(Math.PI * 0.8); arm(-Math.PI * 0.8); }
-  else { arm(-swing + 0.3); arm(swing - 0.3); }
+  const straightLeg = (angle: number, side: number, reach = 1) => {
+    limbs.moveTo(side * hipW, hipY);
+    limbs.lineTo(side * hipW + Math.sin(angle) * legLen * reach, hipY + Math.cos(angle) * legLen * reach);
+  };
+  const k = Math.max(0, Math.min(1, pose.strike ?? 1));
+  const wind = (from: number, to: number) => from + (to - from) * k;
+  switch (pose.attack) {
+    case 'punch':
+      leg(0.35, 1); leg(-0.35, -1);
+      arm(wind(-0.4, Math.PI / 2), wind(0.8, 1.45)); arm(wind(0.8, -0.5));
+      break;
+    case 'kick':
+      straightLeg(wind(0.3, 1.55), 1, wind(0.8, 1.2)); leg(-0.1, -1);
+      arm(Math.PI * 0.75); arm(-0.6);
+      break;
+    case 'backkick':
+      straightLeg(wind(-0.3, -1.6), 1, wind(0.8, 1.25)); leg(0.2, -1);
+      arm(Math.PI * 0.6); arm(Math.PI * 0.4);
+      break;
+    case 'uppercut':
+      leg(0.3, 1); leg(-0.3, -1);
+      arm(wind(0.6, Math.PI * 0.97), wind(0.8, 1.5)); arm(-0.4);
+      break;
+    case 'low':
+      leg(1.2, 1); leg(-0.9, -1);
+      straightLeg(wind(0.6, 1.45), 1, 1.15);
+      arm(wind(0.2, 1.1), 1.2); arm(-0.8);
+      break;
+    case 'spin':
+      straightLeg(1.3, 1); straightLeg(-1.3, -1);
+      arm(Math.PI / 2, 1.3); arm(-Math.PI / 2, 1.3);
+      break;
+    case 'stomp':
+      straightLeg(0.12, 1, 1.1); straightLeg(-0.12, -1, 1.1);
+      arm(Math.PI * 0.85, 1.2); arm(-Math.PI * 0.85, 1.2);
+      break;
+    case 'spike':
+      leg(0.8, 1); leg(-0.6, -1);
+      arm(wind(Math.PI * 0.9, 0.15), 1.45); arm(wind(-Math.PI * 0.8, -0.1), 1.3);
+      break;
+    case 'grab':
+      leg(0.35, 1); leg(-0.35, -1);
+      arm(Math.PI / 2 - 0.15, wind(0.7, 1.35)); arm(Math.PI / 2 + 0.15, wind(0.7, 1.35));
+      break;
+    case 'throw':
+      leg(0.4, 1); leg(-0.4, -1);
+      arm(wind(Math.PI / 2, Math.PI * 0.95), 1.3); arm(wind(Math.PI / 2, Math.PI * 0.9), 1.3);
+      break;
+    case 'cast':
+      leg(0.3, 1); leg(-0.4, -1);
+      arm(Math.PI / 2 + 0.1, wind(0.6, 1.4)); arm(Math.PI / 2 - 0.1, wind(0.6, 1.4));
+      break;
+    case 'counter':
+      leg(0.3, 1); leg(-0.3, -1);
+      arm(Math.PI * 0.62, 1.1); arm(Math.PI * 0.42, 1.1);
+      break;
+    case 'dash':
+      straightLeg(-1.0, 1); straightLeg(-1.3, -1);
+      arm(Math.PI / 2, 1.45); arm(Math.PI * 0.6, 1.2);
+      break;
+    case 'rise':
+      straightLeg(0.1, 1); straightLeg(-0.1, -1);
+      arm(Math.PI, 1.4); arm(Math.PI * 0.9, 1.3);
+      break;
+    default:
+      if (airborne) { leg(0.6, 1); leg(-0.2, -1); } else { leg(swing + 0.15, 1); leg(-swing - 0.15, -1); }
+      // Arms: punch forward when attacking, up when flying, swinging when running.
+      if (pose.punch) { arm(Math.PI / 2); arm(0.4); }
+      else if (airborne) { arm(Math.PI * 0.8); arm(-Math.PI * 0.8); }
+      else { arm(-swing + 0.3); arm(swing - 0.3); }
+  }
 
   ctx.save();
   ctx.lineCap = 'round';
