@@ -1,13 +1,13 @@
 // Side-view renderer (ADR-0070): Canvas 2D, a camera that frames every fighter, parallax city
-// backdrop, stage art, drones, hit effects and screen shake.
+// backdrop, stage art, fighters, hit effects and screen shake.
 
 import { FIGHTERS, type MoveId } from '../../shared/fighter/fighters';
-import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
+import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, rageFraction, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
 import { SHIELD } from '../../shared/fighter/config';
 import type { Platform } from '../../shared/fighter/stages';
 import { ATTACK_COLORS, CAMERA, FEEL, PALETTE, SLOT_COLORS } from './config';
 import { moveLook, type MoveLook } from './moveLooks';
-import { drawDrone } from './drones';
+import { drawFighterFigure } from './figures';
 import { isPurpleSkyTime } from './purpleSky';
 
 interface Particle {
@@ -119,6 +119,18 @@ export class Renderer {
           if (e.dmg >= 10) this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 10, max: 10, size: 14 + e.dmg, color: '#fff6c9', kind: 'star', grow: 1 });
           this.flashes.set(e.target, 1);
           if (e.armored) this.popup(world.fighters[e.target]!, 'ARMOR', '#ffb36b');
+          if (e.tip) {
+            // A clean sword-tip hit: a bright white star and a ring.
+            this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 14, max: 14, size: 16 + e.dmg, color: ATTACK_COLORS.tip, kind: 'star', grow: 2.5 });
+            this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 12, max: 12, size: 8, color: ATTACK_COLORS.tip, kind: 'ring', grow: 5 });
+          }
+          if (e.rage) {
+            // The Brawler unloads its rage.
+            for (let i = 0; i < 30; i++) this.ember(e.x, e.y, i % 3 ? ATTACK_COLORS.rage : ATTACK_COLORS.smashCore, 600);
+            this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 26, max: 26, size: 24, color: ATTACK_COLORS.rage, kind: 'ring', grow: 10 });
+            this.popup(attacker, 'RAGE!', ATTACK_COLORS.rage);
+            this.shake = Math.min(FEEL.maxShake, this.shake + 10);
+          }
           this.shake = Math.min(FEEL.maxShake, this.shake + e.kb * FEEL.shakePerKb);
           break;
         }
@@ -178,6 +190,21 @@ export class Renderer {
           this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 16, max: 16, size: e.r * 0.4, color: '#ffe27a', kind: 'ring', grow: e.r * 0.06 });
           this.shake = Math.min(FEEL.maxShake, this.shake + 12);
           break;
+        case 'warp': {
+          // Blink and rewind: a puff where it left, a burst where it arrived, a faint streak between.
+          const f = world.fighters[e.slot]!;
+          const color = ATTACK_COLORS.special[f.id];
+          const h = fighterDef(f).height / 2;
+          for (const [x, y, n] of [[e.fromX, e.fromY, 8], [e.x, e.y, 14]] as const) {
+            this.particles.push({ x, y: y + h, vx: 0, vy: 0, life: 16, max: 16, size: 10, color, kind: 'ring', grow: 4 });
+            for (let i = 0; i < n; i++) this.ember(x, y + h, i % 2 ? color : '#ffffff', 240);
+          }
+          for (let i = 1; i < 6; i++) {
+            const t = i / 6;
+            this.particles.push({ x: e.fromX + (e.x - e.fromX) * t, y: e.fromY + (e.y - e.fromY) * t + h, vx: 0, vy: 0, life: 10 + i * 2, max: 20, size: 4, color, kind: 'ember', grow: -0.02 });
+          }
+          break;
+        }
         case 'respawn': {
           const f = world.fighters[e.slot]!;
           this.particles.push({ x: f.x, y: centerY(f), vx: 0, vy: 0, life: 24, max: 24, size: 10, color: SLOT_COLORS[e.slot] ?? '#fff', kind: 'ring', grow: 5 });
@@ -405,7 +432,7 @@ export class Renderer {
     this.drawBackdrop();
     this.drawStage(world);
     this.drawParticles(false);
-    for (const p of world.projectiles) this.drawProjectile(p, SLOT_COLORS[p.owner] ?? '#fff');
+    for (const p of world.projectiles) this.drawProjectile(p, ATTACK_COLORS.special[world.fighters[p.owner]!.id] ?? SLOT_COLORS[p.owner] ?? '#fff', SLOT_COLORS[p.owner] ?? '#fff');
     for (const f of world.fighters) {
       if (!isAlive(f)) continue;
       const pv = prev[f.slot];
@@ -678,7 +705,7 @@ export class Renderer {
     }
   }
 
-  private drawProjectile(p: Projectile, color: string): void {
+  private drawProjectile(p: Projectile, color: string, slotColor: string): void {
     const ctx = this.ctx;
     const s = this.scale;
     const px = this.sx(p.x);
@@ -706,8 +733,29 @@ export class Renderer {
         ctx.stroke();
       }
       ctx.restore();
+    } else if (p.kind === 'bomb') {
+      // The Titan's boulder: a tumbling lumpy rock with the thrower's color on it.
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(p.age * 0.15 * (p.vx >= 0 ? -1 : 1));
+      ctx.fillStyle = '#7a6a58';
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const rr = r * s * (0.85 + 0.2 * Math.sin(i * 2.7));
+        if (i === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+        else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = slotColor;
+      ctx.fillRect(-r * 0.3 * s, -r * 0.3 * s, r * 0.35 * s, r * 0.25 * s);
+      ctx.restore();
     } else {
-      // Bombs and mines; a mine blinks faster once it's armed.
+      // Mines; one blinks faster once it's armed.
       ctx.fillStyle = PALETTE.ink;
       ctx.beginPath();
       if (p.kind === 'mine') ctx.ellipse(px, py, r * 1.3 * s, r * 0.8 * s, 0, 0, Math.PI * 2);
@@ -743,11 +791,11 @@ export class Renderer {
         fair: 0.6 * wind, bair: -0.6 * wind, uair: -0.8 * wind, dair: 1.0 * wind,
         sspecial: 0.5, sspecialAir: 0.6, dspecial: m.slam ? 1.4 : 0.2, dspecialAir: 1.4,
         grab: 0.35 * wind, pummel: 0.4, fthrow: 0.6 * wind, bthrow: -0.9 * wind, uthrow: -1.0 * wind, dthrow: 1.0 * wind,
-        cmdthrow: -1.1 * wind, counterhit: 0.7, slamland: 0.3,
+        carry: -0.6, carryslam: 0.4, counterhit: 0.7, riposte: 0.5, quake: 0.3,
       };
       if (f.move === 'nair' || f.move === 'getupattack') return { tilt: 0, spin: t * Math.PI * 2 };
-      if (f.move === 'dsmash' && f.id === 'flipper') return { tilt: 0, spin: t * Math.PI * 4 };
-      if (f.move === 'uspecial') return { tilt: -0.2, spin: f.id === 'flipper' ? t * Math.PI * 2 : 0 };
+      // Spinning recoveries: the Brawler's spiral kick and the Blade's rising spin.
+      if (f.move === 'uspecial') return { tilt: -0.2, spin: f.id === 'brawler' || f.id === 'blade' ? t * Math.PI * 4 : 0 };
       if (f.move === 'dspecial' && m.counter) return { tilt: -0.3, spin: 0 };
       return { tilt: (tilts[f.move] ?? 0) * (1 - Math.max(0, t - 0.7) / 0.3), spin: 0 };
     }
@@ -794,8 +842,9 @@ export class Renderer {
     ctx.rotate(tilt + spin);
     if (invisible) ctx.globalAlpha = 0.45;
     const thrust = f.grounded ? 0.2 : f.vy > 0 ? 1 : 0.5;
-    drawDrone(ctx, f.id, {
+    drawFighterFigure(ctx, f.id, {
       color,
+      rage: rageFraction(f),
       phase: this.time * (0.9 + thrust * 0.8) + f.slot,
       blink: this.blinkAmount(f.slot) + (f.action === 'hitstun' || f.action === 'shieldbreak' ? 1 : 0),
       flash: this.flashes.get(f.slot) ?? 0,
@@ -832,6 +881,18 @@ export class Renderer {
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.stroke();
     }
+    // Full rage: a flickering red aura.
+    if (rageFraction(f) >= 1) {
+      const r = (def.hurtR + 10 + Math.sin(this.time * 0.6) * 3) * s;
+      const g = ctx.createRadialGradient(cx, cy, r * 0.4, cx, cy, r);
+      g.addColorStop(0, ATTACK_COLORS.rage + '00');
+      g.addColorStop(1, ATTACK_COLORS.rage + '55');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      if (this.time % 4 === 0) this.ember(f.x + (Math.random() - 0.5) * def.halfW * 2, f.y + Math.random() * def.height, ATTACK_COLORS.rage, 60);
+    }
     // Counter stance: a white outline.
     if (f.action === 'attack' && f.move) {
       const c = def.moves[f.move]!.counter;
@@ -859,7 +920,7 @@ export class Renderer {
       }
     }
 
-    // Player tag above the drone.
+    // Player tag above the fighter.
     this.label(`P${f.slot + 1}`, cx, cy - (def.height / 2 + 26) * s - 8, color, true);
   }
 
@@ -1115,7 +1176,7 @@ export class Renderer {
       ctx.translate(bx, by);
       const k = 0.6 * (28 / (def.halfW + 6));
       ctx.scale(k * f.facing, k);
-      drawDrone(ctx, f.id, { color, phase: this.time, blink: 0, flash: 0, thrust: 1 });
+      drawFighterFigure(ctx, f.id, { color, phase: this.time, blink: 0, flash: 0, thrust: 1 });
       ctx.restore();
     }
   }

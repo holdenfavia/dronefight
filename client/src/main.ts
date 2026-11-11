@@ -1,4 +1,4 @@
-// dronefight: a side-view drone brawler (ADR-0070, ADR-0071). Up to four drones: you on the keyboard plus CPUs.
+// dronefight: a side-view platform fighter (ADR-0070, ADR-0071, ADR-0072). Up to four fighters: you on the keyboard plus CPUs.
 
 import './styles.css';
 import { botInput, createBot, type Bot } from '../../shared/fighter/bot';
@@ -39,7 +39,7 @@ let attractBots: Bot[] = world.fighters.map((f) => createBot(f.slot, 2, 3));
 
 /** Bots fighting behind the menu. */
 function attractWorld(): World {
-  const w = createWorld('rooftop', [{ id: 'freestyle' }, { id: 'racer' }, { id: 'heavy' }, { id: 'flipper' }], 99, 3);
+  const w = createWorld('rooftop', [{ id: 'brawler' }, { id: 'blade' }, { id: 'spark' }, { id: 'titan' }], 99, 3);
   w.countdown = 0;
   return w;
 }
@@ -166,7 +166,7 @@ function handleKeys(): void {
       else if (mode === 'results' && matchSetup) startMatch(matchSetup);
       else if (mode === 'paused') resume();
     } else if (mode === 'menu') {
-      // Pick your drone with A / D or the side arrows.
+      // Pick your fighter with A / D or the side arrows.
       const p1 = ui.currentSetup.slots.findIndex((s) => s.kind === 'p1');
       const dir = code === 'KeyD' || code === 'ArrowRight' ? 1 : code === 'KeyA' || code === 'ArrowLeft' ? -1 : 0;
       if (p1 >= 0 && dir !== 0) { sfx.click(); ui.cycleFighter(p1, dir); }

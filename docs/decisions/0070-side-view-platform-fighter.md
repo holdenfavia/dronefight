@@ -1,6 +1,6 @@
 # ADR-0070: Start over as a side-view drone platform fighter; archive v1
 
-- **Status:** Accepted
+- **Status:** Accepted (drone theme and roster amended by ADR-0072, 2026-11-10)
 - **Date:** 2026-11-10
 - **Supersedes:** the game described by ADR-0001 through ADR-0069, except those listed under "Carried forward"
 

@@ -17,9 +17,6 @@ export const PALETTE = {
   purpleHorizon: '#d9b8ff',
 } as const;
 
-/** How the characters are drawn. 'stick' = placeholder stick figures (2026-11-10); 'drone' = the drone art. */
-export const CHARACTER_ART: 'stick' | 'drone' = 'stick';
-
 export const CAMERA = {
   /** World units shown vertically at zoom 1 (scaled to the window height). */
   baseHeight: 720,
@@ -38,7 +35,7 @@ export const FEEL = {
   shakePerKb: 0.09,
   maxShake: 26,
   shakeDecay: 0.86,
-  /** Above this percent drones start smoking. */
+  /** Above this percent fighters start smoking. */
   smokePercent: 90,
 } as const;
 
@@ -56,6 +53,10 @@ export const ATTACK_COLORS = {
   spike: '#a46bff',
   grab: '#ffffff',
   counter: '#ffffff',
-  /** Each drone's specials have their own energy. */
-  special: { freestyle: '#3fd0ff', racer: '#d6ff3a', heavy: '#ff4a1c', flipper: '#9ff6ff' },
+  /** Each fighter's specials have their own energy. */
+  special: { brawler: '#ff3b3b', blade: '#bfe9ff', spark: '#3fd0ff', titan: '#c9934f' },
+  /** The Brawler's full-rage hit. */
+  rage: '#ff3b3b',
+  /** A sword-tip hit. */
+  tip: '#ffffff',
 } as const;

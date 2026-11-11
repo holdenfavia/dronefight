@@ -1,4 +1,4 @@
-// Computer-controlled drones (ADR-0070, ADR-0071). A bot reads the world and produces the same Input a player would.
+// Computer-controlled fighters (ADR-0070, ADR-0071). A bot reads the world and produces the same Input a player would.
 
 import { KNOCKBACK } from './config.js';
 import { centerY, fighterDef, isAlive, knockback, NO_INPUT, type Fighter, type Input, type World } from './sim.js';

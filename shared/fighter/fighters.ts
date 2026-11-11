@@ -1,12 +1,13 @@
-// The drone characters (ADR-0070, movesets: ADR-0071). Movement in u/s, frames at 60 Hz, angles in degrees
-// (0 = straight ahead, 90 = straight up, negative = down; mirrored when facing left).
-// Every drone has its own moveset: its own frame data, reach and power, and its own specials.
+// The fighters (original cast: ADR-0072; controls and combat: ADR-0071). Movement in u/s, frames at 60 Hz,
+// angles in degrees (0 = straight ahead, 90 = straight up, negative = down; mirrored when facing left).
+// Every fighter plays its own way: its own reach, speed and power, its own specials and its own gimmick
+// (Brawler's rage, Blade's sword tip, Spark's teleports and rewind, Titan's armor and carry grab).
 
-export type FighterId = 'freestyle' | 'racer' | 'heavy' | 'flipper';
+export type FighterId = 'brawler' | 'blade' | 'spark' | 'titan';
 
-export const FIGHTER_IDS: readonly FighterId[] = ['freestyle', 'racer', 'heavy', 'flipper'];
+export const FIGHTER_IDS: readonly FighterId[] = ['brawler', 'blade', 'spark', 'titan'];
 
-/** Moves every drone has. */
+/** Moves every fighter has. */
 export type CoreMoveId =
   | 'jab' | 'ftilt' | 'utilt' | 'dtilt'
   | 'fsmash' | 'usmash' | 'dsmash'
@@ -15,11 +16,11 @@ export type CoreMoveId =
   | 'grab' | 'pummel' | 'fthrow' | 'bthrow' | 'uthrow' | 'dthrow'
   | 'getupattack';
 
-/** Moves only some drones have: jab follow-ups, air versions of specials, and moves other moves lead into. */
+/** Moves only some fighters have: jab follow-ups, air versions of specials, and moves other moves lead into. */
 export type ExtraMoveId =
   | 'jab2' | 'jab3'
   | 'nspecialAir' | 'sspecialAir' | 'dspecialAir'
-  | 'counterhit' | 'cmdthrow' | 'slamland';
+  | 'counterhit' | 'riposte' | 'carry' | 'carryslam' | 'quake';
 
 export type MoveId = CoreMoveId | ExtraMoveId;
 
@@ -45,12 +46,14 @@ export interface Hitbox extends HitStats {
   r: number;
   /** Grabs instead of hitting. */
   grab?: boolean;
-  /** Grabs can catch airborne drones too (command grabs). */
+  /** Grabs can catch airborne fighters too (command grabs). */
   grabAir?: boolean;
   /** The grab goes straight into this move (command grabs). */
   grabMove?: MoveId;
   /** Damage is taken from the countered attack. */
   counter?: boolean;
+  /** The tip of a sword: the strong spot. Listed after the rest of the blade, so it only lands when the base misses (spacing). */
+  tip?: boolean;
 }
 
 export interface ProjectileDef {
@@ -69,6 +72,8 @@ export interface ProjectileDef {
   charged?: { r: number; dmg: number; kb: number };
   /** At most this many out at once. */
   limit?: number;
+  /** Turns toward the nearest opponent at this many degrees per second. */
+  homing?: number;
 }
 
 export interface MoveDef {
@@ -81,6 +86,8 @@ export interface MoveDef {
   landLag?: number;
   /** Velocity set on this frame (x forward). */
   lunge?: { frame: number; vx: number; vy: number };
+  /** Jump on this frame, from the ground too (x forward). */
+  hop?: { frame: number; vx: number; vy: number };
   /** Up specials: an upward thrust, aimed a little with left/right, then a helpless fall. */
   boost?: { frame: number; speed: number; steer: number };
   /** Fly straight down until landing; then play landMove. */
@@ -103,14 +110,29 @@ export interface MoveDef {
   helpless?: boolean;
   /** Counts as recovering for the ledge pull-up. */
   recovery?: boolean;
-  /** Grabs: hit the held drone on this frame; release sends them flying. */
+  /** Grabs: hit the held fighter on this frame; release sends them flying. */
   throwHit?: { frame: number; hit: HitStats; release: boolean; behind?: boolean };
   /** Flip around when the move ends. */
   turn?: boolean;
+  /** Teleport this far on this frame, the way the movement keys point (up when none). */
+  teleport?: { frame: number; dist: number };
+  /** Snap back to where you were this many frames ago. */
+  rewind?: { frame: number; back: number };
 }
 
 type CoreMoves = Record<CoreMoveId, MoveDef>;
 export type Moveset = CoreMoves & Partial<Record<ExtraMoveId, MoveDef>>;
+
+/** The Brawler's rage: builds as you deal and take damage; when full, the next smash or special hits much harder. */
+export interface RageDef {
+  max: number;
+  /** Rage per point of damage dealt and taken. */
+  perDealt: number;
+  perTaken: number;
+  /** Damage and knockback multipliers on the raging hit. */
+  dmg: number;
+  kb: number;
+}
 
 export interface FighterDef {
   id: FighterId;
@@ -138,14 +160,22 @@ export interface FighterDef {
   upSpecials: number;
   /** Side specials allowed in the air before you must land. */
   sideSpecials: number;
+  /** Down specials allowed in the air before you must land (unlimited when unset). */
+  downSpecials?: number;
   /** Hold jump in the air to hover for up to this many frames per trip off the ground. */
   hoverFrames: number;
+  rage?: RageDef;
   moves: Moveset;
 }
 
 /** A hitbox: active frames, offset, radius, then damage, angle, base and growing knockback. */
 function hb(from: number, to: number, x: number, y: number, r: number, dmg: number, angle: number, bkb: number, kbg: number, extra: Partial<Hitbox> = {}): Hitbox {
   return { from, to, x, y, r, dmg, angle, bkb, kbg, ...extra };
+}
+
+/** A sword tip hitbox. */
+function tip(from: number, to: number, x: number, y: number, r: number, dmg: number, angle: number, bkb: number, kbg: number, extra: Partial<Hitbox> = {}): Hitbox {
+  return hb(from, to, x, y, r, dmg, angle, bkb, kbg, { tip: true, ...extra });
 }
 
 /** A grab reaching this far forward. */
@@ -171,187 +201,283 @@ function getupAttack(reach: number, dmg: number): MoveDef {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Freestyle: the 5". Honest all-rounder: a three-hit jab, a charge blaster, a counter.
+// Brawler: a boxer. Fast and short-ranged: punches and kicks, a three-hit combo, a chargeable haymaker.
+// Gimmick: rage builds as it fights; full rage makes the next smash or special hit much harder.
 
-function freestyle(): FighterDef {
+function brawler(): FighterDef {
   return {
-    id: 'freestyle',
-    name: 'Freestyle',
-    blurb: 'The 5". Good at everything. Charge blaster, aimed thrust, counter.',
-    specials: { neutral: 'Charge Blaster', side: 'Barrel Roll', up: 'Punch Out', down: 'Counter' },
-    halfW: 28, height: 30, hurtR: 25,
-    weight: 100,
-    walkSpeed: 340, airSpeed: 310, airAccel: 2300,
-    gravity: 2300, maxFall: 900, fastFall: 1400,
-    jumpSpeed: 830, airJumpSpeed: 770, airJumps: 2,
+    id: 'brawler',
+    name: 'Brawler',
+    blurb: 'Fast fists, short reach. Fighting builds rage; full rage makes the next smash or special huge.',
+    specials: { neutral: 'Haymaker', side: 'Dash Uppercut', up: 'Spiral Kick', down: 'Counter-punch' },
+    halfW: 26, height: 32, hurtR: 24,
+    weight: 105,
+    walkSpeed: 390, airSpeed: 320, airAccel: 2500,
+    gravity: 2400, maxFall: 960, fastFall: 1500,
+    jumpSpeed: 850, airJumpSpeed: 770, airJumps: 1,
     upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
+    rage: { max: 60, perDealt: 1, perTaken: 0.6, dmg: 1.5, kb: 1.3 },
     moves: {
-      jab: { frames: 16, hitboxes: [hb(3, 4, 30, 0, 20, 3, 70, 22, 15)], next: { move: 'jab2', from: 6 } },
-      jab2: { frames: 18, hitboxes: [hb(3, 4, 32, 0, 20, 3, 70, 22, 15)], next: { move: 'jab3', from: 6 } },
-      jab3: { frames: 28, hitboxes: [hb(5, 7, 36, 2, 24, 6, 40, 45, 70)] },
-      ftilt: { frames: 28, lunge: { frame: 7, vx: 260, vy: 0 }, hitboxes: [hb(7, 10, 40, 0, 24, 10, 38, 34, 100)] },
-      utilt: { frames: 26, hitboxes: [hb(6, 8, 26, 18, 24, 7, 95, 40, 95), hb(9, 11, -10, 34, 26, 7, 85, 40, 95)] },
-      dtilt: { frames: 22, hitboxes: [hb(5, 7, 32, -14, 20, 6, 78, 40, 55)] },
+      // One, two, hook.
+      jab: { frames: 12, hitboxes: [hb(2, 3, 26, 4, 18, 2, 70, 20, 10)], next: { move: 'jab2', from: 5 } },
+      jab2: { frames: 14, hitboxes: [hb(2, 3, 28, 4, 18, 2, 70, 20, 10)], next: { move: 'jab3', from: 5 } },
+      jab3: { frames: 26, hitboxes: [hb(4, 6, 32, 4, 24, 6, 40, 48, 72)] },
+      ftilt: { frames: 22, hitboxes: [hb(5, 7, 38, -4, 22, 9, 36, 32, 98)] },
+      utilt: { frames: 22, hitboxes: [hb(4, 8, 16, 26, 22, 8, 92, 38, 92)] },
+      dtilt: { frames: 18, hitboxes: [hb(4, 6, 34, -14, 20, 5, 80, 36, 50)] },
       fsmash: {
-        frames: 46, charge: { frame: 9, max: 60, dmg: 0.4 }, lunge: { frame: 14, vx: 320, vy: 0 },
-        hitboxes: [hb(14, 16, 44, 0, 28, 16, 38, 40, 104), hb(17, 19, 40, 0, 22, 12, 40, 34, 95)],
+        frames: 44, charge: { frame: 10, max: 60, dmg: 0.4 }, lunge: { frame: 13, vx: 380, vy: 0 },
+        hitboxes: [hb(13, 15, 40, 4, 26, 17, 38, 38, 104)],
       },
-      usmash: {
-        frames: 44, charge: { frame: 7, max: 60, dmg: 0.4 },
-        hitboxes: [hb(11, 12, 0, 22, 34, 3, 92, 60, 0), hb(13, 17, 0, 40, 32, 13, 88, 36, 100)],
-      },
+      usmash: { frames: 42, charge: { frame: 7, max: 60, dmg: 0.4 }, hitboxes: [hb(10, 14, 10, 30, 26, 16, 88, 36, 104)] },
+      // Punches the floor: a shockwave both ways.
       dsmash: {
-        frames: 44, charge: { frame: 5, max: 60, dmg: 0.4 },
-        hitboxes: [hb(9, 11, 36, -12, 24, 13, 30, 38, 98), hb(15, 17, -36, -12, 24, 12, 150, 38, 98)],
+        frames: 46, charge: { frame: 8, max: 60, dmg: 0.4 },
+        hitboxes: [hb(14, 16, 34, -14, 28, 14, 75, 46, 92), hb(14, 16, -34, -14, 28, 14, 105, 46, 92)],
       },
-      nair: { frames: 26, landLag: 6, hitboxes: [hb(4, 7, 0, 0, 34, 9, 45, 30, 85), hb(8, 14, 0, 0, 30, 6, 45, 25, 70)] },
-      fair: { frames: 32, landLag: 10, hitboxes: [hb(8, 9, 40, 4, 22, 13, 42, 32, 102), hb(10, 12, 32, 4, 22, 9, 42, 28, 90)] },
-      bair: { frames: 28, landLag: 9, hitboxes: [hb(6, 9, -36, 2, 24, 13, 140, 30, 105)] },
-      uair: { frames: 26, landLag: 7, hitboxes: [hb(5, 9, 0, 34, 26, 9, 85, 30, 95)] },
-      dair: { frames: 36, landLag: 14, hitboxes: [hb(12, 13, 0, -30, 22, 14, -80, 25, 90), hb(14, 17, 0, -26, 24, 9, 60, 25, 70)] },
+      nair: { frames: 26, landLag: 6, hitboxes: [hb(4, 6, 0, 0, 32, 9, 45, 30, 84), hb(7, 12, 0, 0, 28, 6, 45, 24, 70)] },
+      // A flying knee: deadly right as it comes out.
+      fair: { frames: 28, landLag: 8, hitboxes: [hb(6, 7, 30, 0, 18, 15, 38, 30, 106), hb(8, 12, 28, 0, 20, 6, 60, 20, 60)] },
+      bair: { frames: 26, landLag: 8, hitboxes: [hb(5, 8, -30, 2, 22, 12, 145, 30, 102)] },
+      uair: { frames: 24, landLag: 6, hitboxes: [hb(4, 8, 4, 30, 24, 9, 88, 30, 96)] },
+      dair: { frames: 32, landLag: 12, hitboxes: [hb(10, 12, 0, -28, 22, 13, -75, 25, 88)] },
+      // Hold special to wind up (up to 1.5 s); armored as it swings.
       nspecial: {
-        frames: 26, charge: { frame: 6, max: 60, dmg: 0 },
-        projectile: {
-          frame: 8,
-          def: { kind: 'shot', speed: 950, angle: 0, r: 8, lifeFrames: 54, gravity: 0, hit: { dmg: 4, angle: 30, bkb: 22, kbg: 35 }, charged: { r: 2.6, dmg: 4, kb: 2.2 } },
-        },
+        frames: 48, charge: { frame: 8, max: 90, dmg: 1.2 }, armor: { from: 9, to: 18, kb: 100 }, lunge: { frame: 18, vx: 520, vy: 0 },
+        hitboxes: [hb(18, 21, 38, 4, 28, 13, 36, 44, 98)],
       },
-      sspecial: { frames: 36, recovery: true, gravity: { from: 1, to: 18, scale: 0.2 }, lunge: { frame: 7, vx: 900, vy: 140 }, hitboxes: [hb(7, 18, 20, 0, 26, 10, 35, 45, 80)] },
-      uspecial: { frames: 24, recovery: true, helpless: true, boost: { frame: 5, speed: 1080, steer: 35 }, hitboxes: [hb(5, 14, 0, 14, 28, 7, 80, 50, 60)] },
-      dspecial: { frames: 34, counter: { from: 5, to: 24, move: 'counterhit', mult: 1.3 } },
-      counterhit: { frames: 30, invincible: { from: 1, to: 12 }, hitboxes: [hb(5, 8, 36, 0, 32, 8, 40, 50, 85, { counter: true })] },
-      grab: grab(30, 20, 7, 30),
-      pummel: pummel(2),
+      sspecial: {
+        frames: 40, recovery: true, gravity: { from: 1, to: 14, scale: 0.3 }, lunge: { frame: 6, vx: 820, vy: 120 },
+        hitboxes: [hb(6, 12, 24, 0, 22, 5, 75, 50, 30), hb(15, 19, 18, 24, 26, 10, 85, 55, 80)],
+      },
+      uspecial: {
+        frames: 26, recovery: true, helpless: true, boost: { frame: 4, speed: 1100, steer: 30 }, rehit: 4,
+        hitboxes: [hb(4, 14, 0, 16, 26, 3, 85, 40, 20), hb(15, 16, 0, 22, 28, 6, 80, 50, 80)],
+      },
+      dspecial: { frames: 32, counter: { from: 4, to: 20, move: 'counterhit', mult: 1.4 } },
+      counterhit: { frames: 28, invincible: { from: 1, to: 10 }, hitboxes: [hb(4, 7, 34, 4, 30, 8, 38, 55, 90, { counter: true })] },
+      grab: grab(28, 18, 6, 28),
+      pummel: pummel(2, 14),
       fthrow: throwMove(24, 10, 8, 40, 55, 70),
       bthrow: throwMove(30, 14, 10, 140, 48, 92, true),
       uthrow: throwMove(28, 12, 7, 90, 62, 62),
       dthrow: throwMove(28, 14, 6, 72, 48, 45),
-      getupattack: getupAttack(32, 7),
+      getupattack: getupAttack(30, 7),
     },
   };
 }
 
 // ---------------------------------------------------------------------------------------------
-// Racer: the 3". Tiny and quick: rapid jabs, multi-hit drills, rapid darts, two air dashes, a mine.
+// Blade: a swordfighter. Long reach, clean slashes. Gimmick: the tip of the sword is the strong spot,
+// so spacing matters: hit with the end of the blade and it launches, too close and it's weak.
 
-function racer(): FighterDef {
+function blade(): FighterDef {
   return {
-    id: 'racer',
-    name: 'Racer',
-    blurb: 'The 3". Tiny, fast, three air jumps. Rapid hits, darts, mines. Flies far.',
-    specials: { neutral: 'Dart Gun', side: 'Slipstream', up: 'Rocket Climb', down: 'Prox Mine' },
-    halfW: 21, height: 22, hurtR: 19,
-    weight: 80,
-    walkSpeed: 440, airSpeed: 370, airAccel: 2800,
-    gravity: 2500, maxFall: 1000, fastFall: 1650,
-    jumpSpeed: 840, airJumpSpeed: 740, airJumps: 3,
-    upSpecials: 1, sideSpecials: 2, hoverFrames: 0,
-    moves: {
-      // Hold attack for a flurry; let go for the finisher.
-      jab: { frames: 22, loop: { from: 3, to: 6 }, rehit: 3, hitboxes: [hb(3, 6, 26, 0, 18, 1, 80, 14, 0), hb(10, 11, 30, 0, 22, 4, 40, 40, 70)] },
-      ftilt: { frames: 22, hitboxes: [hb(5, 7, 32, 0, 20, 8, 36, 30, 95)] },
-      utilt: { frames: 20, hitboxes: [hb(4, 7, 4, 28, 24, 6, 92, 38, 90)] },
-      dtilt: { frames: 16, hitboxes: [hb(4, 5, 28, -10, 18, 5, 70, 34, 50)] },
-      fsmash: {
-        frames: 40, charge: { frame: 8, max: 60, dmg: 0.4 }, lunge: { frame: 11, vx: 640, vy: 0 },
-        hitboxes: [hb(11, 16, 24, 0, 24, 13, 36, 36, 100)],
-      },
-      usmash: {
-        frames: 38, charge: { frame: 6, max: 60, dmg: 0.4 }, rehit: 3,
-        hitboxes: [hb(9, 17, 0, 26, 26, 2, 95, 50, 0), hb(18, 20, 0, 34, 28, 7, 88, 40, 110)],
-      },
-      dsmash: {
-        frames: 34, charge: { frame: 4, max: 60, dmg: 0.4 },
-        hitboxes: [hb(7, 10, 30, -8, 22, 11, 25, 36, 95), hb(7, 10, -30, -8, 22, 11, 155, 36, 95)],
-      },
-      nair: { frames: 28, landLag: 6, rehit: 4, hitboxes: [hb(5, 18, 0, 0, 28, 2, 60, 22, 0), hb(20, 21, 0, 0, 30, 5, 45, 34, 80)] },
-      fair: { frames: 24, landLag: 7, hitboxes: [hb(5, 8, 30, 2, 20, 9, 42, 30, 98)] },
-      bair: { frames: 24, landLag: 8, hitboxes: [hb(5, 8, -30, 2, 20, 11, 145, 28, 100)] },
-      uair: { frames: 22, landLag: 6, hitboxes: [hb(4, 5, 10, 28, 22, 4, 85, 30, 30), hb(8, 10, -6, 30, 24, 6, 88, 32, 100)] },
-      dair: { frames: 34, landLag: 12, rehit: 4, hitboxes: [hb(6, 18, 0, -24, 22, 2, -60, 16, 0), hb(20, 21, 0, -24, 24, 5, -50, 30, 70)] },
-      // Hold special to keep firing.
-      nspecial: {
-        frames: 16, loop: { from: 4, to: 9 },
-        projectile: { frame: 5, def: { kind: 'shot', speed: 1250, angle: 0, r: 6, lifeFrames: 34, gravity: 0, hit: { dmg: 2, angle: 25, bkb: 14, kbg: 15 } } },
-      },
-      sspecial: { frames: 30, recovery: true, gravity: { from: 1, to: 14, scale: 0 }, lunge: { frame: 5, vx: 1300, vy: 60 }, hitboxes: [hb(5, 13, 10, 0, 22, 7, 30, 40, 70)] },
-      uspecial: { frames: 24, recovery: true, helpless: true, boost: { frame: 4, speed: 1260, steer: 20 }, rehit: 4, hitboxes: [hb(4, 12, 0, 12, 24, 3, 85, 40, 20), hb(13, 14, 0, 18, 26, 5, 85, 45, 80)] },
-      dspecial: {
-        frames: 26,
-        projectile: { frame: 9, def: { kind: 'mine', speed: 160, angle: 60, r: 9, lifeFrames: 900, gravity: 1800, blastR: 62, limit: 1, hit: { dmg: 11, angle: 80, bkb: 50, kbg: 75 } } },
-      },
-      grab: grab(24, 16, 6, 26),
-      pummel: pummel(1, 10),
-      fthrow: throwMove(20, 8, 7, 35, 50, 65),
-      bthrow: throwMove(24, 10, 8, 140, 45, 80, true),
-      uthrow: throwMove(22, 9, 5, 92, 58, 55),
-      dthrow: throwMove(24, 12, 5, 80, 40, 40),
-      getupattack: getupAttack(26, 6),
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------------------------
-// Heavy: the X8. Slow and huge, with super armor on its smashes, a command grab and a ground pound.
-
-function heavy(): FighterDef {
-  return {
-    id: 'heavy',
-    name: 'Heavy',
-    blurb: 'The X8. Huge, slow, armored smashes, a bear hug and a ground pound.',
-    specials: { neutral: 'Cannonball', side: 'Bear Hug', up: 'Heavy Lift', down: 'Ground Pound' },
-    halfW: 42, height: 42, hurtR: 37,
-    weight: 140,
-    walkSpeed: 260, airSpeed: 250, airAccel: 1800,
-    gravity: 2150, maxFall: 860, fastFall: 1250,
-    jumpSpeed: 780, airJumpSpeed: 730, airJumps: 1,
+    id: 'blade',
+    name: 'Blade',
+    blurb: 'Long sword reach. Hit with the tip for big damage; up close it\'s weak. Parry stance.',
+    specials: { neutral: 'Sword Wave', side: 'Lunge', up: 'Rising Spin', down: 'Parry Stance' },
+    halfW: 25, height: 34, hurtR: 24,
+    weight: 95,
+    walkSpeed: 350, airSpeed: 300, airAccel: 2200,
+    gravity: 2250, maxFall: 900, fastFall: 1400,
+    jumpSpeed: 820, airJumpSpeed: 760, airJumps: 1,
     upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
     moves: {
-      jab: { frames: 22, hitboxes: [hb(5, 6, 44, 0, 26, 6, 60, 30, 30)], next: { move: 'jab2', from: 8 } },
-      jab2: { frames: 34, hitboxes: [hb(7, 9, 50, 2, 30, 10, 40, 48, 80)] },
-      ftilt: { frames: 38, lunge: { frame: 11, vx: 200, vy: 0 }, hitboxes: [hb(11, 14, 56, 0, 32, 14, 36, 36, 102)] },
-      utilt: { frames: 36, hitboxes: [hb(9, 13, 0, 46, 38, 12, 88, 40, 100)] },
-      dtilt: { frames: 30, hitboxes: [hb(8, 10, 46, -18, 28, 11, 28, 40, 85)] },
+      jab: { frames: 18, hitboxes: [hb(4, 5, 30, 2, 18, 3, 60, 25, 25), tip(4, 5, 58, 2, 14, 4, 60, 30, 30)], next: { move: 'jab2', from: 7 } },
+      jab2: { frames: 26, hitboxes: [hb(5, 7, 34, 2, 18, 4, 40, 30, 50), tip(5, 7, 64, 2, 14, 7, 35, 40, 70)] },
+      ftilt: { frames: 28, hitboxes: [hb(8, 10, 36, 4, 20, 8, 40, 30, 80), tip(8, 10, 66, 4, 16, 13, 38, 36, 100)] },
+      utilt: { frames: 28, hitboxes: [hb(7, 12, 8, 26, 20, 7, 85, 36, 80), tip(7, 12, 10, 56, 18, 11, 90, 40, 96)] },
+      dtilt: { frames: 20, hitboxes: [hb(5, 6, 32, -14, 16, 5, 30, 30, 40), tip(5, 6, 62, -14, 14, 8, 25, 36, 70)] },
       fsmash: {
-        frames: 62, charge: { frame: 11, max: 60, dmg: 0.4 }, armor: { from: 1, to: 22, kb: 120 },
-        hitboxes: [hb(20, 23, 60, 4, 38, 23, 36, 40, 100)],
+        frames: 52, charge: { frame: 12, max: 60, dmg: 0.4 },
+        hitboxes: [hb(18, 20, 40, 6, 24, 14, 40, 34, 94), tip(18, 20, 72, 0, 18, 22, 36, 40, 106)],
       },
       usmash: {
-        frames: 56, charge: { frame: 9, max: 60, dmg: 0.4 }, armor: { from: 1, to: 18, kb: 110 },
-        hitboxes: [hb(16, 20, 0, 56, 44, 20, 88, 40, 98)],
+        frames: 48, charge: { frame: 9, max: 60, dmg: 0.4 },
+        hitboxes: [hb(13, 17, 0, 36, 26, 12, 88, 34, 92), tip(13, 17, 0, 70, 20, 19, 90, 38, 104)],
       },
       dsmash: {
-        frames: 56, charge: { frame: 8, max: 60, dmg: 0.4 }, armor: { from: 1, to: 16, kb: 110 },
-        hitboxes: [hb(15, 18, 58, -16, 34, 17, 28, 42, 94), hb(15, 18, -58, -16, 34, 17, 152, 42, 94)],
+        frames: 48, charge: { frame: 7, max: 60, dmg: 0.4 },
+        hitboxes: [
+          hb(11, 12, 34, -14, 20, 10, 30, 34, 80),
+          hb(18, 19, -34, -14, 20, 10, 150, 34, 80),
+          tip(11, 12, 66, -14, 16, 16, 28, 40, 98),
+          tip(18, 19, -66, -14, 16, 16, 152, 40, 98),
+        ],
       },
-      nair: { frames: 34, landLag: 10, hitboxes: [hb(7, 12, 0, 0, 48, 12, 45, 34, 90)] },
-      // The sweet spot right at the start spikes; later it just hits hard.
-      fair: { frames: 44, landLag: 16, hitboxes: [hb(13, 14, 46, -6, 32, 16, -60, 30, 85), hb(15, 18, 50, 0, 32, 14, 40, 34, 98)] },
-      bair: { frames: 36, landLag: 12, hitboxes: [hb(9, 12, -52, 2, 32, 17, 140, 32, 102)] },
-      uair: { frames: 34, landLag: 11, hitboxes: [hb(8, 12, 0, 50, 36, 14, 88, 34, 98)] },
-      dair: { frames: 46, landLag: 20, hitboxes: [hb(15, 18, 0, -42, 32, 16, -85, 28, 92)] },
+      // A full circle of the blade.
+      nair: {
+        frames: 30, landLag: 7,
+        hitboxes: [
+          hb(5, 11, 0, 0, 30, 6, 50, 24, 60),
+          tip(5, 7, 48, 0, 14, 11, 45, 32, 95),
+          tip(8, 9, 0, 48, 14, 11, 80, 32, 95),
+          tip(10, 11, -48, 0, 14, 11, 135, 32, 95),
+        ],
+      },
+      fair: { frames: 32, landLag: 9, hitboxes: [hb(7, 10, 32, 6, 20, 8, 45, 28, 80), tip(7, 10, 58, 10, 16, 13, 40, 32, 100)] },
+      bair: { frames: 30, landLag: 9, hitboxes: [hb(6, 9, -32, 2, 20, 8, 140, 28, 80), tip(6, 9, -60, 2, 16, 14, 145, 32, 104)] },
+      uair: { frames: 28, landLag: 7, hitboxes: [hb(5, 10, 0, 30, 20, 7, 85, 28, 80), tip(5, 10, 0, 60, 16, 12, 88, 32, 96)] },
+      dair: { frames: 36, landLag: 14, hitboxes: [hb(10, 13, 0, -30, 20, 8, -60, 24, 70), tip(10, 13, 0, -60, 16, 15, -80, 26, 92)] },
+      // A slash that flies.
       nspecial: {
-        frames: 40, charge: { frame: 10, max: 60, dmg: 0 },
+        frames: 34,
+        projectile: { frame: 12, def: { kind: 'shot', speed: 700, angle: 0, r: 16, lifeFrames: 50, gravity: 0, limit: 1, hit: { dmg: 8, angle: 40, bkb: 34, kbg: 60 } } },
+      },
+      sspecial: {
+        frames: 36, recovery: true, gravity: { from: 1, to: 16, scale: 0.15 }, lunge: { frame: 8, vx: 1100, vy: 60 },
+        hitboxes: [hb(8, 14, 24, 0, 22, 7, 40, 40, 70), tip(8, 14, 58, 0, 16, 12, 35, 46, 92)],
+      },
+      uspecial: {
+        frames: 28, recovery: true, helpless: true, boost: { frame: 5, speed: 1000, steer: 30 }, rehit: 4,
+        hitboxes: [hb(5, 15, 0, 10, 46, 3, 85, 40, 20), hb(16, 17, 0, 20, 48, 7, 80, 50, 85)],
+      },
+      // Stand ready: anything that hits you (shots too) gets a tip-of-the-blade riposte.
+      dspecial: { frames: 36, counter: { from: 3, to: 22, move: 'riposte', mult: 1.2 } },
+      riposte: {
+        frames: 30, invincible: { from: 1, to: 12 },
+        hitboxes: [hb(6, 9, 32, 4, 22, 8, 40, 50, 85, { counter: true }), tip(6, 9, 64, 4, 18, 10, 40, 55, 100, { counter: true })],
+      },
+      grab: grab(30, 20, 7, 30),
+      pummel: pummel(2),
+      fthrow: throwMove(26, 11, 9, 42, 52, 70),
+      bthrow: throwMove(30, 13, 10, 140, 48, 92, true),
+      uthrow: throwMove(26, 11, 7, 90, 62, 62),
+      dthrow: throwMove(26, 12, 6, 75, 48, 45),
+      getupattack: getupAttack(44, 7),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Spark: a caster. Light and floaty (hold jump to levitate). Weak up close, strong from range: fireballs,
+// a homing orb, a blink teleport and a rewind that snaps it back to where it was a moment ago.
+
+function spark(): FighterDef {
+  return {
+    id: 'spark',
+    name: 'Spark',
+    blurb: 'A caster. Fireballs and a homing orb from range, blink teleport, rewind. Light and floaty.',
+    specials: { neutral: 'Fireball', side: 'Homing Orb', up: 'Blink', down: 'Rewind' },
+    halfW: 22, height: 30, hurtR: 21,
+    weight: 85,
+    walkSpeed: 300, airSpeed: 330, airAccel: 2400,
+    gravity: 1900, maxFall: 760, fastFall: 1250,
+    jumpSpeed: 780, airJumpSpeed: 720, airJumps: 2,
+    upSpecials: 1, sideSpecials: 1, downSpecials: 1, hoverFrames: 45,
+    moves: {
+      // Hold attack for a stream of sparks.
+      jab: { frames: 20, loop: { from: 3, to: 6 }, rehit: 3, hitboxes: [hb(3, 6, 34, 2, 18, 1, 80, 12, 0), hb(10, 11, 38, 2, 22, 4, 40, 38, 70)] },
+      ftilt: { frames: 28, hitboxes: [hb(9, 11, 54, 2, 22, 9, 38, 34, 96)] },
+      utilt: { frames: 28, hitboxes: [hb(8, 14, 0, 40, 30, 8, 90, 40, 92)] },
+      dtilt: { frames: 22, hitboxes: [hb(6, 8, 40, -16, 20, 6, 30, 32, 60)] },
+      // A blast that goes off a long way in front.
+      fsmash: { frames: 52, charge: { frame: 10, max: 60, dmg: 0.4 }, hitboxes: [hb(18, 22, 76, 4, 30, 17, 38, 38, 104)] },
+      usmash: {
+        frames: 48, charge: { frame: 8, max: 60, dmg: 0.4 }, rehit: 4,
+        hitboxes: [hb(12, 20, 0, 50, 28, 2, 90, 40, 10), hb(21, 23, 0, 64, 32, 8, 88, 40, 108)],
+      },
+      dsmash: {
+        frames: 44, charge: { frame: 6, max: 60, dmg: 0.4 },
+        hitboxes: [hb(12, 15, 46, -14, 22, 13, 25, 38, 96), hb(12, 15, -46, -14, 22, 13, 155, 38, 96)],
+      },
+      nair: { frames: 28, landLag: 6, rehit: 5, hitboxes: [hb(5, 16, 0, 0, 36, 2, 60, 20, 0), hb(18, 19, 0, 0, 38, 5, 45, 34, 80)] },
+      fair: { frames: 30, landLag: 9, hitboxes: [hb(8, 11, 46, 2, 22, 11, 40, 30, 98)] },
+      bair: { frames: 30, landLag: 9, hitboxes: [hb(7, 10, -46, 2, 22, 12, 145, 30, 100)] },
+      uair: { frames: 26, landLag: 7, hitboxes: [hb(6, 10, 0, 44, 26, 10, 88, 30, 96)] },
+      dair: { frames: 34, landLag: 12, hitboxes: [hb(10, 13, 0, -38, 22, 12, -75, 26, 86)] },
+      // Hold special to grow the fireball.
+      nspecial: {
+        frames: 30, charge: { frame: 6, max: 75, dmg: 0 },
         projectile: {
-          frame: 14,
-          def: { kind: 'shot', speed: 620, angle: 0, r: 14, lifeFrames: 80, gravity: 0, hit: { dmg: 9, angle: 40, bkb: 40, kbg: 60 }, charged: { r: 1.8, dmg: 2.6, kb: 1.9 } },
+          frame: 9,
+          def: { kind: 'shot', speed: 780, angle: 0, r: 9, lifeFrames: 70, gravity: 0, hit: { dmg: 5, angle: 35, bkb: 26, kbg: 40 }, charged: { r: 2.4, dmg: 3.4, kb: 2.4 } },
         },
       },
-      // A command grab that catches shields and drones in the air, then lifts and slams.
+      // A slow orb that follows the nearest opponent.
       sspecial: {
-        frames: 44, armor: { from: 1, to: 16, kb: 90 }, lunge: { frame: 8, vx: 420, vy: 0 },
-        hitboxes: [hb(10, 16, 46, 2, 30, 0, 0, 0, 0, { grab: true, grabAir: true, grabMove: 'cmdthrow' })],
+        frames: 32, gravity: { from: 1, to: 20, scale: 0.5 },
+        projectile: { frame: 12, def: { kind: 'shot', speed: 420, angle: 0, r: 12, lifeFrames: 150, gravity: 0, limit: 1, homing: 140, hit: { dmg: 9, angle: 50, bkb: 40, kbg: 60 } } },
       },
-      sspecialAir: {
-        frames: 42, recovery: true, gravity: { from: 1, to: 20, scale: 0.3 }, lunge: { frame: 8, vx: 640, vy: 260 },
-        hitboxes: [hb(8, 18, 34, 0, 34, 12, 40, 45, 80)],
+      uspecial: { frames: 22, recovery: true, helpless: true, invincible: { from: 4, to: 10 }, teleport: { frame: 6, dist: 190 } },
+      dspecial: { frames: 26, recovery: true, invincible: { from: 6, to: 12 }, rewind: { frame: 6, back: 45 } },
+      grab: grab(26, 18, 7, 30),
+      pummel: pummel(2),
+      fthrow: throwMove(26, 11, 9, 45, 50, 72),
+      bthrow: throwMove(30, 13, 10, 145, 46, 92, true),
+      uthrow: throwMove(26, 11, 6, 90, 70, 60),
+      dthrow: throwMove(26, 12, 6, 100, 50, 40),
+      getupattack: getupAttack(30, 6),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Titan: a huge grappler. Slow, heavy, hard to flinch: armor on its ground attacks. Throws boulders,
+// shakes the ground, and its command grab leaps into the air with you and slams you down.
+
+function titan(): FighterDef {
+  return {
+    id: 'titan',
+    name: 'Titan',
+    blurb: 'Huge and slow, hard to flinch. Grabs you, leaps and slams. Boulders and earthquakes.',
+    specials: { neutral: 'Boulder Toss', side: 'Sky Carry', up: 'Titan Leap', down: 'Earthquake' },
+    halfW: 42, height: 48, hurtR: 38,
+    weight: 150,
+    walkSpeed: 240, airSpeed: 235, airAccel: 1700,
+    gravity: 2150, maxFall: 860, fastFall: 1250,
+    jumpSpeed: 770, airJumpSpeed: 730, airJumps: 1,
+    upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
+    moves: {
+      jab: { frames: 26, armor: { from: 1, to: 6, kb: 60 }, hitboxes: [hb(6, 8, 48, 2, 30, 8, 55, 36, 40)], next: { move: 'jab2', from: 10 } },
+      jab2: { frames: 36, hitboxes: [hb(8, 10, 54, 2, 34, 12, 40, 50, 82)] },
+      ftilt: { frames: 40, armor: { from: 1, to: 12, kb: 80 }, hitboxes: [hb(12, 15, 62, 0, 34, 15, 36, 38, 102)] },
+      utilt: { frames: 38, armor: { from: 1, to: 10, kb: 80 }, hitboxes: [hb(10, 14, 0, 58, 40, 13, 88, 42, 100)] },
+      dtilt: { frames: 32, armor: { from: 1, to: 8, kb: 80 }, hitboxes: [hb(9, 11, 50, -22, 30, 12, 80, 48, 70)] },
+      fsmash: {
+        frames: 66, charge: { frame: 12, max: 60, dmg: 0.4 }, armor: { from: 1, to: 24, kb: 130 },
+        hitboxes: [hb(22, 25, 64, 4, 40, 25, 36, 42, 100)],
       },
-      cmdthrow: { frames: 46, throwHit: { frame: 28, hit: { dmg: 16, angle: 75, bkb: 60, kbg: 72 }, release: true } },
-      uspecial: { frames: 30, recovery: true, helpless: true, boost: { frame: 6, speed: 1150, steer: 25 }, rehit: 5, hitboxes: [hb(6, 22, 0, 36, 40, 3, 88, 45, 15), hb(23, 25, 0, 40, 40, 6, 88, 45, 80)] },
-      // On the ground it's a stomp; in the air it plummets and quakes on landing.
-      dspecial: { frames: 1, slam: { frame: 1, speed: 0, landMove: 'slamland' } },
-      dspecialAir: { frames: 60, slam: { frame: 8, speed: 1700, landMove: 'slamland' }, hitboxes: [hb(8, 60, 0, -24, 32, 12, -75, 40, 70)] },
-      slamland: { frames: 34, hitboxes: [hb(2, 5, 64, -16, 36, 12, 70, 55, 70), hb(2, 5, -64, -16, 36, 12, 110, 55, 70)] },
+      usmash: {
+        frames: 60, charge: { frame: 9, max: 60, dmg: 0.4 }, armor: { from: 1, to: 20, kb: 120 },
+        hitboxes: [hb(18, 22, 0, 64, 46, 22, 88, 42, 98)],
+      },
+      dsmash: {
+        frames: 60, charge: { frame: 8, max: 60, dmg: 0.4 }, armor: { from: 1, to: 18, kb: 120 },
+        hitboxes: [hb(16, 19, 64, -20, 36, 18, 28, 44, 94), hb(16, 19, -64, -20, 36, 18, 152, 44, 94)],
+      },
+      nair: { frames: 36, landLag: 10, hitboxes: [hb(8, 13, 0, 0, 54, 13, 45, 36, 90)] },
+      // The sweet spot right at the start spikes; later it just hits hard.
+      fair: { frames: 46, landLag: 16, hitboxes: [hb(14, 15, 52, -6, 34, 17, -60, 30, 85), hb(16, 19, 56, 0, 34, 15, 40, 36, 98)] },
+      bair: { frames: 38, landLag: 12, hitboxes: [hb(10, 13, -56, 2, 34, 18, 140, 34, 102)] },
+      uair: { frames: 36, landLag: 11, hitboxes: [hb(9, 13, 0, 56, 38, 15, 88, 34, 98)] },
+      dair: { frames: 48, landLag: 20, hitboxes: [hb(16, 19, 0, -46, 34, 17, -85, 28, 92)] },
+      nspecial: {
+        frames: 48, armor: { from: 1, to: 14, kb: 90 },
+        projectile: { frame: 18, def: { kind: 'bomb', speed: 620, angle: 35, r: 18, lifeFrames: 120, gravity: 1500, blastR: 52, limit: 1, hit: { dmg: 14, angle: 50, bkb: 50, kbg: 80 } } },
+      },
+      // A command grab that catches shields and fighters in the air, then leaps up and slams down.
+      sspecial: {
+        frames: 44, recovery: true, armor: { from: 1, to: 16, kb: 90 }, gravity: { from: 1, to: 20, scale: 0.3 }, lunge: { frame: 8, vx: 560, vy: 280 },
+        hitboxes: [hb(10, 16, 50, 4, 32, 0, 0, 0, 0, { grab: true, grabAir: true, grabMove: 'carry' })],
+      },
+      carry: { frames: 90, hop: { frame: 2, vx: 260, vy: 1050 }, slam: { frame: 26, speed: 1500, landMove: 'carryslam' } },
+      carryslam: {
+        frames: 40, throwHit: { frame: 1, hit: { dmg: 18, angle: 70, bkb: 60, kbg: 78 }, release: true },
+        hitboxes: [hb(2, 5, 64, -20, 36, 10, 70, 55, 70), hb(2, 5, -64, -20, 36, 10, 110, 55, 70)],
+      },
+      uspecial: {
+        frames: 34, recovery: true, helpless: true, armor: { from: 1, to: 14, kb: 100 }, boost: { frame: 8, speed: 1150, steer: 20 },
+        hitboxes: [hb(8, 20, 0, 30, 42, 9, 85, 50, 70)],
+      },
+      // On the ground it stamps; in the air it plummets. Either way the ground shakes on both sides.
+      dspecial: { frames: 1, slam: { frame: 1, speed: 0, landMove: 'quake' } },
+      dspecialAir: { frames: 60, slam: { frame: 8, speed: 1700, landMove: 'quake' }, hitboxes: [hb(8, 60, 0, -26, 34, 12, -75, 40, 70)] },
+      quake: {
+        frames: 40, armor: { from: 1, to: 10, kb: 120 },
+        hitboxes: [hb(4, 7, 0, -20, 40, 13, 90, 60, 72), hb(4, 7, 80, -20, 40, 13, 80, 60, 72), hb(4, 7, -80, -20, 40, 13, 100, 60, 72)],
+      },
       grab: grab(44, 26, 9, 36),
       pummel: pummel(3, 20),
       fthrow: throwMove(32, 14, 11, 38, 58, 75),
@@ -363,73 +489,9 @@ function heavy(): FighterDef {
   };
 }
 
-// ---------------------------------------------------------------------------------------------
-// Flipper: the 3D quad. Floaty: hold jump to hover, two up specials, a gust that pushes, a slam spike.
-
-function flipper(): FighterDef {
-  return {
-    id: 'flipper',
-    name: 'Flipper',
-    blurb: 'The 3D quad. Floaty: hold jump to hover. Gust, flip kick, slam spike.',
-    specials: { neutral: 'Reverse Gust', side: 'Flip Kick', up: 'Flip Up (x2)', down: 'Slam' },
-    halfW: 28, height: 30, hurtR: 25,
-    weight: 90,
-    walkSpeed: 320, airSpeed: 340, airAccel: 2500,
-    gravity: 1950, maxFall: 760, fastFall: 1200,
-    jumpSpeed: 760, airJumpSpeed: 700, airJumps: 2,
-    upSpecials: 2, sideSpecials: 1, hoverFrames: 70,
-    moves: {
-      jab: { frames: 18, hitboxes: [hb(3, 5, 30, 4, 22, 4, 65, 28, 25)], next: { move: 'jab2', from: 7 } },
-      jab2: { frames: 28, hitboxes: [hb(4, 7, 30, 10, 26, 6, 60, 45, 70)] },
-      ftilt: { frames: 28, hitboxes: [hb(7, 10, 38, -2, 24, 10, 32, 36, 98)] },
-      utilt: { frames: 28, hitboxes: [hb(6, 12, 0, 30, 32, 8, 90, 42, 92)] },
-      dtilt: { frames: 22, hitboxes: [hb(5, 7, 34, -14, 20, 7, 20, 32, 70)] },
-      fsmash: {
-        frames: 46, charge: { frame: 10, max: 60, dmg: 0.4 },
-        hitboxes: [hb(14, 17, 42, 6, 30, 15, 35, 38, 104)],
-      },
-      usmash: {
-        frames: 44, charge: { frame: 8, max: 60, dmg: 0.4 },
-        hitboxes: [hb(12, 18, 0, 36, 38, 14, 90, 38, 100)],
-      },
-      dsmash: {
-        frames: 42, charge: { frame: 6, max: 60, dmg: 0.4 },
-        hitboxes: [hb(10, 16, 0, -10, 46, 12, 20, 40, 92)],
-      },
-      nair: { frames: 28, landLag: 6, hitboxes: [hb(5, 14, 0, 0, 36, 8, 50, 30, 80)] },
-      fair: { frames: 30, landLag: 9, hitboxes: [hb(7, 10, 36, 0, 24, 11, 40, 30, 98)] },
-      // The strongest aerial: a reverse-thrust kick backward.
-      bair: { frames: 32, landLag: 10, hitboxes: [hb(8, 10, -38, 2, 26, 15, 145, 34, 106)] },
-      uair: { frames: 26, landLag: 7, hitboxes: [hb(5, 10, 0, 36, 28, 10, 85, 32, 95)] },
-      dair: { frames: 32, landLag: 12, hitboxes: [hb(9, 13, 0, -30, 26, 11, -70, 28, 82)] },
-      // A gust of reversed thrust: no damage, but it pushes drones away (off the edge).
-      nspecial: {
-        frames: 30,
-        projectile: { frame: 9, def: { kind: 'gust', speed: 520, angle: 0, r: 34, lifeFrames: 40, gravity: 0, limit: 1, hit: { dmg: 0, angle: 0, bkb: 0, kbg: 0, wind: 900 } } },
-      },
-      sspecial: {
-        frames: 38, recovery: true, turn: true, gravity: { from: 1, to: 20, scale: 0.25 }, lunge: { frame: 6, vx: 760, vy: 180 },
-        hitboxes: [hb(6, 12, 24, 0, 26, 8, 40, 40, 70), hb(13, 18, -26, 4, 28, 12, 140, 40, 90)],
-      },
-      uspecial: { frames: 22, recovery: true, helpless: true, boost: { frame: 4, speed: 900, steer: 40 }, hitboxes: [hb(4, 12, 0, 12, 28, 6, 80, 50, 60)] },
-      dspecial: {
-        frames: 50, slam: { frame: 8, speed: 1600 }, landLag: 12,
-        hitboxes: [hb(8, 50, 0, -18, 28, 12, -70, 40, 75)],
-      },
-      grab: grab(30, 20, 7, 30),
-      pummel: pummel(2),
-      fthrow: throwMove(26, 11, 9, 45, 50, 72),
-      bthrow: throwMove(30, 13, 11, 145, 46, 95, true),
-      uthrow: throwMove(26, 11, 6, 90, 70, 60),
-      dthrow: throwMove(26, 12, 6, 100, 50, 40),
-      getupattack: getupAttack(32, 7),
-    },
-  };
-}
-
 export const FIGHTERS: Record<FighterId, FighterDef> = {
-  freestyle: freestyle(),
-  racer: racer(),
-  heavy: heavy(),
-  flipper: flipper(),
+  brawler: brawler(),
+  blade: blade(),
+  spark: spark(),
+  titan: titan(),
 };

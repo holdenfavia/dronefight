@@ -3,7 +3,7 @@
 
 import {
   AIRDODGE, DODGE, DROP_HOLD_FRAMES, DT, GRAB, HITLAG, KNOCKBACK, KNOCKDOWN, LEDGE, MATCH, MOVEMENT, PARRY, SHIELD,
-  SHIELD_DROP_FRAMES, SMASH, STALE, TECH, UP_SPECIAL_JUMP_REFUND,
+  REWIND_HISTORY_FRAMES, SHIELD_DROP_FRAMES, SMASH, STALE, TECH, UP_SPECIAL_JUMP_REFUND,
 } from './config.js';
 import { FIGHTERS, type FighterDef, type FighterId, type Hitbox, type HitStats, type MoveDef, type MoveId, type ProjectileDef } from './fighters.js';
 import { nextRandom } from './rng.js';
@@ -86,6 +86,7 @@ export interface Fighter {
   airJumpsLeft: number;
   upSpecialsLeft: number;
   sideSpecialsLeft: number;
+  downSpecialsLeft: number;
   airDodgeUsed: boolean;
   fastFalling: boolean;
   hoverLeft: number;
@@ -124,6 +125,10 @@ export interface Fighter {
   lastHitFrame: number;
   /** Knockback of the last hit, for tumbling and trails. */
   lastKb: number;
+  /** Brawler's rage, 0 to its max. */
+  rage: number;
+  /** Recent feet positions, oldest first (for the rewind). */
+  history: { x: number; y: number }[];
   prev: Input;
   stats: FighterStats;
 }
@@ -144,11 +149,14 @@ export interface Projectile {
   blastR: number;
   /** Mines: resting on the floor. */
   stuck: boolean;
+  /** Degrees per second it turns toward the nearest opponent. */
+  homing: number;
   move: MoveId;
 }
 
 export type GameEvent =
-  | { type: 'hit'; x: number; y: number; dmg: number; kb: number; attacker: number; target: number; armored?: boolean; move?: MoveId }
+  | { type: 'hit'; x: number; y: number; dmg: number; kb: number; attacker: number; target: number; armored?: boolean; move?: MoveId; rage?: boolean; tip?: boolean }
+  | { type: 'warp'; slot: number; fromX: number; fromY: number; x: number; y: number }
   | { type: 'shieldhit'; x: number; y: number; target: number }
   | { type: 'shieldbreak'; target: number }
   | { type: 'parry'; x: number; y: number; target: number }
@@ -212,6 +220,7 @@ export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: nu
       airJumpsLeft: def.airJumps,
       upSpecialsLeft: def.upSpecials,
       sideSpecialsLeft: def.sideSpecials,
+      downSpecialsLeft: def.downSpecials ?? 0,
       airDodgeUsed: false,
       fastFalling: false,
       hoverLeft: def.hoverFrames,
@@ -237,6 +246,8 @@ export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: nu
       lastHitBy: -1,
       lastHitFrame: -9999,
       lastKb: 0,
+      rage: 0,
+      history: [],
       prev: { ...NO_INPUT },
       stats: { kos: 0, falls: 0, selfDestructs: 0, damageDealt: 0 },
     };
@@ -302,6 +313,12 @@ export function chargeFraction(f: Fighter): number {
   if (f.action !== 'attack' || !f.move) return 0;
   const c = moveOf(f).charge;
   return c ? f.charge / c.max : 0;
+}
+
+/** How full the Brawler's rage is, 0 to 1 (0 for fighters without rage). */
+export function rageFraction(f: Fighter): number {
+  const r = fighterDef(f).rage;
+  return r ? Math.min(1, f.rage / r.max) : 0;
 }
 
 /** Knockback (grows with the target's damage, shrinks with weight). */
@@ -453,6 +470,7 @@ function refreshAirOptions(f: Fighter): void {
   f.airJumpsLeft = def.airJumps;
   f.upSpecialsLeft = def.upSpecials;
   f.sideSpecialsLeft = def.sideSpecials;
+  f.downSpecialsLeft = def.downSpecials ?? 0;
   f.airDodgeUsed = false;
   f.fastFalling = false;
   f.hoverLeft = def.hoverFrames;
@@ -650,6 +668,10 @@ function updateFighter(world: World, f: Fighter, input: Input): void {
   integrate(world, f, input);
   ledgeSnap(world, f, dir);
   checkBlastZone(world, f);
+  if (isAlive(f)) {
+    f.history.push({ x: f.x, y: f.y });
+    if (f.history.length > REWIND_HISTORY_FRAMES) f.history.shift();
+  }
 }
 
 function bufferPress(world: World, f: Fighter, press: Pressed): void {
@@ -820,6 +842,10 @@ function startSpecial(world: World, f: Fighter, input: Input, press: Pressed): v
   if (down) {
     const id = pick('dspecial');
     if (projectileLimitReached(world, f, moves[id])) return;
+    if (!f.grounded && fighterDef(f).downSpecials !== undefined) {
+      if (f.downSpecialsLeft <= 0) return;
+      f.downSpecialsLeft--;
+    }
     startMove(world, f, id, 'special');
     return;
   }
@@ -884,6 +910,15 @@ function runMove(world: World, f: Fighter, input: Input, press: Pressed, dir: nu
     f.vx = f.facing * m.lunge.vx;
     if (!f.grounded) f.vy = Math.max(f.vy, m.lunge.vy);
   }
+  if (m.hop && fr === m.hop.frame) {
+    f.vx = f.facing * m.hop.vx;
+    f.vy = m.hop.vy;
+    f.grounded = false;
+    f.fastFalling = false;
+    world.events.push({ type: 'jump', slot: f.slot, air: false });
+  }
+  if (m.teleport && fr === m.teleport.frame) teleport(world, f, input, m.teleport.dist);
+  if (m.rewind && fr === m.rewind.frame) rewind(world, f, m.rewind.back);
   if (m.boost && fr === m.boost.frame) {
     if (dir !== 0) f.facing = dir > 0 ? 1 : -1;
     const steer = (dir * m.boost.steer * Math.PI) / 180;
@@ -917,6 +952,47 @@ function runMove(world: World, f: Fighter, input: Input, press: Pressed, dir: nu
     return;
   }
   if (fr >= m.frames) endMove(f, m);
+}
+
+/** Blink: jump this far the way the movement keys point (the up arrow counts as up; straight up with none), never into a wall. */
+function teleport(world: World, f: Fighter, input: Input, dist: number): void {
+  const def = fighterDef(f);
+  let dx = stickX(input);
+  let dy = (input.up || input.aimUp ? 1 : 0) - (input.down ? 1 : 0);
+  if (dx === 0 && dy === 0) dy = 1;
+  const len = Math.hypot(dx, dy);
+  dx /= len;
+  dy /= len;
+  const fromX = f.x;
+  const fromY = f.y;
+  f.x += dx * dist;
+  f.y += dy * dist;
+  for (const p of world.stage.platforms) {
+    if (!p.solid) continue;
+    if (f.x + def.halfW > p.x1 && f.x - def.halfW < p.x2 && f.y < p.y && f.y + def.height > p.y - p.depth) f.y = p.y;
+  }
+  if (dx !== 0) f.facing = dx > 0 ? 1 : -1;
+  arrive(world, f, fromX, fromY);
+}
+
+/** Snap back to where the fighter was `back` frames ago. */
+function rewind(world: World, f: Fighter, back: number): void {
+  const h = f.history;
+  if (!h.length) return;
+  const to = h[Math.max(0, h.length - 1 - back)]!;
+  const fromX = f.x;
+  const fromY = f.y;
+  f.x = to.x;
+  f.y = to.y;
+  f.history = [];
+  arrive(world, f, fromX, fromY);
+}
+
+function arrive(world: World, f: Fighter, fromX: number, fromY: number): void {
+  f.vx = f.vy = f.lx = f.ly = 0;
+  f.grounded = false;
+  f.fastFalling = false;
+  world.events.push({ type: 'warp', slot: f.slot, fromX, fromY, x: f.x, y: f.y });
 }
 
 function endMove(f: Fighter, m: MoveDef): void {
@@ -954,6 +1030,7 @@ function spawnProjectile(world: World, f: Fighter, p: ProjectileDef, charge: num
     hit,
     blastR: p.blastR ?? 0,
     stuck: false,
+    homing: p.homing ?? 0,
     move: f.move!,
   });
   world.events.push({ type: 'shot', slot: f.slot, kind: p.kind });
@@ -1191,6 +1268,8 @@ function respawn(world: World, f: Fighter): void {
   f.shieldHp = SHIELD.maxHp;
   f.lastHitBy = -1;
   f.stale = [];
+  f.rage = 0;
+  f.history = [];
   f.grabbing = -1;
   f.grabbedBy = -1;
   f.facing = x < 0 ? 1 : -1;
@@ -1234,7 +1313,7 @@ function breakGrab(world: World, holder: Fighter): void {
   }
 }
 
-/** Held drones stay in front of whoever holds them. */
+/** Held fighters stay in front of whoever holds them. */
 function pinHeld(world: World): void {
   for (const a of world.fighters) {
     if (a.grabbing < 0) continue;
@@ -1261,6 +1340,8 @@ function throwHit(world: World, f: Fighter, t: NonNullable<MoveDef['throwHit']>)
   }
   f.grabbing = -1;
   v.grabbedBy = -1;
+  // The rest of the move (a landing shockwave) doesn't hit the thrown fighter again.
+  f.moveHits.push(v.slot);
   if (t.behind) v.x = f.x - f.facing * (fighterDef(f).halfW + fighterDef(v).halfW) * GRAB.holdOverlap;
   setAction(v, v.grounded ? 'idle' : 'air');
   world.events.push({ type: 'throw', slot: f.slot, target: v.slot });
@@ -1282,6 +1363,7 @@ function updateProjectiles(world: World): void {
     p.age++;
     p.life--;
     let gone = p.life <= 0;
+    if (p.homing > 0) steerProjectile(world, p);
     if (!p.stuck) {
       p.vy -= p.gravity * DT;
       const prevY = p.y;
@@ -1347,6 +1429,28 @@ function updateProjectiles(world: World): void {
   world.projectiles = keep;
 }
 
+/** Homing shots turn toward the nearest opponent, at a fixed speed. */
+function steerProjectile(world: World, p: Projectile): void {
+  let best: Fighter | null = null;
+  let bestD = Infinity;
+  for (const f of world.fighters) {
+    if (f.slot === p.owner || !hittable(f)) continue;
+    const d = Math.hypot(f.x - p.x, centerY(f) - p.y);
+    if (d < bestD) { bestD = d; best = f; }
+  }
+  if (!best) return;
+  const speed = Math.hypot(p.vx, p.vy);
+  const want = Math.atan2(centerY(best) - p.y, best.x - p.x);
+  const now = Math.atan2(p.vy, p.vx);
+  let diff = want - now;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  const maxTurn = (p.homing * Math.PI / 180) * DT;
+  const a = now + Math.max(-maxTurn, Math.min(maxTurn, diff));
+  p.vx = Math.cos(a) * speed;
+  p.vy = Math.sin(a) * speed;
+}
+
 function explode(world: World, p: Projectile): void {
   world.events.push({ type: 'explode', x: p.x, y: p.y, r: p.blastR });
   const owner = world.fighters[p.owner]!;
@@ -1369,7 +1473,7 @@ export function hitboxWorld(f: Fighter): { x: number; y: number; r: number; hb: 
 }
 
 function resolveHits(world: World): void {
-  // Everyone's hitboxes are taken before any hit lands, so two drones hitting each other both connect (a trade).
+  // Everyone's hitboxes are taken before any hit lands, so two fighters hitting each other both connect (a trade).
   const boxes = world.fighters.map((a) => (a.hitlag > 0 ? [] : activeHitboxes(a)));
   world.fighters.forEach((a, i) => {
     const mine = boxes[i]!;
@@ -1390,7 +1494,7 @@ function resolveHits(world: World): void {
         }
         a.moveHits.push(t.slot);
         const stats: HitStats = box.hb.counter ? { ...box.hb, dmg: a.counterDmg } : box.hb;
-        strike(world, a, t, stats, a.facing, (box.x + t.x) / 2, (box.y + centerY(t)) / 2, { melee: true, move: a.move ?? undefined });
+        strike(world, a, t, stats, a.facing, (box.x + t.x) / 2, (box.y + centerY(t)) / 2, { melee: true, move: a.move ?? undefined, tip: box.hb.tip });
         break;
       }
     }
@@ -1412,6 +1516,12 @@ interface StrikeOpts {
   melee: boolean;
   isThrow?: boolean;
   move?: MoveId;
+  tip?: boolean;
+}
+
+/** Moves that spend a full rage meter: smashes and specials. */
+function rageMove(move: MoveId | undefined): boolean {
+  return !!move && (move.includes('smash') || move.includes('special') || move === 'counterhit');
 }
 
 function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats, facing: 1 | -1, x: number, y: number, opts: StrikeOpts): void {
@@ -1452,11 +1562,20 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
     pushStale(attacker, opts.move);
     if (opts.melee) attacker.staleCounted = true;
   }
-  const dmg = hit.dmg * stale * (opts.melee && !opts.isThrow ? attacker.chargeMult : 1);
+  // Rage: full meter powers up the next smash or special, then empties. Otherwise fighting fills it.
+  const ar = fighterDef(attacker).rage;
+  const raging = !!ar && attacker.rage >= ar.max && rageMove(opts.move);
+  const rageDmg = raging ? ar!.dmg : 1;
+  const rageKb = raging ? ar!.kb : 1;
+  const dmg = hit.dmg * stale * rageDmg * (opts.melee && !opts.isThrow ? attacker.chargeMult : 1);
+  if (raging) attacker.rage = 0;
+  else if (ar) attacker.rage = Math.min(ar.max, attacker.rage + dmg * ar.perDealt);
+  const tr = fighterDef(target).rage;
+  if (tr) target.rage = Math.min(tr.max, target.rage + dmg * tr.perTaken);
   const lag = Math.min(HITLAG.max, Math.floor(HITLAG.base + dmg * HITLAG.perDamage));
   target.percent = Math.min(999, target.percent + dmg);
   attacker.stats.damageDealt += dmg;
-  const kb = knockback(target.percent, dmg, fighterDef(target).weight, hit.bkb, hit.kbg);
+  const kb = knockback(target.percent, dmg, fighterDef(target).weight, hit.bkb * rageKb, hit.kbg * rageKb);
   target.lastHitBy = attacker.slot;
   target.lastHitFrame = world.frame;
 
@@ -1464,7 +1583,7 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
   if (!opts.isThrow && tm?.armor && inRange(target.frame, tm.armor) && kb < tm.armor.kb) {
     target.hitlag = lag;
     if (opts.melee) attacker.hitlag = lag;
-    world.events.push({ type: 'hit', x, y, dmg, kb: kb * 0.3, attacker: attacker.slot, target: target.slot, armored: true, move: opts.move });
+    world.events.push({ type: 'hit', x, y, dmg, kb: kb * 0.3, attacker: attacker.slot, target: target.slot, armored: true, move: opts.move, rage: raging, tip: opts.tip });
     return;
   }
 
@@ -1503,11 +1622,12 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
   const def = fighterDef(target);
   target.upSpecialsLeft = def.upSpecials;
   target.sideSpecialsLeft = def.sideSpecials;
+  target.downSpecialsLeft = def.downSpecials ?? 0;
   target.airJumpsLeft = Math.max(target.airJumpsLeft, Math.min(1, def.airJumps));
 
   target.hitlag = lag;
   if (opts.melee) attacker.hitlag = lag;
-  world.events.push({ type: 'hit', x, y, dmg, kb, attacker: attacker.slot, target: target.slot, move: opts.move });
+  world.events.push({ type: 'hit', x, y, dmg, kb, attacker: attacker.slot, target: target.slot, move: opts.move, rage: raging, tip: opts.tip });
   // A little randomness in the spark only; the hit itself is deterministic.
   nextRandom(world.rng);
 }
