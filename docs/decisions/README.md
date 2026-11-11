@@ -10,7 +10,7 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0002](0002-typescript-vite.md) | TypeScript (strict) + Vite for the client; TypeScript for the server | Accepted |
 | [0003](0003-custom-flight-model-rapier.md) | Custom acro flight model; Rapier only for collisions | Superseded by 0008 · v1, archived (0070) |
 | [0004](0004-netcode-latest-state-wins.md) | Netcode: latest state wins, ~100 ms interpolation, no backlog replay, server-side hits | Accepted · v1, archived (0070) |
-| [0005](0005-room-codes-not-matchmaking.md) | Node WebSocket server with room codes (two digits since 2026-10-01); no matchmaking | Accepted (room size superseded by 0026) |
+| [0005](0005-room-codes-not-matchmaking.md) | Node WebSocket server with room codes (two digits since 2026-10-01); no matchmaking | Accepted (room size superseded by 0026; runs online fights: 0076) |
 | [0006](0006-controller-gamepad-calibration.md) | Radios via Gamepad API behind a mapping/calibration layer | Accepted · v1, archived (0070) |
 | [0007](0007-art-direction.md) | Art direction: bright industrial, orange/black/white, inspired by Flight Division's feel only | Accepted (Playground exception: 0019; menu style: 0039; daily purple sky: 0069) |
 | [0008](0008-rapier-integrates-flight-forces.md) | Custom flight model computes forces; Rapier applies all forces (incl. real gravity) and integrates motion | Accepted · v1, archived (0070) |
@@ -76,4 +76,5 @@ One file per decision: `NNNN-short-title.md`. Never delete; supersede. Create or
 | [0074](0074-specials-on-space.md) | Specials on Space instead of Q (hold, or tap to prime the next arrow) | Accepted |
 | [0072](0072-original-fighter-cast.md) | An original cast replaces the drones: Brawler (rage), Blade (sword tip), Spark (blink, rewind, homing orb), Titan (armor, sky carry); stick figures with their own silhouettes | Accepted (roster grown by 0073) |
 | [0073](0073-six-more-fighters.md) | Six more fighters: Ninja (shadow step, smoke), Gunslinger (six shots, lasso), Chef (food, pan reflect, pot), Ghost (possess swaps controls, fade), Yo-yo Kid (returning yo-yo, tether), Bard (tempo and lullaby songs) | Accepted |
-| [0075](0075-menus-character-select-online-lobby.md) | Title screen and main menu at boot; roster-grid character select with player panels; CPUs tagged "CPU n"; online lobby (create/join by code, invite link, picks and ready shared) ahead of the netcode decision | Accepted |
+| [0075](0075-menus-character-select-online-lobby.md) | Title screen and main menu at boot; roster-grid character select with player panels; CPUs tagged "CPU n"; online lobby (create/join by code, invite link, picks and ready shared) ahead of the netcode decision | Accepted (lobby moved to the server by 0076) |
+| [0076](0076-server-run-online-fights.md) | Online fights run on the room server: members send keys every frame, the server steps the sim and sends every frame's inputs to the room, clients step the same frames; snapshots each second heal drift and let late joiners watch; lobby, host settings and CPUs on the server | Accepted |

@@ -11,7 +11,7 @@ A **side-view platform fighter** to play with friends: an original cast of ten f
 - Desktop browsers (Chrome/Edge primary; Safari/Firefox best-effort), **keyboard only** (ADR-0070).
 - Up to **4 fighters** per match: **one player per keyboard** (ADR-0071), CPUs (Easy, Normal, Hard) fill the rest. No local 2-player until online play.
 - Boot to a title screen and main menu (Fight, Online, Controls), then a **roster-grid character select** with four player panels; CPUs are tagged **CPU** with their level everywhere (ADR-0075).
-- Online play with friends by two-digit room code comes next (ADR-0005): the **lobby** works (create/join by code, invite link `?room=NN`, see each other's picks and ready state); online fights wait for the netcode decision (ADR-0075).
+- **Online** with friends by two-digit room code (ADR-0005) or invite link `?room=NN`: each player on their own computer picks and readies up in the room's lobby, the host sets stage, stocks and CPUs and starts. The **server runs the fight** and sends every frame's inputs to everyone; snapshots heal drift; late joiners watch; a leaver's fighter becomes a CPU (ADR-0076).
 
 ## Rules (ADR-0070)
 
@@ -69,7 +69,7 @@ Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Cr
 ## Tech
 
 - TypeScript + Vite (ADR-0002), **Canvas 2D** rendering.
-- The fight is a deterministic fixed **60 Hz** simulation in `shared/fighter/` (inputs in, state out) so the same code can run everywhere for online play.
+- The fight is a deterministic fixed **60 Hz** simulation in `shared/fighter/` (inputs in, state out) so the server and every client run the same code for online play (ADR-0076).
 - One Fly.io machine serves the page and the room WebSocket and sleeps when idle (ADR-0021).
 
 ## Hard rules

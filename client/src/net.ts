@@ -1,11 +1,12 @@
-// Connection to the room server (ADR-0005, ADR-0075): create or join a room by two-digit code and share
-// lobby picks with the other members through the relay. Online fights will send inputs through here once the
-// netcode is decided (roadmap, Phase 2).
+// Connection to the room server (ADR-0005, ADR-0075, ADR-0076): create or join a room by two-digit code, pick
+// and ready up in its lobby, and play its online fights. The server keeps the lobby and runs the fight; this
+// sends your keys every frame and hands the frames it gets back to the game loop (main.ts).
 
 import { PROTOCOL_VERSION } from '../../shared/constants';
+import type { BotLevel } from '../../shared/fighter/bot';
 import type { FighterId } from '../../shared/fighter/fighters';
-import { lobbyHost, parseLobbyMessage, type LobbyPick } from '../../shared/lobby';
-import type { ClientMessage, ServerMessage } from '../../shared/protocol';
+import type { MatchStart, MemberPick, RoomSettings } from '../../shared/online';
+import type { ClientMessage, RoomMember, ServerMessage } from '../../shared/protocol';
 
 export type NetStatus = 'offline' | 'connecting' | 'online';
 
@@ -13,8 +14,21 @@ export interface RoomInfo {
   code: string;
   /** Your member id in the room. */
   you: number;
-  /** Member ids in join order. */
-  members: number[];
+  /** Members in join order (their lobby slot). */
+  members: RoomMember[];
+  host: number;
+  settings: RoomSettings;
+  /** A fight is going on. */
+  playing: boolean;
+}
+
+/** What the game loop does with an online fight. */
+export interface MatchHandlers {
+  onMatch(start: MatchStart, you: number): void;
+  onFrames(from: number, inputs: number[][]): void;
+  onSnap(frame: number, world: string): void;
+  onCpu(slot: number, level: BotLevel): void;
+  onEnd(): void;
 }
 
 /** Path of the room WebSocket; the Vite dev server proxies it to `npm run server` (vite.config.ts). */
@@ -31,11 +45,12 @@ export class NetClient {
   room: RoomInfo | null = null;
   /** The last problem to show the player, cleared on the next action. */
   error: string | null = null;
-  /** Everyone else's picks, by member id. */
-  readonly picks = new Map<number, LobbyPick>();
-  me: LobbyPick;
+  me: MemberPick;
   /** Called whenever anything above changes. */
   onChange: () => void = () => undefined;
+  match: MatchHandlers | null = null;
+  /** The connection dropped (the game loop leaves an online fight). */
+  onDrop: () => void = () => undefined;
 
   private socket: WebSocket | null = null;
   private pending: ClientMessage[] = [];
@@ -45,7 +60,7 @@ export class NetClient {
   }
 
   get isHost(): boolean {
-    return !!this.room && lobbyHost(this.room.members) === this.room.you;
+    return !!this.room && this.room.host === this.room.you;
   }
 
   create(): void {
@@ -63,7 +78,6 @@ export class NetClient {
   leave(): void {
     if (this.room) this.send({ t: 'leave' });
     this.room = null;
-    this.picks.clear();
     this.me.ready = false;
     this.changed();
   }
@@ -79,14 +93,32 @@ export class NetClient {
     this.changed();
   }
 
-  setPick(pick: Partial<LobbyPick>): void {
+  setPick(pick: Partial<MemberPick>): void {
     this.me = { ...this.me, ...pick };
     this.sharePick();
     this.changed();
   }
 
+  /** Host only: stage, stocks, CPUs. */
+  setSettings(settings: RoomSettings): void {
+    if (!this.room || !this.isHost) return;
+    this.room.settings = settings;
+    this.send({ t: 'settings', settings });
+    this.changed();
+  }
+
+  /** Host only: start the fight. */
+  start(): void {
+    this.send({ t: 'start' });
+  }
+
+  /** Your keys for this frame of an online fight. */
+  sendInput(bits: number): void {
+    if (this.socket && this.status === 'online' && this.room) this.socket.send(`{"t":"in","b":${bits}}`);
+  }
+
   private sharePick(): void {
-    if (this.room) this.send({ t: 'relay', data: { t: 'pick', fighter: this.me.fighter, ready: this.me.ready } });
+    if (this.room) this.send({ t: 'pick', fighter: this.me.fighter, ready: this.me.ready });
   }
 
   private send(msg: ClientMessage): void {
@@ -148,26 +180,26 @@ export class NetClient {
         return;
       case 'room': {
         const joined = !this.room || this.room.code !== msg.code;
-        const before = new Set(this.room?.members ?? []);
-        this.room = { code: msg.code, you: msg.you, members: msg.members };
+        this.room = { code: msg.code, you: msg.you, members: msg.members, host: msg.host, settings: msg.settings, playing: msg.playing };
         if (joined) {
-          this.picks.clear();
-          this.me.ready = false;
+          // The server hands each newcomer a fighter nobody else has.
+          const mine = msg.members.find((m) => m.id === msg.you);
+          this.me = { fighter: mine?.fighter ?? this.me.fighter, ready: false };
         }
-        for (const id of [...this.picks.keys()]) if (!msg.members.includes(id)) this.picks.delete(id);
-        // Tell newcomers (and, on joining, everyone) what we picked.
-        if (joined || msg.members.some((id) => !before.has(id))) this.sharePick();
         this.changed();
         return;
       }
-      case 'relay': {
-        const m = parseLobbyMessage(msg.data);
-        if (m && this.room?.members.includes(msg.from)) {
-          this.picks.set(msg.from, { fighter: m.fighter, ready: m.ready });
-          this.changed();
-        }
+      case 'match': this.match?.onMatch(msg.start, msg.you); return;
+      case 'frames': this.match?.onFrames(msg.from, msg.inputs); return;
+      case 'snap': this.match?.onSnap(msg.frame, msg.world); return;
+      case 'cpu': this.match?.onCpu(msg.slot, msg.level); return;
+      case 'end':
+        // The server clears everyone's Ready after a fight.
+        this.me.ready = false;
+        this.match?.onEnd();
+        this.changed();
         return;
-      }
+      case 'relay': return;
       case 'error':
         this.fail(msg.message);
         return;
@@ -175,12 +207,13 @@ export class NetClient {
   }
 
   private dropped(message: string): void {
+    const wasInRoom = !!this.room;
     this.socket = null;
     this.status = 'offline';
     this.pending = [];
     this.room = null;
-    this.picks.clear();
     this.fail(message);
+    if (wasInRoom) this.onDrop();
   }
 
   private fail(message: string): void {

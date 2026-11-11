@@ -452,3 +452,7 @@ kbd {
 .ready-tag.on { color: var(--slot); }
 .option.on { border-color: var(--orange); color: var(--orange); }
 .option:disabled { opacity: 0.4; cursor: default; }
+
+/* Online lobby (ADR-0076): settings only the host can change show as plain labels to everyone else. */
+.options .option.static, .slot div.kind { text-transform: uppercase; letter-spacing: 0.05em; }
+.options .option.static { cursor: default; opacity: 0.75; display: inline-flex; align-items: center; }

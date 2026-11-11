@@ -6,7 +6,6 @@ import { MATCH } from '../../shared/fighter/config';
 import { FIGHTER_IDS, FIGHTERS, type FighterId } from '../../shared/fighter/fighters';
 import type { World } from '../../shared/fighter/sim';
 import { STAGE_IDS, STAGES, type StageId } from '../../shared/fighter/stages';
-import { lobbyHost } from '../../shared/lobby';
 import { MENU, SLOT_COLORS } from './config';
 import { drawFighterFigure } from './figures';
 import { KEY_LABELS } from './input';
@@ -532,7 +531,9 @@ export class Ui {
     }
 
     const room = net.room;
-    const host = lobbyHost(room.members);
+    const host = room.host;
+    const isHost = net.isHost;
+    const settings = room.settings;
     const head = el('div', 'room-head');
     const link = `${location.origin}${location.pathname}?room=${room.code}`;
     const copy = this.button('option', 'Copy invite link', () => {
@@ -541,40 +542,59 @@ export class Ui {
     head.append(el('div', 'room-label', 'Room'), el('div', 'room-code', room.code), copy);
     page.appendChild(head);
 
-    // Each member's slot is their place in join order.
-    const slotOf = (id: number) => room.members.indexOf(id);
-    const pickOf = (id: number) => (id === room.you ? net.me : net.picks.get(id) ?? null);
+    // People take the first slots in join order; the host's CPUs fill the rest (ADR-0076). CPU fighters are
+    // drawn by the server when the fight starts.
+    const members = room.members;
+    const pickOf = (i: number) => {
+      const m = members[i]!;
+      return m.id === room.you ? net.me : m;
+    };
     const asSlot = (i: number): SlotSetup | null => {
-      const id = room.members[i];
-      if (id === undefined) return null;
-      const p = pickOf(id);
-      // Everyone in a room is a person: their tokens never say CPU.
-      return p ? { kind: 'p1', fighter: p.fighter, level: 2 } : null;
+      if (i < members.length) return { kind: 'p1', fighter: pickOf(i).fighter, level: 2 };
+      const level = settings.cpus[i - members.length];
+      return level ? { kind: 'bot', fighter: 'brawler', level, random: true } : null;
     };
     page.appendChild(this.rosterGrid(
       asSlot,
       (tile) => net.setPick({ fighter: tile === 'random' ? FIGHTER_IDS[Math.floor(Math.random() * FIGHTER_IDS.length)]! : tile, ready: false }),
-      slotOf(room.you),
+      members.findIndex((m) => m.id === room.you),
       true,
     ));
 
+    const setCpus = (cpus: BotLevel[]) => net.setSettings({ ...settings, cpus });
     const panels = el('div', 'slots');
     for (let i = 0; i < MATCH.maxFighters; i++) {
-      const id = room.members[i];
       const color = SLOT_COLORS[i]!;
-      const card = el('div', `slot ${id === undefined ? 'off' : ''}`);
+      const card = el('div', 'slot');
       card.style.setProperty('--slot', color);
-      if (id === undefined) {
-        card.append(el('div', 'kind', 'Open'), el('div', 'empty', `Waiting for a friend… code ${room.code}`));
+      const cpuIndex = i - members.length;
+      const cpu = cpuIndex >= 0 ? settings.cpus[cpuIndex] : undefined;
+      if (i < members.length) {
+        const m = members[i]!;
+        const p = pickOf(i);
+        const who = m.id === room.you ? 'You' : `Player ${i + 1}`;
+        card.appendChild(el('div', 'kind', `${who}${m.id === host ? ' · Host' : ''}`));
+        card.append(previewCanvas(p.fighter, color), el('div', 'fighter-name', FIGHTERS[p.fighter].name));
+        card.appendChild(el('div', `ready-tag ${p.ready ? 'on' : ''}`, p.ready ? 'Ready' : 'Picking…'));
+      } else if (cpu) {
+        card.classList.add('cpu');
+        const kind = isHost
+          ? this.button('kind', `CPU · ${BOT_LEVEL_NAMES[cpu]}`, () => {
+            const cpus = [...settings.cpus];
+            if (cpu < 3) cpus[cpuIndex] = (cpu + 1) as BotLevel;
+            else cpus.splice(cpuIndex, 1);
+            setCpus(cpus);
+          })
+          : el('div', 'kind', `CPU · ${BOT_LEVEL_NAMES[cpu]}`);
+        if (isHost) kind.title = 'Click to change the level (after Hard: remove)';
+        card.append(kind, randomArt('panel-art'), el('div', 'fighter-name', 'Random'), el('div', 'blurb', 'Picked when the fight starts'));
       } else {
-        const p = pickOf(id);
-        const who = id === room.you ? 'You' : `Player ${i + 1}`;
-        card.appendChild(el('div', 'kind', `${who}${id === host ? ' · Host' : ''}`));
-        if (p) {
-          card.append(previewCanvas(p.fighter, color), el('div', 'fighter-name', FIGHTERS[p.fighter].name));
-          card.appendChild(el('div', `ready-tag ${p.ready ? 'on' : ''}`, p.ready ? 'Ready' : 'Picking…'));
+        card.classList.add('off');
+        if (isHost && cpuIndex === settings.cpus.length) {
+          const add = this.button('kind', 'Add CPU', () => setCpus([...settings.cpus, 2]));
+          card.append(add, el('div', 'empty', `Or wait for a friend… code ${room.code}`));
         } else {
-          card.appendChild(el('div', 'empty', 'Joining…'));
+          card.append(el('div', 'kind', 'Open'), el('div', 'empty', `Waiting for a friend… code ${room.code}`));
         }
       }
       panels.appendChild(card);
@@ -584,17 +604,29 @@ export class Ui {
     const options = el('div', 'options');
     const ready = this.button(net.me.ready ? 'option on' : 'fight', net.me.ready ? 'Not ready' : 'Ready', () => net.setPick({ ready: !net.me.ready }));
     const leave = this.button('option', 'Leave room', () => net.leave());
-    const everyone = room.members.length >= 2 && room.members.every((id) => pickOf(id)?.ready);
-    const start = el('button', 'option', 'Start');
-    start.disabled = true;
-    start.title = 'Online fights come next';
-    options.append(ready, net.isHost ? start : el('span', ''), leave);
+    const everyone = members.every((_m, i) => pickOf(i).ready);
+    const fighters = members.length + settings.cpus.length;
+    const canStart = everyone && fighters >= 2 && !room.playing;
+    const stage = isHost
+      ? this.button('option', `Stage: ${STAGES[settings.stage].name}`, () => net.setSettings({ ...settings, stage: STAGE_IDS[(STAGE_IDS.indexOf(settings.stage) + 1) % STAGE_IDS.length]! }))
+      : el('div', 'option static', `Stage: ${STAGES[settings.stage].name}`);
+    const stocks = isHost
+      ? this.button('option', `Stocks: ${settings.stocks}`, () => net.setSettings({ ...settings, stocks: (settings.stocks % 5) + 1 }))
+      : el('div', 'option static', `Stocks: ${settings.stocks}`);
+    const start = this.button('fight', 'Start', () => net.start());
+    start.disabled = !canStart;
+    start.title = canStart ? 'Start the fight' : fighters < 2 ? 'Add a CPU or wait for a friend' : 'Waiting for everyone to be ready';
+    options.append(stage, stocks, ready, isHost ? start : el('span', ''), leave);
     page.appendChild(options);
-    page.appendChild(el('div', 'net-status', everyone
-      ? 'Everyone is ready. Online fights are the next thing being built, so the match can\'t start yet.'
-      : 'Pick a fighter and press Ready. Online fights are the next thing being built: for now the lobby only shows everyone\'s picks.'));
+    page.appendChild(el('div', 'net-status', room.playing
+      ? 'A fight is on. You\'re watching; you\'ll be in the next one.'
+      : isHost
+        ? (canStart ? 'Everyone is ready: press Start.' : 'Pick a fighter and press Ready. Add CPUs in the open slots. You start the fight once everyone is ready.')
+        : 'Pick a fighter and press Ready. The host starts the fight.'));
     if (net.error) page.appendChild(el('div', 'net-error', net.error));
-    focus.push(ready, leave);
+    focus.push(ready);
+    if (isHost) focus.push(start);
+    focus.push(leave);
     this.show('online', page, focus);
   }
 
@@ -640,6 +672,28 @@ export class Ui {
   }
 
   showResults(world: World, names: string[], onRematch: () => void, onSelect: () => void, onMenu: () => void): void {
+    this.results(world, names, [['fight', 'Rematch', onRematch], ['option', 'Change fighters', onSelect], ['option', 'Main menu', onMenu]]);
+  }
+
+  /** Results of an online fight: back to the room's lobby, or leave it (ADR-0076). */
+  showOnlineResults(world: World, names: string[], onLobby: () => void, onLeave: () => void): void {
+    this.results(world, names, [['fight', 'Back to the room', onLobby], ['option', 'Leave room', onLeave]]);
+  }
+
+  /** In an online fight Esc opens this; the fight keeps going behind it. */
+  showOnlineMenu(onBack: () => void, onLeave: () => void): void {
+    const page = el('div', 'screen modal');
+    const panel = el('div', 'panel');
+    const back = el('button', 'fight', 'Back to the fight');
+    back.onclick = onBack;
+    const leave = el('button', 'option', 'Leave room');
+    leave.onclick = onLeave;
+    panel.append(el('h2', '', 'Online fight'), el('div', 'tips', 'The fight keeps going while this is open.'), back, leave, this.controlsCard());
+    page.appendChild(panel);
+    this.show('pause', page, [back, leave]);
+  }
+
+  private results(world: World, names: string[], actions: [string, string, () => void][]): void {
     const page = el('div', 'screen modal');
     const panel = el('div', 'panel results');
     const winner = world.winner >= 0 ? world.fighters[world.winner]! : null;
@@ -660,16 +714,15 @@ export class Ui {
       table.appendChild(tr);
     }
     panel.appendChild(table);
-    const again = el('button', 'fight', 'Rematch');
-    again.onclick = onRematch;
-    again.title = 'Enter';
-    const change = el('button', 'option', 'Change fighters');
-    change.onclick = onSelect;
-    const menu = el('button', 'option', 'Main menu');
-    menu.onclick = onMenu;
-    panel.append(again, change, menu, wipNotice());
+    const buttons = actions.map(([cls, label, go]) => {
+      const b = el('button', cls, label);
+      b.onclick = go;
+      return b;
+    });
+    buttons[0]!.title = 'Enter';
+    panel.append(...buttons, wipNotice());
     page.appendChild(panel);
-    this.show('results', page, [again, change, menu]);
+    this.show('results', page, buttons);
   }
 
   // ------------------------------------------------------------------------------------------------------ HUD
@@ -744,7 +797,7 @@ function wipNotice(): HTMLElement {
   const box = el('div', 'wip-notice');
   box.append(
     el('strong', '', 'Work in progress'),
-    el('span', '', ' · Placeholder art · Numbers and controls will change · Online fights not built yet · Expect bugs'),
+    el('span', '', ' · Placeholder art · Numbers and controls will change · Expect bugs'),
   );
   return box;
 }
