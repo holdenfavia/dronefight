@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current focus:** Phase 1 — tune the feel of the new combat (ADR-0071), then online play so friends can fight each other. The v1 roadmap is on the `archive/dronefight-v1` branch.
+**Current focus:** Phase 1 — tune the feel of the new cast (ADR-0071, ADR-0072), then online play so friends can fight each other. The v1 roadmap is on the `archive/dronefight-v1` branch.
 
 Check items off as they land. Add items as they're discovered. Moving to a new phase updates **Current focus**.
 
@@ -18,10 +18,13 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 ## Phase 1 — Feel (now)
 
 - [ ] Play against CPUs; note what feels off
-- [ ] Tune knockback, hitstun and movement per drone (`shared/fighter/`)
+- [ ] Tune knockback, hitstun and movement per fighter (`shared/fighter/`)
 - [ ] Ledge hang (instead of the automatic pull-up) if recovery feels too easy
 - [x] Charged smash attacks, own moveset per drone, grabs and throws, teching, parry, armor, counters, stale moves (ADR-0071)
 - [x] One player per keyboard: WASD move, arrows attack, Q specials, E shield, ? grab (ADR-0071)
+- [x] Attack looks: poses, trails, colors and hit effects per kind of attack
+- [x] Original cast instead of drones: Brawler, Blade, Spark, Titan, each with its own gimmick (ADR-0072)
+- [ ] Real character art to replace the stick figures
 - [ ] Rebindable keys, in case two players' keys clash on some keyboards
 
 ## Phase 2 — Online with friends
@@ -33,6 +36,6 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 ## Later
 
-- [ ] More drones (FPV wing?), more stages, items
+- [ ] More fighters, more stages, items
 - [ ] Gamepad support
 - [ ] Team battles

@@ -26,7 +26,7 @@ export const KNOCKBACK = {
   launchDecay: 1250,
   /** Hitstun frames per point of knockback. */
   hitstunPerKb: 0.42,
-  /** Knockback above this leaves a smoke trail and tumbles the drone. */
+  /** Knockback above this leaves a smoke trail and tumbles the fighter. */
   tumbleKb: 80,
   /** Hold a direction when hit to bend the launch angle by up to this many degrees (directional influence). */
   diDegrees: 13,
@@ -84,7 +84,7 @@ export const LEDGE = {
   reachBelow: 80,
   /** During an up special or the helpless fall after it: reaches further, so you never bonk under the lip. */
   reachBelowRecovering: 160,
-  /** How far out past the edge, beyond the drone's half width. */
+  /** How far out past the edge, beyond the fighter's half width. */
   reachOut: 30,
   climbFrames: 10,
   invincibleFrames: 14,
@@ -98,14 +98,14 @@ export const SMASH = {
 
 /** Grabs and throws (ADR-0071). */
 export const GRAB = {
-  /** Frames a grab holds before letting go on its own, plus more the more damage the held drone has. */
+  /** Frames a grab holds before letting go on its own, plus more the more damage the held fighter has. */
   holdBase: 70,
   holdPerPercent: 0.8,
-  /** Each fresh key press by the held drone takes this many frames off. */
+  /** Each fresh key press by the held fighter takes this many frames off. */
   mash: 5,
-  /** Both drones stagger this long when the grab breaks. */
+  /** Both fighters stagger this long when the grab breaks. */
   releaseFrames: 16,
-  /** Whiffed grab: extra lag is already in the move; grabbed drones are held this far apart (fraction of widths). */
+  /** Whiffed grab: extra lag is already in the move; grabbed fighters are held this far apart (fraction of widths). */
   holdOverlap: 0.75,
 } as const;
 
@@ -167,3 +167,6 @@ export const DROP_HOLD_FRAMES = 4;
 
 /** Shield release lag. */
 export const SHIELD_DROP_FRAMES = 7;
+
+/** Spark's rewind: frames of position history kept (the move snaps back by its own `back`). */
+export const REWIND_HISTORY_FRAMES = 60;

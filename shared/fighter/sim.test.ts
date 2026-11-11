@@ -15,14 +15,14 @@ function run(world: World, frames: number, inputs: (frame: number) => Input[] = 
 
 describe('fighter sim', () => {
   it('nobody moves during the countdown', () => {
-    const w = createWorld('rooftop', [{ id: 'freestyle' }, { id: 'racer' }]);
+    const w = createWorld('rooftop', [{ id: 'brawler' }, { id: 'spark' }]);
     const x = w.fighters[0]!.x;
     run(w, 60, () => [{ ...NO_INPUT, right: true }]);
     expect(w.fighters[0]!.x).toBe(x);
   });
 
   it('walks, jumps and lands back on the stage', () => {
-    const w = createWorld('rooftop', [{ id: 'freestyle' }, { id: 'racer' }]);
+    const w = createWorld('rooftop', [{ id: 'brawler' }, { id: 'spark' }]);
     skipCountdown(w);
     const f = w.fighters[0]!;
     const x0 = f.x;
@@ -43,7 +43,7 @@ describe('fighter sim', () => {
   });
 
   it('a charged forward smash at high percent launches off the stage and takes a stock', () => {
-    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+    const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'brawler' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
     a!.x = 300; a!.facing = 1;
@@ -57,7 +57,7 @@ describe('fighter sim', () => {
   });
 
   it('the forward tilt at low percent does not KO', () => {
-    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+    const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'brawler' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
     a!.x = 0; a!.facing = 1;
@@ -69,7 +69,7 @@ describe('fighter sim', () => {
   });
 
   it('a shield blocks damage', () => {
-    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+    const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'brawler' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
     a!.x = 0; a!.facing = 1;
@@ -79,9 +79,9 @@ describe('fighter sim', () => {
     expect(b!.shieldHp).toBeLessThan(50);
   });
 
-  it('every drone can recover from off the side with jumps and specials', () => {
+  it('every fighter can recover from off the side with jumps and specials', () => {
     for (const id of FIGHTER_IDS) {
-      const w = createWorld('helipad', [{ id }, { id: 'freestyle' }]);
+      const w = createWorld('helipad', [{ id }, { id: 'brawler' }]);
       skipCountdown(w);
       const f = w.fighters[0]!;
       f.x = 640; f.y = -60; f.grounded = false; f.action = 'air';
@@ -103,7 +103,7 @@ describe('fighter sim', () => {
 
   it('bots finish a match on every stage', () => {
     for (const stage of STAGE_IDS) {
-      const w = createWorld(stage, [{ id: 'freestyle' }, { id: 'racer' }, { id: 'heavy' }, { id: 'flipper' }], 2, 7);
+      const w = createWorld(stage, [{ id: 'brawler' }, { id: 'spark' }, { id: 'titan' }, { id: 'blade' }], 2, 7);
       const bots = w.fighters.map((f) => createBot(f.slot, 3, 7));
       let frames = 0;
       while (!w.over && frames < 60 * 60 * 6) {
@@ -116,7 +116,7 @@ describe('fighter sim', () => {
 
   it('is deterministic: the same inputs give the same match', () => {
     const play = () => {
-      const w = createWorld('rooftop', [{ id: 'freestyle' }, { id: 'heavy' }], 3, 42);
+      const w = createWorld('rooftop', [{ id: 'brawler' }, { id: 'titan' }], 3, 42);
       const bots = w.fighters.map((f) => createBot(f.slot, 2, 42));
       for (let i = 0; i < 3000; i++) step(w, bots.map((b) => botInput(b, w)));
       return w.fighters.map((f) => [f.x, f.y, f.percent, f.stocks]);
@@ -125,7 +125,7 @@ describe('fighter sim', () => {
   });
 
   it('the arrow keys pick the attack: forward arrow standing still jabs, and tapping again combos', () => {
-    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+    const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'brawler' }]);
     skipCountdown(w);
     const a = w.fighters[0]!;
     step(w, [{ ...NO_INPUT, aimRight: true, attack: true }]);
@@ -143,7 +143,7 @@ describe('fighter sim', () => {
   });
 
   it('aimed specials: special with an arrow picks the direction', () => {
-    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+    const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'brawler' }]);
     skipCountdown(w);
     const a = w.fighters[0]!;
     a.facing = 1;
@@ -160,7 +160,7 @@ describe('fighter sim', () => {
 
   it('charging a smash makes it hit harder', () => {
     const hitWith = (chargeFrames: number) => {
-      const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+      const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'brawler' }]);
       skipCountdown(w);
       const [a, b] = w.fighters;
       a!.x = 0; a!.facing = 1;
@@ -172,7 +172,7 @@ describe('fighter sim', () => {
   });
 
   it('grabs beat shields, and an arrow throws', () => {
-    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+    const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'brawler' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
     a!.x = 0; a!.facing = 1;
@@ -195,7 +195,7 @@ describe('fighter sim', () => {
 
   it('mashing breaks out of a grab sooner', () => {
     const heldFor = (mash: boolean) => {
-      const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+      const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'brawler' }]);
       skipCountdown(w);
       const [a, b] = w.fighters;
       a!.x = 0; a!.facing = 1;
@@ -214,7 +214,7 @@ describe('fighter sim', () => {
 
   it('launched drones tech with a well-timed shield press, and get knocked down without one', () => {
     const landing = (tech: boolean) => {
-      const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+      const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'brawler' }]);
       skipCountdown(w);
       const b = w.fighters[1]!;
       b.x = 0; b.y = 40; b.grounded = false; b.action = 'hitstun'; b.duration = 60; b.tumbling = true; b.vy = -600;
@@ -227,7 +227,7 @@ describe('fighter sim', () => {
   });
 
   it('a shield raised right as the hit lands parries it', () => {
-    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'freestyle' }]);
+    const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'brawler' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
     a!.x = 0; a!.facing = 1;
@@ -243,8 +243,8 @@ describe('fighter sim', () => {
     expect(b!.percent).toBe(0);
   });
 
-  it("the Freestyle's counter strikes back", () => {
-    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'heavy' }]);
+  it("the Brawler's counter-punch strikes back", () => {
+    const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'titan' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
     a!.x = 0; a!.facing = 1;
@@ -254,8 +254,8 @@ describe('fighter sim', () => {
     expect(b!.percent).toBeGreaterThan(6);
   });
 
-  it("the Heavy's smash has super armor while charging", () => {
-    const w = createWorld('helipad', [{ id: 'heavy' }, { id: 'racer' }]);
+  it("the Titan's smash has super armor while charging", () => {
+    const w = createWorld('helipad', [{ id: 'titan' }, { id: 'spark' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
     a!.x = 0; a!.facing = 1;
@@ -267,7 +267,7 @@ describe('fighter sim', () => {
   });
 
   it('using the same move over and over weakens it', () => {
-    const w = createWorld('helipad', [{ id: 'freestyle' }, { id: 'heavy' }]);
+    const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'titan' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
     const dmg: number[] = [];
@@ -280,44 +280,85 @@ describe('fighter sim', () => {
     expect(dmg[4]!).toBeLessThan(dmg[0]! * 0.85);
   });
 
-  it("the Racer's mine sits on the floor and goes off when someone comes close", () => {
-    const w = createWorld('helipad', [{ id: 'racer' }, { id: 'heavy' }]);
+  it("the Spark's orb follows its target", () => {
+    const w = createWorld('helipad', [{ id: 'spark' }, { id: 'titan' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
-    a!.x = 0; a!.facing = 1;
-    b!.x = 300;
-    run(w, 80, (i) => [{ ...NO_INPUT, aimDown: true, special: i === 0 }]);
-    const mine = w.projectiles.find((p) => p.kind === 'mine');
-    expect(mine?.stuck).toBe(true);
-    b!.x = mine!.x + 20;
-    run(w, 3);
-    expect(w.projectiles.some((p) => p.kind === 'mine')).toBe(false);
-    expect(b!.percent).toBeGreaterThan(5);
+    a!.x = -200; a!.facing = 1;
+    b!.x = 150;
+    run(w, 14, (i) => [{ ...NO_INPUT, right: i < 2, aimRight: true, special: i === 0 }]);
+    expect(w.projectiles.length).toBe(1);
+    // Jump over it: the orb turns up to follow.
+    b!.y = 160; b!.grounded = false; b!.action = 'air'; b!.vy = 0;
+    run(w, 30, () => [NO_INPUT, { ...NO_INPUT, up: true }]);
+    const orb = w.projectiles[0];
+    expect(orb === undefined || orb.vy > 0).toBe(true);
   });
 
-  it("the Flipper's gust pushes without damage", () => {
-    const w = createWorld('helipad', [{ id: 'flipper' }, { id: 'freestyle' }]);
+  it("the Spark's blink teleports and its rewind snaps back", () => {
+    const w = createWorld('helipad', [{ id: 'spark' }, { id: 'titan' }]);
     skipCountdown(w);
-    const [a, b] = w.fighters;
-    a!.x = 0; a!.facing = 1;
-    b!.x = 140;
-    run(w, 40, (i) => [{ ...NO_INPUT, aimRight: true, special: i === 0 }]);
-    expect(b!.percent).toBe(0);
-    expect(b!.x).toBeGreaterThan(180);
-    expect(b!.lastHitBy).toBe(0);
+    const f = w.fighters[0]!;
+    f.x = 0; f.facing = 1;
+    w.fighters[1]!.x = 400;
+    run(w, 10, (i) => [{ ...NO_INPUT, right: i < 8, aimUp: true, special: i === 0 }]);
+    expect(f.y).toBeGreaterThan(100);
+    expect(f.x).toBeGreaterThan(100);
+    // Walk away, then rewind: back near where it started.
+    run(w, 120);
+    const start = { x: f.x, y: f.y };
+    run(w, 40, () => [{ ...NO_INPUT, right: true }]);
+    expect(f.x).toBeGreaterThan(start.x + 80);
+    run(w, 10, (i) => [{ ...NO_INPUT, aimDown: true, special: i === 0 }]);
+    expect(Math.abs(f.x - start.x)).toBeLessThan(60);
   });
 
-  it("the Heavy's bear hug grabs through a shield", () => {
-    const w = createWorld('helipad', [{ id: 'heavy' }, { id: 'freestyle' }]);
+  it("the Blade's sword tip hits harder than the base of the blade", () => {
+    const hitAt = (gap: number) => {
+      const w = createWorld('helipad', [{ id: 'blade' }, { id: 'titan' }]);
+      skipCountdown(w);
+      const [a, b] = w.fighters;
+      a!.x = 0; a!.facing = 1;
+      b!.x = gap;
+      run(w, 40, (i) => [{ ...NO_INPUT, left: i === 0, aimRight: true, attack: i === 0 }]);
+      return b!.percent;
+    };
+    expect(hitAt(100)).toBeGreaterThan(hitAt(40) * 1.4);
+  });
+
+  it("the Brawler's full rage makes its next smash hit much harder", () => {
+    const smash = (rage: number) => {
+      const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'titan' }]);
+      skipCountdown(w);
+      const [a, b] = w.fighters;
+      a!.x = 0; a!.facing = 1; a!.rage = rage;
+      b!.x = 50;
+      run(w, 30, (i) => [{ ...NO_INPUT, right: i < 2, aimRight: true, attack: i < 2 }]);
+      return { dmg: b!.percent, rage: a!.rage };
+    };
+    const calm = smash(0);
+    const raging = smash(FIGHTERS.brawler.rage!.max);
+    expect(raging.dmg).toBeGreaterThan(calm.dmg * 1.4);
+    expect(raging.rage).toBe(0);
+    expect(calm.rage).toBeGreaterThan(0);
+  });
+
+  it("the Titan's sky carry grabs through a shield, leaps and slams", () => {
+    const w = createWorld('helipad', [{ id: 'titan' }, { id: 'brawler' }]);
     skipCountdown(w);
     const [a, b] = w.fighters;
     a!.x = 0; a!.facing = 1;
     b!.x = 100;
-    run(w, 80, (i) => [{ ...NO_INPUT, left: i === 0, aimRight: true, special: i === 0 }, { ...NO_INPUT, shield: true }]);
-    expect(b!.percent).toBeGreaterThan(12);
+    let peak = 0;
+    run(w, 120, (i) => {
+      if (b!.action === 'held') peak = Math.max(peak, b!.y);
+      return [{ ...NO_INPUT, left: i === 0, aimRight: true, special: i === 0 }, { ...NO_INPUT, shield: true }];
+    });
+    expect(peak).toBeGreaterThan(80);
+    expect(b!.percent).toBeGreaterThan(15);
   });
 
-  it('every drone has its own moveset', () => {
+  it('every fighter has its own moveset', () => {
     const sig = (id: (typeof FIGHTER_IDS)[number]) => JSON.stringify(FIGHTERS[id].moves);
     const sigs = new Set(FIGHTER_IDS.map(sig));
     expect(sigs.size).toBe(FIGHTER_IDS.length);
@@ -325,7 +366,7 @@ describe('fighter sim', () => {
     expect(specials.size).toBeGreaterThanOrEqual(FIGHTER_IDS.length * 4 - 1);
   });
 
-  it('every move of every drone runs to its end without getting stuck', () => {
+  it('every move of every fighter runs to its end without getting stuck', () => {
     const moves: Input[] = [
       { ...NO_INPUT, aimRight: true, attack: true }, { ...NO_INPUT, aimUp: true, attack: true }, { ...NO_INPUT, aimDown: true, attack: true },
       { ...NO_INPUT, right: true, aimRight: true, attack: true }, { ...NO_INPUT, up: true, aimUp: true, attack: true }, { ...NO_INPUT, down: true, aimDown: true, attack: true },
@@ -334,7 +375,7 @@ describe('fighter sim', () => {
     ];
     for (const id of FIGHTER_IDS) {
       for (const m of moves) {
-        const w = createWorld('helipad', [{ id }, { id: 'freestyle' }]);
+        const w = createWorld('helipad', [{ id }, { id: 'brawler' }]);
         skipCountdown(w);
         const f: Fighter = w.fighters[0]!;
         f.x = 0; f.facing = 1;

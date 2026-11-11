@@ -6,7 +6,7 @@ import { FIGHTER_IDS, FIGHTERS, type FighterId } from '../../shared/fighter/figh
 import type { World } from '../../shared/fighter/sim';
 import { STAGE_IDS, STAGES, type StageId } from '../../shared/fighter/stages';
 import { SLOT_COLORS } from './config';
-import { drawDrone } from './drones';
+import { drawFighterFigure } from './figures';
 import { KEY_LABELS } from './input';
 
 /** One player per keyboard (ADR-0071); CPUs fill the other slots. */
@@ -24,15 +24,15 @@ export interface MatchSetup {
   stocks: number;
 }
 
-const STORAGE_KEY = 'dronefight.brawl.setup.v2';
+const STORAGE_KEY = 'dronefight.brawl.setup.v3';
 
 export function defaultSetup(): MatchSetup {
   return {
     slots: [
-      { kind: 'p1', fighter: 'freestyle', level: 2 },
-      { kind: 'bot', fighter: 'racer', level: 2 },
-      { kind: 'off', fighter: 'heavy', level: 2 },
-      { kind: 'off', fighter: 'flipper', level: 2 },
+      { kind: 'p1', fighter: 'brawler', level: 2 },
+      { kind: 'bot', fighter: 'blade', level: 2 },
+      { kind: 'off', fighter: 'spark', level: 2 },
+      { kind: 'off', fighter: 'titan', level: 2 },
     ],
     stage: 'rooftop',
     stocks: MATCH.defaultStocks,
@@ -100,9 +100,9 @@ function previewCanvas(id: FighterId, color: string, size = 120): HTMLCanvasElem
     t++;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, c.width, c.height);
-    const k = (id === 'heavy' ? 1.6 : id === 'racer' ? 2.8 : 2.4) * dpr * (size / 120);
+    const k = (id === 'titan' ? 1.7 : 2.4) * dpr * (size / 120);
     ctx.setTransform(k, 0, 0, k, c.width / 2, c.height / 2 + Math.sin(t / 20) * 3 * dpr);
-    drawDrone(ctx, id, { color, phase: t * 1.2, blink: t % 200 < 6 ? 1 : 0, flash: 0, thrust: 0.8 });
+    drawFighterFigure(ctx, id, { color, phase: t * 1.2, blink: t % 200 < 6 ? 1 : 0, flash: 0, thrust: 0.8 });
     requestAnimationFrame(draw);
   };
   requestAnimationFrame(draw);
@@ -164,7 +164,7 @@ export class Ui {
       const card = el('div', `slot ${slot.kind === 'off' ? 'off' : ''}`);
       card.style.setProperty('--slot', color);
       const kind = el('button', 'kind', slotLabel(slot));
-      kind.title = 'Click to change who flies this drone';
+      kind.title = 'Click to change who plays this fighter';
       kind.onclick = () => {
         this.handlers.onClick();
         nextKind(slot);
@@ -208,7 +208,7 @@ export class Ui {
     const fight = el('button', 'fight', 'Fight!');
     const players = s.slots.filter((x) => x.kind !== 'off').length;
     fight.disabled = players < 2;
-    fight.title = players < 2 ? 'Add at least two drones' : 'Enter';
+    fight.title = players < 2 ? 'Add at least two fighters' : 'Enter';
     fight.onclick = () => this.fight();
     options.append(stageBtn, el('div', 'stage-blurb', STAGES[s.stage].blurb), stocksBtn, fight);
     page.appendChild(options);
@@ -299,7 +299,7 @@ export class Ui {
     const again = el('button', 'fight', 'Rematch');
     again.onclick = onRematch;
     again.title = 'Enter';
-    const menu = el('button', 'option', 'Change drones');
+    const menu = el('button', 'option', 'Change fighters');
     menu.onclick = onMenu;
     panel.append(again, menu, wipNotice());
     page.appendChild(panel);

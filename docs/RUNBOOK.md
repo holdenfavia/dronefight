@@ -24,7 +24,7 @@ npm run dev        # game at http://localhost:5173 (Chrome or Edge)
 
 ### Playing
 
-The menu has four slots. Click a slot's top button to cycle **You → CPU Easy/Normal/Hard → Off**; pick your drone with the arrows, A/D or ←/→. Pick stage and stocks, then **Fight!** or Enter. Controls are on the menu and the pause screen (Esc).
+The menu has four slots. Click a slot's top button to cycle **You → CPU Easy/Normal/Hard → Off**; pick your fighter with the arrows, A/D or ←/→. Pick stage and stocks, then **Fight!** or Enter. Controls are on the menu and the pause screen (Esc).
 
 - One player per keyboard (ADR-0071): WASD move, arrows attack, Q (held, or tapped to prime the next arrow) makes arrows specials, E shield/dodge, ? grab.
 - Tests in `shared/fighter/sim.test.ts` drive the sim with `Input` objects: `{ aimRight: true, attack: true }` is a right-arrow attack, `{ aimUp: true, special: true }` is Q + up.
@@ -33,16 +33,16 @@ The menu has four slots. Click a slot's top button to cycle **You → CPU Easy/N
 ### Tuning the feel
 
 - Global feel (knockback scale and decay, hitstun, hitlag, shield, dodges, ledge pull-up, jump squat) is in `shared/fighter/config.ts`.
-- Per drone (weight, speeds, gravity, jumps) and every move (frames, hitbox, damage, angle, base knockback, growth) are in `shared/fighter/fighters.ts`. Angles: 0 = straight ahead, 90 = up, negative = down (spikes).
+- Per fighter (weight, speeds, gravity, jumps) and every move (frames, hitbox, damage, angle, base knockback, growth) are in `shared/fighter/fighters.ts`. Angles: 0 = straight ahead, 90 = up, negative = down (spikes).
 - CPU behaviour (reaction time, aggression, shielding, recovery) is in `shared/fighter/bot.ts`.
 - Camera, screen shake and colors are in `client/src/config.ts`.
-- Rough baseline (CPU vs CPU on Rooftop): KOs land around 60–190%, average ~115%; a 3-stock 1v1 lasts 1.5–4 minutes. A Freestyle side attack KOs a Freestyle from the edge at ~90%, from the middle at ~120%.
-- After tuning, run `npm test`: the tests check that every drone can recover, that bots finish matches on every stage, and that the sim stays deterministic.
+- Rough baseline (CPU vs CPU on Rooftop): KOs land around 60–190%, average ~115%; a 3-stock 1v1 lasts 1.5–4 minutes. (Measured with the old drone roster; re-measure for the new cast.)
+- After tuning, run `npm test`: the tests check that every fighter can recover, that bots finish matches on every stage, and that the sim stays deterministic.
 
 ### Where things are
 
 - `shared/fighter/sim.ts`: the fight (fixed 60 Hz step). No rendering, no randomness except the world's seeded generator, so the server can run it too.
-- `client/src/main.ts`: game loop and modes; `render.ts`: camera, stages, effects; `drones.ts`: the drone characters; `ui.ts`: menus and HUD; `audio.ts`: synthesized sound; `input.ts`: keyboard maps.
+- `client/src/main.ts`: game loop and modes; `render.ts`: camera, stages, effects; `figures.ts`: the stick-figure fighters; `ui.ts`: menus and HUD; `audio.ts`: synthesized sound; `input.ts`: keyboard maps.
 - `server/src/`: static hosting, `/healthz`, rooms by code (`rooms.ts`).
 
 ## Deploy (Fly.io, ADR-0021)

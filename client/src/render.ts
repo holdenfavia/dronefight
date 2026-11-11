@@ -1,12 +1,13 @@
 // Side-view renderer (ADR-0070): Canvas 2D, a camera that frames every fighter, parallax city
-// backdrop, stage art, drones, hit effects and screen shake.
+// backdrop, stage art, fighters, hit effects and screen shake.
 
 import { FIGHTERS, type MoveId } from '../../shared/fighter/fighters';
-import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
+import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, rageFraction, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
 import { SHIELD } from '../../shared/fighter/config';
 import type { Platform } from '../../shared/fighter/stages';
-import { CAMERA, FEEL, PALETTE, SLOT_COLORS } from './config';
-import { drawDrone } from './drones';
+import { ATTACK_COLORS, CAMERA, FEEL, PALETTE, SLOT_COLORS } from './config';
+import { moveLook, type MoveLook } from './moveLooks';
+import { drawFighterFigure } from './figures';
 import { isPurpleSkyTime } from './purpleSky';
 
 interface Particle {
@@ -18,7 +19,8 @@ interface Particle {
   max: number;
   size: number;
   color: string;
-  kind: 'spark' | 'smoke' | 'dust' | 'ring' | 'star';
+  /** streak: a line along its motion; ember: a glowing dot; bolt: a crackle of lightning; wisp: a curl of wind; wave: a flat shockwave. */
+  kind: 'spark' | 'smoke' | 'dust' | 'ring' | 'star' | 'streak' | 'ember' | 'bolt' | 'wisp' | 'wave';
   grow: number;
 }
 
@@ -48,6 +50,8 @@ export class Renderer {
   private koBeams: { x: number; y: number; color: string; life: number }[] = [];
   /** Floating words: PARRY!, COUNTER!, TECH. */
   private popups: { x: number; y: number; text: string; color: string; life: number }[] = [];
+  /** Recent hitbox positions per fighter, drawn as a swing trail. */
+  private trails = new Map<number, { x: number; y: number; r: number }[]>();
   private far: Building[] = [];
   private near: Building[] = [];
   private time = 0;
@@ -92,6 +96,7 @@ export class Renderer {
     this.particles = [];
     this.koBeams = [];
     this.popups = [];
+    this.trails.clear();
     this.flashes.clear();
     this.shake = 0;
     this.platforms = world.stage.platforms;
@@ -104,13 +109,28 @@ export class Renderer {
     for (const e of events) {
       switch (e.type) {
         case 'hit': {
-          const color = SLOT_COLORS[e.attacker] ?? '#fff';
+          const attacker = world.fighters[e.attacker]!;
+          const look = e.move ? moveLook(attacker.id, e.move) : null;
+          const color = look?.color ?? SLOT_COLORS[e.attacker] ?? '#fff';
+          if (look) this.hitFx(look, e.x, e.y, color, e.kb, e.dmg);
           const n = 6 + Math.min(20, Math.floor(e.dmg * 1.4));
           for (let i = 0; i < n; i++) this.spark(e.x, e.y, color, 200 + e.kb * 6);
           this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 14, max: 14, size: 10 + e.dmg * 2, color: '#fff', kind: 'ring', grow: 4 + e.kb * 0.05 });
           if (e.dmg >= 10) this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 10, max: 10, size: 14 + e.dmg, color: '#fff6c9', kind: 'star', grow: 1 });
           this.flashes.set(e.target, 1);
           if (e.armored) this.popup(world.fighters[e.target]!, 'ARMOR', '#ffb36b');
+          if (e.tip) {
+            // A clean sword-tip hit: a bright white star and a ring.
+            this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 14, max: 14, size: 16 + e.dmg, color: ATTACK_COLORS.tip, kind: 'star', grow: 2.5 });
+            this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 12, max: 12, size: 8, color: ATTACK_COLORS.tip, kind: 'ring', grow: 5 });
+          }
+          if (e.rage) {
+            // The Brawler unloads its rage.
+            for (let i = 0; i < 30; i++) this.ember(e.x, e.y, i % 3 ? ATTACK_COLORS.rage : ATTACK_COLORS.smashCore, 600);
+            this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 26, max: 26, size: 24, color: ATTACK_COLORS.rage, kind: 'ring', grow: 10 });
+            this.popup(attacker, 'RAGE!', ATTACK_COLORS.rage);
+            this.shake = Math.min(FEEL.maxShake, this.shake + 10);
+          }
           this.shake = Math.min(FEEL.maxShake, this.shake + e.kb * FEEL.shakePerKb);
           break;
         }
@@ -170,6 +190,21 @@ export class Renderer {
           this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 16, max: 16, size: e.r * 0.4, color: '#ffe27a', kind: 'ring', grow: e.r * 0.06 });
           this.shake = Math.min(FEEL.maxShake, this.shake + 12);
           break;
+        case 'warp': {
+          // Blink and rewind: a puff where it left, a burst where it arrived, a faint streak between.
+          const f = world.fighters[e.slot]!;
+          const color = ATTACK_COLORS.special[f.id];
+          const h = fighterDef(f).height / 2;
+          for (const [x, y, n] of [[e.fromX, e.fromY, 8], [e.x, e.y, 14]] as const) {
+            this.particles.push({ x, y: y + h, vx: 0, vy: 0, life: 16, max: 16, size: 10, color, kind: 'ring', grow: 4 });
+            for (let i = 0; i < n; i++) this.ember(x, y + h, i % 2 ? color : '#ffffff', 240);
+          }
+          for (let i = 1; i < 6; i++) {
+            const t = i / 6;
+            this.particles.push({ x: e.fromX + (e.x - e.fromX) * t, y: e.fromY + (e.y - e.fromY) * t + h, vx: 0, vy: 0, life: 10 + i * 2, max: 20, size: 4, color, kind: 'ember', grow: -0.02 });
+          }
+          break;
+        }
         case 'respawn': {
           const f = world.fighters[e.slot]!;
           this.particles.push({ x: f.x, y: centerY(f), vx: 0, vy: 0, life: 24, max: 24, size: 10, color: SLOT_COLORS[e.slot] ?? '#fff', kind: 'ring', grow: 5 });
@@ -179,6 +214,107 @@ export class Renderer {
           break;
       }
     }
+  }
+
+  /** The hit effect for this kind of attack, on top of the common sparks. */
+  private hitFx(look: MoveLook, x: number, y: number, color: string, kb: number, dmg: number): void {
+    const n = 4 + Math.min(12, Math.floor(dmg));
+    switch (look.fx) {
+      case 'flame':
+        for (let i = 0; i < n * 2; i++) this.ember(x, y, i % 3 ? color : ATTACK_COLORS.smashCore, 300 + kb * 4);
+        this.particles.push({ x, y, vx: 0, vy: 0, life: 18, max: 18, size: 18 + dmg, color: ATTACK_COLORS.smashCore, kind: 'star', grow: 2 });
+        this.particles.push({ x, y, vx: 0, vy: 0, life: 22, max: 22, size: 20, color, kind: 'ring', grow: 7 });
+        break;
+      case 'spike':
+        for (let i = 0; i < n + 4; i++) {
+          const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.7;
+          const sp = 500 + Math.random() * 600;
+          this.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 16, max: 16, size: 3, color: i % 2 ? color : '#ffffff', kind: 'streak', grow: 0 });
+        }
+        this.particles.push({ x, y, vx: 0, vy: 0, life: 16, max: 16, size: 14, color, kind: 'ring', grow: 5 });
+        break;
+      case 'zap':
+        for (let i = 0; i < 3 + Math.floor(dmg / 3); i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2, life: 8, max: 8, size: 26 + dmg * 2, color, kind: 'bolt', grow: 0 });
+        break;
+      case 'wind':
+        for (let i = 0; i < 6; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 300, vy: (Math.random() - 0.5) * 300, life: 22, max: 22, size: 10 + Math.random() * 10, color: '#ffffff', kind: 'wisp', grow: 0.8 });
+        break;
+      case 'shock':
+        this.particles.push({ x, y, vx: 0, vy: 0, life: 18, max: 18, size: 16, color, kind: 'wave', grow: 9 });
+        break;
+      case 'energy':
+        this.particles.push({ x, y, vx: 0, vy: 0, life: 16, max: 16, size: 10, color, kind: 'ring', grow: 4 });
+        this.particles.push({ x, y, vx: 0, vy: 0, life: 12, max: 12, size: 8, color: '#ffffff', kind: 'ring', grow: 2.5 });
+        for (let i = 0; i < n; i++) this.ember(x, y, color, 260);
+        break;
+      case 'puff':
+        this.particles.push({ x, y, vx: 0, vy: 0, life: 8, max: 8, size: 6, color: '#ffffff', kind: 'ring', grow: 2 });
+        break;
+      case 'spin':
+        this.particles.push({ x, y, vx: 0, vy: 0, life: 14, max: 14, size: 12, color, kind: 'ring', grow: 3 });
+        break;
+      default:
+        break;
+    }
+  }
+
+  private ember(x: number, y: number, color: string, speed: number): void {
+    const a = Math.random() * Math.PI * 2;
+    const s = speed * (0.3 + Math.random() * 0.7);
+    this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s + 80, life: 20 + Math.random() * 20, max: 40, size: 2 + Math.random() * 3, color, kind: 'ember', grow: -0.04 });
+  }
+
+  /** Effects that run during a move's swing. */
+  private swingFx(f: Fighter, look: MoveLook, color: string): void {
+    const boxes = activeHitboxes(f);
+    const trail = this.trails.get(f.slot) ?? [];
+    if (boxes.length && look.fx !== 'grab') {
+      let x = 0; let y = 0; let r = 0;
+      for (const b of boxes) { x += b.x; y += b.y; r = Math.max(r, b.r); }
+      trail.push({ x: x / boxes.length, y: y / boxes.length, r });
+      if (trail.length > 7) trail.shift();
+      const p = trail[trail.length - 1]!;
+      const first = f.action === 'attack' && f.move && boxes.some((b) => b.hb.from === f.frame);
+      switch (look.fx) {
+        case 'flame':
+          for (let i = 0; i < 3; i++) this.ember(p.x, p.y, i ? color : ATTACK_COLORS.smashCore, 160);
+          break;
+        case 'zap':
+          if (this.time % 3 === 0) this.particles.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 5, max: 5, size: p.r * 1.3, color, kind: 'bolt', grow: 0 });
+          break;
+        case 'wind':
+          if (this.time % 2 === 0) this.particles.push({ x: p.x, y: p.y, vx: f.facing * 200, vy: 40, life: 18, max: 18, size: p.r * 0.5, color: '#ffffff', kind: 'wisp', grow: 0.6 });
+          break;
+        case 'spike':
+          this.particles.push({ x: p.x + (Math.random() - 0.5) * p.r, y: p.y, vx: 0, vy: -700, life: 8, max: 8, size: 2.5, color, kind: 'streak', grow: 0 });
+          break;
+        case 'energy':
+          this.ember(p.x, p.y, color, 90);
+          break;
+        case 'shock':
+          if (first) {
+            this.particles.push({ x: f.x, y: f.y + 4, vx: 0, vy: 0, life: 20, max: 20, size: 20, color, kind: 'wave', grow: 10 });
+            for (let i = 0; i < 14; i++) {
+              const d = i % 2 ? 1 : -1;
+              this.particles.push({ x: f.x + d * 20, y: f.y + 2, vx: d * (200 + Math.random() * 300), vy: 60 + Math.random() * 120, life: 24, max: 24, size: 5 + Math.random() * 6, color: '#d8cbb8', kind: 'dust', grow: 0.4 });
+            }
+          }
+          break;
+        case 'puff':
+          if (first) this.particles.push({ x: p.x, y: p.y, vx: f.facing * 120, vy: 0, life: 8, max: 8, size: 5, color: '#ffffff', kind: 'ring', grow: 1.5 });
+          break;
+        default:
+          break;
+      }
+      // Low sweeps kick up dust along the floor.
+      if (look.pose === 'low' && f.grounded && this.time % 2 === 0) {
+        this.particles.push({ x: p.x, y: f.y + 2, vx: f.facing * 180, vy: 30, life: 16, max: 16, size: 5, color: '#d8cbb8', kind: 'dust', grow: 0.3 });
+      }
+    } else if (trail.length) {
+      trail.shift();
+    }
+    if (trail.length) this.trails.set(f.slot, trail);
+    else this.trails.delete(f.slot);
   }
 
   private popup(f: Fighter, text: string, color: string): void {
@@ -250,6 +386,8 @@ export class Renderer {
       p.y += p.vy / 60;
       if (p.kind === 'spark') { p.vx *= 0.9; p.vy = p.vy * 0.9 - 12; }
       else if (p.kind === 'smoke' || p.kind === 'dust') { p.vx *= 0.94; p.vy *= 0.94; }
+      else if (p.kind === 'ember') { p.vx *= 0.92; p.vy = p.vy * 0.92 + 6; }
+      else if (p.kind === 'wisp') { p.vx *= 0.9; p.vy *= 0.9; }
       p.size += p.grow;
       keep.push(p);
     }
@@ -259,7 +397,20 @@ export class Renderer {
 
     // Trails and smoke from the fighters themselves.
     for (const f of world.fighters) {
-      if (!isAlive(f) || f.hitlag > 0) continue;
+      if (!isAlive(f)) { this.trails.delete(f.slot); continue; }
+      if (f.hitlag > 0) continue;
+      const look = f.action === 'attack' && f.move ? moveLook(f.id, f.move) : null;
+      if (look) this.swingFx(f, look, look.color ?? SLOT_COLORS[f.slot] ?? '#fff');
+      else if (this.trails.has(f.slot)) { const t = this.trails.get(f.slot)!; t.shift(); if (!t.length) this.trails.delete(f.slot); }
+      // Charging: sparks gather in.
+      const charge = chargeFraction(f);
+      if (charge > 0 && this.time % 2 === 0) {
+        const c = look?.color ?? SLOT_COLORS[f.slot] ?? '#fff';
+        const a = Math.random() * Math.PI * 2;
+        const d = 40 + Math.random() * 20;
+        const cy0 = centerY(f);
+        this.particles.push({ x: f.x + Math.cos(a) * d, y: cy0 + Math.sin(a) * d, vx: -Math.cos(a) * d * 3, vy: -Math.sin(a) * d * 3, life: 16, max: 16, size: 2 + charge * 2, color: c, kind: 'ember', grow: 0 });
+      }
       const cy = centerY(f);
       if (f.action === 'hitstun' && f.lastKb > 70 && this.time % 2 === 0) {
         this.particles.push({ x: f.x, y: cy, vx: 0, vy: 0, life: 30, max: 30, size: 8 + f.lastKb * 0.05, color: '#f2efe9', kind: 'smoke', grow: 0.35 });
@@ -281,7 +432,7 @@ export class Renderer {
     this.drawBackdrop();
     this.drawStage(world);
     this.drawParticles(false);
-    for (const p of world.projectiles) this.drawProjectile(p, SLOT_COLORS[p.owner] ?? '#fff');
+    for (const p of world.projectiles) this.drawProjectile(p, ATTACK_COLORS.special[world.fighters[p.owner]!.id] ?? SLOT_COLORS[p.owner] ?? '#fff', SLOT_COLORS[p.owner] ?? '#fff');
     for (const f of world.fighters) {
       if (!isAlive(f)) continue;
       const pv = prev[f.slot];
@@ -554,7 +705,7 @@ export class Renderer {
     }
   }
 
-  private drawProjectile(p: Projectile, color: string): void {
+  private drawProjectile(p: Projectile, color: string, slotColor: string): void {
     const ctx = this.ctx;
     const s = this.scale;
     const px = this.sx(p.x);
@@ -582,8 +733,29 @@ export class Renderer {
         ctx.stroke();
       }
       ctx.restore();
+    } else if (p.kind === 'bomb') {
+      // The Titan's boulder: a tumbling lumpy rock with the thrower's color on it.
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(p.age * 0.15 * (p.vx >= 0 ? -1 : 1));
+      ctx.fillStyle = '#7a6a58';
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const rr = r * s * (0.85 + 0.2 * Math.sin(i * 2.7));
+        if (i === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+        else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = slotColor;
+      ctx.fillRect(-r * 0.3 * s, -r * 0.3 * s, r * 0.35 * s, r * 0.25 * s);
+      ctx.restore();
     } else {
-      // Bombs and mines; a mine blinks faster once it's armed.
+      // Mines; one blinks faster once it's armed.
       ctx.fillStyle = PALETTE.ink;
       ctx.beginPath();
       if (p.kind === 'mine') ctx.ellipse(px, py, r * 1.3 * s, r * 0.8 * s, 0, 0, Math.PI * 2);
@@ -619,11 +791,11 @@ export class Renderer {
         fair: 0.6 * wind, bair: -0.6 * wind, uair: -0.8 * wind, dair: 1.0 * wind,
         sspecial: 0.5, sspecialAir: 0.6, dspecial: m.slam ? 1.4 : 0.2, dspecialAir: 1.4,
         grab: 0.35 * wind, pummel: 0.4, fthrow: 0.6 * wind, bthrow: -0.9 * wind, uthrow: -1.0 * wind, dthrow: 1.0 * wind,
-        cmdthrow: -1.1 * wind, counterhit: 0.7, slamland: 0.3,
+        carry: -0.6, carryslam: 0.4, counterhit: 0.7, riposte: 0.5, quake: 0.3,
       };
       if (f.move === 'nair' || f.move === 'getupattack') return { tilt: 0, spin: t * Math.PI * 2 };
-      if (f.move === 'dsmash' && f.id === 'flipper') return { tilt: 0, spin: t * Math.PI * 4 };
-      if (f.move === 'uspecial') return { tilt: -0.2, spin: f.id === 'flipper' ? t * Math.PI * 2 : 0 };
+      // Spinning recoveries: the Brawler's spiral kick and the Blade's rising spin.
+      if (f.move === 'uspecial') return { tilt: -0.2, spin: f.id === 'brawler' || f.id === 'blade' ? t * Math.PI * 4 : 0 };
       if (f.move === 'dspecial' && m.counter) return { tilt: -0.3, spin: 0 };
       return { tilt: (tilts[f.move] ?? 0) * (1 - Math.max(0, t - 0.7) / 0.3), spin: 0 };
     }
@@ -657,6 +829,11 @@ export class Renderer {
       ctx.fill();
     }
 
+    // Swing trail behind the figure, so the pose stays readable.
+    const look = f.action === 'attack' && f.move ? moveLook(f.id, f.move) : null;
+    const fxColor = look?.color ?? color;
+    this.drawTrail(f, look, fxColor);
+
     const { tilt, spin } = this.pose(f);
     const invisible = f.invincible > 0 && f.action !== 'respawn' && (this.time >> 2) % 2 === 0;
     ctx.save();
@@ -665,14 +842,16 @@ export class Renderer {
     ctx.rotate(tilt + spin);
     if (invisible) ctx.globalAlpha = 0.45;
     const thrust = f.grounded ? 0.2 : f.vy > 0 ? 1 : 0.5;
-    drawDrone(ctx, f.id, {
+    drawFighterFigure(ctx, f.id, {
       color,
+      rage: rageFraction(f),
       phase: this.time * (0.9 + thrust * 0.8) + f.slot,
       blink: this.blinkAmount(f.slot) + (f.action === 'hitstun' || f.action === 'shieldbreak' ? 1 : 0),
       flash: this.flashes.get(f.slot) ?? 0,
       thrust,
       stride: f.grounded && Math.abs(f.vx) > 30 ? Math.min(1, Math.abs(f.vx) / def.walkSpeed) : 0,
       punch: moveActive(f),
+      ...this.attackPose(f),
     });
     ctx.restore();
 
@@ -696,11 +875,23 @@ export class Renderer {
     const charge = chargeFraction(f);
     if (charge > 0) {
       const r = (def.hurtR + 6 + charge * 18 + Math.sin(this.time * 0.8) * 3) * s;
-      ctx.strokeStyle = charge >= 1 ? '#fff6c9' : color;
+      ctx.strokeStyle = charge >= 1 ? '#fff6c9' : fxColor;
       ctx.lineWidth = 2 + charge * 3;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.stroke();
+    }
+    // Full rage: a flickering red aura.
+    if (rageFraction(f) >= 1) {
+      const r = (def.hurtR + 10 + Math.sin(this.time * 0.6) * 3) * s;
+      const g = ctx.createRadialGradient(cx, cy, r * 0.4, cx, cy, r);
+      g.addColorStop(0, ATTACK_COLORS.rage + '00');
+      g.addColorStop(1, ATTACK_COLORS.rage + '55');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      if (this.time % 4 === 0) this.ember(f.x + (Math.random() - 0.5) * def.halfW * 2, f.y + Math.random() * def.height, ATTACK_COLORS.rage, 60);
     }
     // Counter stance: a white outline.
     if (f.action === 'attack' && f.move) {
@@ -716,11 +907,11 @@ export class Renderer {
     for (const box of activeHitboxes(f)) {
       {
         ctx.save();
-        ctx.globalAlpha = 0.55;
+        ctx.globalAlpha = 0.3;
         const g = ctx.createRadialGradient(this.sx(box.x), this.sy(box.y), 0, this.sx(box.x), this.sy(box.y), box.r * s);
         g.addColorStop(0, '#ffffffcc');
-        g.addColorStop(0.6, color + '88');
-        g.addColorStop(1, color + '00');
+        g.addColorStop(0.6, fxColor + '88');
+        g.addColorStop(1, fxColor + '00');
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.arc(this.sx(box.x), this.sy(box.y), box.r * s, 0, Math.PI * 2);
@@ -729,8 +920,86 @@ export class Renderer {
       }
     }
 
-    // Player tag above the drone.
+    // Player tag above the fighter.
     this.label(`P${f.slot + 1}`, cx, cy - (def.height / 2 + 26) * s - 8, color, true);
+  }
+
+  /** Which stick-figure attack pose to show, and how far through its swing. */
+  private attackPose(f: Fighter): { attack?: MoveLook['pose']; strike?: number } {
+    if (f.action === 'holding') return { attack: 'grab', strike: 1 };
+    if (f.action !== 'attack' || !f.move) return {};
+    const m = fighterDef(f).moves[f.move]!;
+    const look = moveLook(f.id, f.move);
+    const hit = m.hitboxes?.[0]?.from ?? m.throwHit?.frame ?? m.projectile?.frame ?? m.boost?.frame ?? m.lunge?.frame ?? 4;
+    const windup = Math.max(1, hit - 1);
+    // Wind up, snap out, hold, then ease back over the last third.
+    let strike = Math.min(1, f.frame / windup);
+    const tail = Math.max(0, (f.frame - m.frames * 0.7) / (m.frames * 0.3));
+    strike *= 1 - Math.min(1, tail) * 0.6;
+    if (m.charge && f.frame <= m.charge.frame) strike = 0;
+    if (m.counter && f.frame >= m.counter.from && f.frame <= m.counter.to) strike = 1;
+    return { attack: look.pose, strike };
+  }
+
+  /** The swing trail: a fading ribbon through recent hitbox positions, styled by the attack. */
+  private drawTrail(f: Fighter, look: MoveLook | null, color: string): void {
+    const trail = this.trails.get(f.slot);
+    if (!trail || trail.length < 1) return;
+    const ctx = this.ctx;
+    const s = this.scale;
+    const fx = look?.fx ?? 'arc';
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (fx === 'spin') {
+      // A ring all the way round.
+      const p = trail[trail.length - 1]!;
+      const r = Math.max(p.r, Math.hypot(p.x - f.x, p.y - centerY(f)) + p.r * 0.6);
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 6 * s;
+      ctx.beginPath();
+      const a0 = this.time * 0.6;
+      ctx.arc(this.sx(f.x), this.sy(centerY(f)), r * s, a0, a0 + Math.PI * 1.6);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2 * s;
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    const pts = trail.length === 1
+      ? [{ x: f.x + (trail[0]!.x - f.x) * 0.4, y: centerY(f) + (trail[0]!.y - centerY(f)) * 0.4, r: trail[0]!.r * 0.6 }, trail[0]!]
+      : trail;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]!;
+      const b = pts[i]!;
+      const k = i / (pts.length - 1);
+      const w = b.r * (fx === 'flame' ? 1.4 : fx === 'zap' ? 0.5 : fx === 'puff' ? 0.5 : 1) * k * s;
+      ctx.globalAlpha = 0.25 + 0.5 * k;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1, w);
+      ctx.beginPath();
+      if (fx === 'zap') {
+        // Jagged lightning between the points.
+        ctx.moveTo(this.sx(a.x), this.sy(a.y));
+        const mx = (a.x + b.x) / 2 + (Math.random() - 0.5) * 18;
+        const my = (a.y + b.y) / 2 + (Math.random() - 0.5) * 18;
+        ctx.lineTo(this.sx(mx), this.sy(my));
+        ctx.lineTo(this.sx(b.x), this.sy(b.y));
+      } else {
+        ctx.moveTo(this.sx(a.x), this.sy(a.y));
+        ctx.lineTo(this.sx(b.x), this.sy(b.y));
+      }
+      ctx.stroke();
+      // A bright core for hot and energy attacks.
+      if (fx === 'flame' || fx === 'energy' || fx === 'spike') {
+        ctx.strokeStyle = fx === 'flame' ? ATTACK_COLORS.smashCore : '#ffffff';
+        ctx.lineWidth = Math.max(1, w * 0.35);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 
   private blinkAmount(slot: number): number {
@@ -769,7 +1038,7 @@ export class Renderer {
     const ctx = this.ctx;
     const s = this.scale;
     for (const p of this.particles) {
-      const isFront = p.kind === 'spark' || p.kind === 'ring' || p.kind === 'star';
+      const isFront = p.kind !== 'smoke' && p.kind !== 'dust';
       if (isFront !== front) continue;
       const a = p.life / p.max;
       const x = this.sx(p.x);
@@ -791,6 +1060,52 @@ export class Renderer {
           ctx.lineTo(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr);
         }
         ctx.fill();
+      } else if (p.kind === 'streak') {
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = Math.max(1, p.size * s);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - (p.vx / 60) * s * 3, y + (p.vy / 60) * s * 3);
+        ctx.stroke();
+      } else if (p.kind === 'ember') {
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(0.5, p.size) * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      } else if (p.kind === 'bolt') {
+        // A random zigzag out from the point, redrawn each frame so it flickers.
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = Math.max(1, 2 * s);
+        for (let j = 0; j < 2; j++) {
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          const ang = Math.random() * Math.PI * 2;
+          let bx = x;
+          let by = y;
+          for (let k = 0; k < 4; k++) {
+            bx += Math.cos(ang) * (p.size / 4) * s + (Math.random() - 0.5) * 10 * s;
+            by += Math.sin(ang) * (p.size / 4) * s + (Math.random() - 0.5) * 10 * s;
+            ctx.lineTo(bx, by);
+          }
+          ctx.stroke();
+        }
+      } else if (p.kind === 'wisp') {
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = Math.max(1, 2.5 * a * s);
+        ctx.beginPath();
+        const st = (1 - a) * 3;
+        ctx.arc(x, y, p.size * s, st, st + Math.PI * 1.1);
+        ctx.stroke();
+      } else if (p.kind === 'wave') {
+        // A flat ring along the floor.
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = Math.max(1, 5 * a * s);
+        ctx.beginPath();
+        ctx.ellipse(x, y, p.size * s, p.size * 0.18 * s, 0, 0, Math.PI * 2);
+        ctx.stroke();
       } else if (p.kind === 'spark') {
         ctx.strokeStyle = p.color;
         ctx.lineWidth = Math.max(1, p.size * s * 0.6);
@@ -861,7 +1176,7 @@ export class Renderer {
       ctx.translate(bx, by);
       const k = 0.6 * (28 / (def.halfW + 6));
       ctx.scale(k * f.facing, k);
-      drawDrone(ctx, f.id, { color, phase: this.time, blink: 0, flash: 0, thrust: 1 });
+      drawFighterFigure(ctx, f.id, { color, phase: this.time, blink: 0, flash: 0, thrust: 1 });
       ctx.restore();
     }
   }
