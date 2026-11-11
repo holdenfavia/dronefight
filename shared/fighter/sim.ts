@@ -3,7 +3,7 @@
 
 import {
   AIRDODGE, DODGE, DROP_HOLD_FRAMES, DT, GRAB, HITLAG, KNOCKBACK, KNOCKDOWN, LEDGE, MATCH, MOVEMENT, PARRY, SHIELD,
-  REWIND_HISTORY_FRAMES, SHIELD_DROP_FRAMES, SMASH, STALE, TECH, UP_SPECIAL_JUMP_REFUND,
+  REFLECT, REWIND_HISTORY_FRAMES, SHIELD_DROP_FRAMES, STATUS, SMASH, STALE, TECH, UP_SPECIAL_JUMP_REFUND,
 } from './config.js';
 import { FIGHTERS, type FighterDef, type FighterId, type Hitbox, type HitStats, type MoveDef, type MoveId, type ProjectileDef } from './fighters.js';
 import { nextRandom } from './rng.js';
@@ -129,6 +129,15 @@ export interface Fighter {
   rage: number;
   /** Recent feet positions, oldest first (for the rewind). */
   history: { x: number; y: number }[];
+  /** Frames left with left and right swapped (the Ghost's possess). */
+  cursed: number;
+  /** Frames left moving slowly (the Bard's lullaby) or fast (its tempo song). */
+  slowed: number;
+  hasted: number;
+  /** Shots left before a reload (the Gunslinger). */
+  ammo: number;
+  /** Which of a cycling throw comes next (the Chef's food). */
+  cycle: number;
   prev: Input;
   stats: FighterStats;
 }
@@ -151,12 +160,22 @@ export interface Projectile {
   stuck: boolean;
   /** Degrees per second it turns toward the nearest opponent. */
   homing: number;
+  /** Comes back to its thrower; returning is set once it turns around. */
+  returns: boolean;
+  returning: boolean;
+  /** Slots it already hit (returning projectiles), and when each was last hurt (hazards). */
+  hitSlots: number[];
+  lastHit: number[];
+  rehit: number;
+  look: string;
   move: MoveId;
 }
 
 export type GameEvent =
   | { type: 'hit'; x: number; y: number; dmg: number; kb: number; attacker: number; target: number; armored?: boolean; move?: MoveId; rage?: boolean; tip?: boolean }
   | { type: 'warp'; slot: number; fromX: number; fromY: number; x: number; y: number }
+  | { type: 'reflect'; x: number; y: number; slot: number }
+  | { type: 'status'; slot: number; status: 'curse' | 'slow' | 'haste' | 'reload' }
   | { type: 'shieldhit'; x: number; y: number; target: number }
   | { type: 'shieldbreak'; target: number }
   | { type: 'parry'; x: number; y: number; target: number }
@@ -168,8 +187,8 @@ export type GameEvent =
   | { type: 'jump'; slot: number; air: boolean }
   | { type: 'land'; slot: number; hard: boolean }
   | { type: 'swing'; slot: number; move: MoveId }
-  | { type: 'shot'; slot: number; kind: ProjectileDef['kind'] }
-  | { type: 'explode'; x: number; y: number; r: number }
+  | { type: 'shot'; slot: number; kind: ProjectileDef['kind']; look: string }
+  | { type: 'explode'; x: number; y: number; r: number; look: string }
   | { type: 'respawn'; slot: number }
   | { type: 'go' }
   | { type: 'gameover'; winner: number };
@@ -248,6 +267,11 @@ export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: nu
       lastKb: 0,
       rage: 0,
       history: [],
+      cursed: 0,
+      slowed: 0,
+      hasted: 0,
+      ammo: def.ammo ?? 0,
+      cycle: 0,
       prev: { ...NO_INPUT },
       stats: { kos: 0, falls: 0, selfDestructs: 0, damageDealt: 0 },
     };
@@ -484,9 +508,23 @@ function busy(f: Fighter): boolean {
 
 const BUFFER_FRAMES = 6;
 
-function updateFighter(world: World, f: Fighter, input: Input): void {
+/** Left and right swapped (cursed). */
+function swapSides(i: Input): Input {
+  return { ...i, left: i.right, right: i.left, aimLeft: i.aimRight, aimRight: i.aimLeft };
+}
+
+/** Movement speed multiplier from slows and hastes. */
+function speedMult(f: Fighter): number {
+  return (f.slowed > 0 ? STATUS.slowMult : 1) * (f.hasted > 0 ? STATUS.hasteMult : 1);
+}
+
+function updateFighter(world: World, f: Fighter, rawInput: Input): void {
   if (f.action === 'out') return;
-  const press = pressedEdges(input, f.prev);
+  const input = f.cursed > 0 ? swapSides(rawInput) : rawInput;
+  const press = pressedEdges(input, f.cursed > 0 ? swapSides(f.prev) : f.prev);
+  if (f.cursed > 0) f.cursed--;
+  if (f.slowed > 0) f.slowed--;
+  if (f.hasted > 0) f.hasted--;
   for (const k of ['left', 'right', 'up', 'down'] as const) if (press[k]) f.pressFrame[k] = world.frame;
   f.downHeld = input.down ? f.downHeld + 1 : 0;
   if (press.shield) {
@@ -713,19 +751,25 @@ function ledgeSnap(world: World, f: Fighter, dir: number): void {
       const out = side * (f.x - edgeX);
       if (out < -halfW * 0.6 || out > halfW + LEDGE.reachOut) continue;
       if (!recovering && dir !== -side) continue;
-      f.x = edgeX - side * halfW * 0.6;
-      f.y = p.y;
-      f.vx = f.vy = f.lx = f.ly = 0;
-      f.grounded = true;
-      f.facing = side < 0 ? 1 : -1;
-      f.tumbling = false;
-      refreshAirOptions(f);
-      setAction(f, 'land', LEDGE.climbFrames);
-      f.invincible = Math.max(f.invincible, LEDGE.invincibleFrames);
-      world.events.push({ type: 'land', slot: f.slot, hard: false });
+      climbOnto(world, f, p, side);
       return;
     }
   }
+}
+
+/** Pull up onto a stage corner. */
+function climbOnto(world: World, f: Fighter, p: Platform, side: -1 | 1): void {
+  const edgeX = side < 0 ? p.x1 : p.x2;
+  f.x = edgeX - side * fighterDef(f).halfW * 0.6;
+  f.y = p.y;
+  f.vx = f.vy = f.lx = f.ly = 0;
+  f.grounded = true;
+  f.facing = side < 0 ? 1 : -1;
+  f.tumbling = false;
+  refreshAirOptions(f);
+  setAction(f, 'land', LEDGE.climbFrames);
+  f.invincible = Math.max(f.invincible, LEDGE.invincibleFrames);
+  world.events.push({ type: 'land', slot: f.slot, hard: false });
 }
 
 /** Grounded options from idle. Returns true when an action started. */
@@ -857,6 +901,12 @@ function startSpecial(world: World, f: Fighter, input: Input, press: Pressed): v
     return;
   }
   const id = pick('nspecial');
+  const ammo = fighterDef(f).ammo;
+  if (ammo !== undefined && moves.reload) {
+    // Out of shots: reload instead.
+    if (f.ammo <= 0) { startMove(world, f, 'reload', 'special'); return; }
+    f.ammo--;
+  }
   if (projectileLimitReached(world, f, moves[id])) return;
   startMove(world, f, id, 'special');
 }
@@ -918,6 +968,16 @@ function runMove(world: World, f: Fighter, input: Input, press: Pressed, dir: nu
     world.events.push({ type: 'jump', slot: f.slot, air: false });
   }
   if (m.teleport && fr === m.teleport.frame) teleport(world, f, input, m.teleport.dist);
+  if (m.shadowStep && fr === m.shadowStep.frame) shadowStep(world, f, m.shadowStep.range);
+  if (m.tether && fr === m.tether.frame && tether(world, f, m.tether.range)) return;
+  if (m.haste && fr === m.haste.frame) {
+    f.hasted = m.haste.frames;
+    world.events.push({ type: 'status', slot: f.slot, status: 'haste' });
+  }
+  if (m.reload && fr === m.reload.frame) {
+    f.ammo = def.ammo ?? 0;
+    world.events.push({ type: 'status', slot: f.slot, status: 'reload' });
+  }
   if (m.rewind && fr === m.rewind.frame) rewind(world, f, m.rewind.back);
   if (m.boost && fr === m.boost.frame) {
     if (dir !== 0) f.facing = dir > 0 ? 1 : -1;
@@ -933,7 +993,11 @@ function runMove(world: World, f: Fighter, input: Input, press: Pressed, dir: nu
     f.vy = -m.slam.speed;
     f.vx *= 0.3;
   }
-  if (m.projectile && fr === m.projectile.frame) spawnProjectile(world, f, m.projectile.def, m.charge ? f.charge / m.charge.max : 0);
+  if (m.projectile && fr === m.projectile.frame) {
+    const cyc = m.projectile.cycle;
+    const def = cyc?.length ? cyc[f.cycle++ % cyc.length]! : m.projectile.def;
+    spawnProjectile(world, f, def, m.charge ? f.charge / m.charge.max : 0);
+  }
   if (m.throwHit && fr === m.throwHit.frame) throwHit(world, f, m.throwHit);
 
   const slamming = !!m.slam && m.slam.speed > 0 && fr >= m.slam.frame;
@@ -988,6 +1052,47 @@ function rewind(world: World, f: Fighter, back: number): void {
   arrive(world, f, fromX, fromY);
 }
 
+/** Appear behind the nearest opponent in range, facing them; with nobody in range, dash forward. */
+function shadowStep(world: World, f: Fighter, range: number): void {
+  let best: Fighter | null = null;
+  let bestD = range;
+  for (const o of world.fighters) {
+    if (o === f || !hittable(o)) continue;
+    const d = Math.hypot(o.x - f.x, o.y - f.y);
+    if (d <= bestD) { bestD = d; best = o; }
+  }
+  if (!best) { f.vx = f.facing * 700; return; }
+  const fromX = f.x;
+  const fromY = f.y;
+  f.x = best.x - best.facing * (fighterDef(best).halfW + fighterDef(f).halfW + 6);
+  f.y = best.y;
+  f.facing = best.facing;
+  arrive(world, f, fromX, fromY);
+  f.grounded = best.grounded && !!standingOn(world, f);
+}
+
+/** Latch onto the nearest stage corner in range (off to the side of it) and pull up onto it. */
+function tether(world: World, f: Fighter, range: number): boolean {
+  const cy = centerY(f);
+  let pick: { p: Platform; side: -1 | 1 } | null = null;
+  let bestD = range;
+  for (const p of world.stage.platforms) {
+    if (!p.solid) continue;
+    for (const side of [-1, 1] as const) {
+      const edgeX = side < 0 ? p.x1 : p.x2;
+      if (side * (f.x - edgeX) < 0) continue; // Only from beside the stage.
+      const d = Math.hypot(f.x - edgeX, cy - p.y);
+      if (d <= bestD) { bestD = d; pick = { p, side }; }
+    }
+  }
+  if (!pick) return false;
+  const fromX = f.x;
+  const fromY = f.y;
+  climbOnto(world, f, pick.p, pick.side);
+  world.events.push({ type: 'warp', slot: f.slot, fromX, fromY, x: f.x, y: f.y });
+  return true;
+}
+
 function arrive(world: World, f: Fighter, fromX: number, fromY: number): void {
   f.vx = f.vy = f.lx = f.ly = 0;
   f.grounded = false;
@@ -1031,15 +1136,21 @@ function spawnProjectile(world: World, f: Fighter, p: ProjectileDef, charge: num
     blastR: p.blastR ?? 0,
     stuck: false,
     homing: p.homing ?? 0,
+    returns: !!p.returns,
+    returning: false,
+    hitSlots: [],
+    lastHit: [-9999, -9999, -9999, -9999],
+    rehit: p.rehit ?? 0,
+    look: p.look ?? p.kind,
     move: f.move!,
   });
-  world.events.push({ type: 'shot', slot: f.slot, kind: p.kind });
+  world.events.push({ type: 'shot', slot: f.slot, kind: p.kind, look: p.look ?? p.kind });
 }
 
 function walk(f: Fighter, def: FighterDef, dir: number): void {
   if (dir === 0) { friction(f); return; }
   f.facing = dir > 0 ? 1 : -1;
-  const target = dir * def.walkSpeed;
+  const target = dir * def.walkSpeed * speedMult(f);
   f.vx = approach(f.vx, target, MOVEMENT.groundAccel * DT);
 }
 
@@ -1048,7 +1159,7 @@ function friction(f: Fighter): void {
 }
 
 function airDrift(f: Fighter, def: FighterDef, dir: number, control: number): void {
-  const target = dir * def.airSpeed;
+  const target = dir * def.airSpeed * speedMult(f);
   if (dir === 0) f.vx = approach(f.vx, 0, def.airAccel * 0.35 * control * DT);
   else f.vx = approach(f.vx, target, def.airAccel * control * DT);
 }
@@ -1270,6 +1381,8 @@ function respawn(world: World, f: Fighter): void {
   f.stale = [];
   f.rage = 0;
   f.history = [];
+  f.cursed = f.slowed = f.hasted = 0;
+  f.ammo = fighterDef(f).ammo ?? 0;
   f.grabbing = -1;
   f.grabbedBy = -1;
   f.facing = x < 0 ? 1 : -1;
@@ -1358,23 +1471,33 @@ function hittable(f: Fighter): boolean {
 function updateProjectiles(world: World): void {
   const keep: Projectile[] = [];
   for (const p of world.projectiles) {
-    const owner = world.fighters[p.owner]!;
+    let owner = world.fighters[p.owner]!;
     if (owner.hitlag > 0 && p.kind === 'shot') { keep.push(p); continue; }
     p.age++;
     p.life--;
-    let gone = p.life <= 0;
-    if (p.homing > 0) steerProjectile(world, p);
+    let gone = p.life <= 0 && !p.returning;
+    // Yo-yos turn around partway, then fly back to the hand that threw them.
+    if (p.returns && !p.returning && p.age >= p.life) startReturn(p);
+    if (p.returning) {
+      const dx = owner.x - p.x;
+      const dy = centerY(owner) - p.y;
+      const d = Math.hypot(dx, dy);
+      const speed = Math.max(400, Math.hypot(p.vx, p.vy));
+      if (d < fighterDef(owner).hurtR + p.r || !isAlive(owner) || p.age > 600) { continue; } // Caught.
+      p.vx = (dx / d) * speed;
+      p.vy = (dy / d) * speed;
+    } else if (p.homing > 0) steerProjectile(world, p);
     if (!p.stuck) {
       p.vy -= p.gravity * DT;
       const prevY = p.y;
       p.x += p.vx * DT;
       p.y += p.vy * DT;
       // Stage contact.
-      if (p.kind !== 'gust') {
+      if (p.kind !== 'gust' && !p.returning) {
         for (const pl of world.stage.platforms) {
           if (p.x <= pl.x1 || p.x >= pl.x2) continue;
-          if (p.kind === 'mine') {
-            // Mines settle on whatever floor they fall onto.
+          if (p.kind === 'mine' || p.kind === 'hazard') {
+            // Mines and hazards settle on whatever floor they fall onto.
             if (p.vy <= 0 && prevY - p.r >= pl.y - 1 && p.y - p.r <= pl.y) {
               p.y = pl.y + p.r;
               p.vx = p.vy = 0;
@@ -1383,7 +1506,8 @@ function updateProjectiles(world: World): void {
             continue;
           }
           if (p.y - p.r < pl.y && p.y > pl.y - (pl.solid ? pl.depth : 4)) {
-            if (pl.solid || p.vy < 0) gone = true;
+            if (p.returns && pl.solid) startReturn(p);
+            else if (pl.solid || p.vy < 0) gone = true;
           }
         }
       }
@@ -1396,6 +1520,19 @@ function updateProjectiles(world: World): void {
         const dy = centerY(f) - p.y;
         const reach = fighterDef(f).hurtR + (p.kind === 'mine' ? p.blastR * 0.7 : p.r);
         if (dx * dx + dy * dy > reach * reach) continue;
+        // A reflecting move sends shots and throws back: they now belong to the reflector.
+        const fm = f.action === 'attack' && f.move ? moveOf(f) : null;
+        if (fm?.reflect && inRange(f.frame, fm.reflect) && (p.kind === 'shot' || p.kind === 'bomb') && !p.returning) {
+          p.owner = f.slot;
+          owner = f;
+          p.vx = -p.vx * REFLECT.speedMult;
+          if (p.kind === 'bomb') p.vy = Math.abs(p.vy) * 0.6 + 200;
+          p.life = Math.max(p.life, REFLECT.extraLife);
+          p.hit = { ...p.hit, dmg: p.hit.dmg * REFLECT.damageMult };
+          p.hitSlots = [];
+          world.events.push({ type: 'reflect', x: p.x, y: p.y, slot: f.slot });
+          break;
+        }
         if (p.kind === 'gust') {
           // Wind: pushes, no damage, no hitstun. Gets KO credit if it blows you away.
           if (f.invincible > 0) continue;
@@ -1412,6 +1549,21 @@ function updateProjectiles(world: World): void {
           gone = true;
           break;
         }
+        if (p.kind === 'hazard') {
+          // Burns whoever stands in it, every so often.
+          if (f.invincible > 0 || world.frame - (p.lastHit[f.slot] ?? -9999) < p.rehit) continue;
+          p.lastHit[f.slot] = world.frame;
+          strike(world, owner, f, p.hit, dx >= 0 ? 1 : -1, p.x, p.y, { melee: false, move: p.move });
+          continue;
+        }
+        if (p.returns) {
+          // Yo-yos hit each fighter once, then head home.
+          if (p.hitSlots.includes(f.slot)) continue;
+          p.hitSlots.push(f.slot);
+          if (f.invincible <= 0) strike(world, owner, f, p.hit, p.vx >= 0 ? 1 : -1, p.x, p.y, { melee: false, move: p.move });
+          startReturn(p);
+          continue;
+        }
         if (p.kind === 'shot') {
           if (f.invincible <= 0) strike(world, owner, f, p.hit, p.vx >= 0 ? 1 : -1, p.x, p.y, { melee: false, move: p.move });
         }
@@ -1427,6 +1579,11 @@ function updateProjectiles(world: World): void {
     }
   }
   world.projectiles = keep;
+}
+
+function startReturn(p: Projectile): void {
+  p.returning = true;
+  p.hitSlots = [];
 }
 
 /** Homing shots turn toward the nearest opponent, at a fixed speed. */
@@ -1452,7 +1609,7 @@ function steerProjectile(world: World, p: Projectile): void {
 }
 
 function explode(world: World, p: Projectile): void {
-  world.events.push({ type: 'explode', x: p.x, y: p.y, r: p.blastR });
+  world.events.push({ type: 'explode', x: p.x, y: p.y, r: p.blastR, look: p.look });
   const owner = world.fighters[p.owner]!;
   for (const f of world.fighters) {
     if (f.slot === p.owner || !hittable(f) || f.grabbedBy >= 0) continue;
@@ -1617,7 +1774,9 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
   target.fastFalling = false;
   target.lastKb = kb;
   target.tumbling = kb >= KNOCKBACK.tumbleKb;
-  setAction(target, 'hitstun', Math.max(8, Math.floor(kb * KNOCKBACK.hitstunPerKb)));
+  setAction(target, 'hitstun', Math.max(8, hit.stun ?? 0, Math.floor(kb * KNOCKBACK.hitstunPerKb)));
+  if (hit.curse) { target.cursed = Math.max(target.cursed, hit.curse); world.events.push({ type: 'status', slot: target.slot, status: 'curse' }); }
+  if (hit.slow) { target.slowed = Math.max(target.slowed, hit.slow); world.events.push({ type: 'status', slot: target.slot, status: 'slow' }); }
   // Getting hit gives your recovery back (except the air dodge).
   const def = fighterDef(target);
   target.upSpecialsLeft = def.upSpecials;

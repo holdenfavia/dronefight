@@ -1,6 +1,6 @@
 # dronefight
 
-Browser-based side-view platform fighter for a group of friends: an original cast (ADR-0072), up to 4 fighters, one player per keyboard plus CPUs (ADR-0071). TypeScript + Canvas 2D client, deterministic fight sim in `shared/fighter/`, Node WebSocket server with room codes. The old 3D FPV game (v1) is archived on the `archive/dronefight-v1` branch; see `docs/legacy/DRONEFIGHT_V1.md` (ADR-0070).
+Browser-based side-view platform fighter for a group of friends: an original cast of ten (ADR-0072, ADR-0073), up to 4 fighters per match, one player per keyboard plus CPUs (ADR-0071). TypeScript + Canvas 2D client, deterministic fight sim in `shared/fighter/`, Node WebSocket server with room codes. The old 3D FPV game (v1) is archived on the `archive/dronefight-v1` branch; see `docs/legacy/DRONEFIGHT_V1.md` (ADR-0070).
 
 The spec and the decision index below are loaded every session. They are the source of truth.
 

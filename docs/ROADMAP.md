@@ -24,6 +24,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] One player per keyboard: WASD move, arrows attack, Q specials, E shield, ? grab (ADR-0071)
 - [x] Attack looks: poses, trails, colors and hit effects per kind of attack
 - [x] Original cast instead of drones: Brawler, Blade, Spark, Titan, each with its own gimmick (ADR-0072)
+- [x] Six more fighters: Ninja, Gunslinger, Chef, Ghost, Yo-yo Kid, Bard (ADR-0073)
 - [ ] Real character art to replace the stick figures
 - [ ] Rebindable keys, in case two players' keys clash on some keyboards
 

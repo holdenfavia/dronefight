@@ -10,7 +10,9 @@ export type AttackPose =
   | 'punch' | 'kick' | 'backkick' | 'uppercut' | 'low' | 'spin' | 'stomp' | 'spike'
   | 'grab' | 'throw' | 'cast' | 'counter' | 'dash' | 'rise'
   // Sword swings (the Blade).
-  | 'slash' | 'overhead' | 'thrust' | 'upslash' | 'lowslash' | 'backslash' | 'downstab';
+  | 'slash' | 'overhead' | 'thrust' | 'upslash' | 'lowslash' | 'backslash' | 'downstab'
+  // Aiming a gun (the Gunslinger) and playing the guitar (the Bard).
+  | 'shoot' | 'strum';
 
 /**
  * The swing and hit effect.
@@ -109,6 +111,70 @@ const OWN: Record<FighterId, Partial<Record<MoveId, MoveLook>>> = {
     dspecial: { pose: 'stomp', fx: 'shock', color: ATTACK_COLORS.special.titan },
     dspecialAir: { pose: 'stomp', fx: 'spike', color: ATTACK_COLORS.spike },
     quake: { pose: 'stomp', fx: 'shock', color: ATTACK_COLORS.special.titan },
+  },
+  ninja: {
+    jab: { pose: 'punch', fx: 'puff', color: null },
+    jab3: { pose: 'kick', fx: 'arc', color: null },
+    fsmash: { pose: 'slash', fx: 'flame', color: ATTACK_COLORS.smash },
+    nspecial: { pose: 'throw', fx: 'energy', color: ATTACK_COLORS.special.ninja },
+    sspecial: { pose: 'slash', fx: 'energy', color: ATTACK_COLORS.special.ninja },
+    uspecial: { pose: 'rise', fx: 'energy', color: ATTACK_COLORS.special.ninja },
+    dspecial: { pose: 'throw', fx: 'energy', color: ATTACK_COLORS.special.ninja },
+  },
+  gunslinger: {
+    fsmash: { pose: 'shoot', fx: 'flame', color: ATTACK_COLORS.smash },
+    usmash: { pose: 'uppercut', fx: 'flame', color: ATTACK_COLORS.smash },
+    dsmash: { pose: 'shoot', fx: 'shock', color: ATTACK_COLORS.smash },
+    fair: { pose: 'shoot', fx: 'energy', color: null },
+    uair: { pose: 'uppercut', fx: 'energy', color: null },
+    dair: { pose: 'spike', fx: 'spike', color: ATTACK_COLORS.spike },
+    nspecial: { pose: 'shoot', fx: 'energy', color: ATTACK_COLORS.special.gunslinger },
+    reload: { pose: 'counter', fx: 'grab', color: ATTACK_COLORS.special.gunslinger },
+    sspecial: { pose: 'throw', fx: 'grab', color: ATTACK_COLORS.special.gunslinger },
+    uspecial: { pose: 'spike', fx: 'flame', color: ATTACK_COLORS.special.gunslinger },
+    dspecial: { pose: 'counter', fx: 'energy', color: ATTACK_COLORS.counter },
+    quickdraw: { pose: 'shoot', fx: 'flame', color: ATTACK_COLORS.special.gunslinger },
+  },
+  chef: {
+    jab3: { pose: 'punch', fx: 'arc', color: null },
+    ftilt: { pose: 'punch', fx: 'arc', color: null },
+    fsmash: { pose: 'overhead', fx: 'flame', color: ATTACK_COLORS.smash },
+    nspecial: { pose: 'throw', fx: 'arc', color: ATTACK_COLORS.special.chef },
+    sspecial: { pose: 'slash', fx: 'energy', color: ATTACK_COLORS.special.chef },
+    uspecial: { pose: 'rise', fx: 'wind', color: '#ffffff' },
+    dspecial: { pose: 'low', fx: 'flame', color: ATTACK_COLORS.special.chef },
+  },
+  ghost: {
+    jab: { pose: 'punch', fx: 'wind', color: null },
+    jab2: { pose: 'punch', fx: 'wind', color: null },
+    ftilt: { pose: 'slash', fx: 'wind', color: null },
+    nair: { pose: 'spin', fx: 'wind', color: null },
+    fsmash: { pose: 'cast', fx: 'flame', color: ATTACK_COLORS.smash },
+    nspecial: { pose: 'cast', fx: 'energy', color: ATTACK_COLORS.curse },
+    sspecial: { pose: 'slash', fx: 'wind', color: ATTACK_COLORS.special.ghost },
+    uspecial: { pose: 'rise', fx: 'wind', color: ATTACK_COLORS.special.ghost },
+    dspecial: { pose: 'counter', fx: 'wind', color: ATTACK_COLORS.special.ghost },
+  },
+  yoyo: {
+    jab: { pose: 'punch', fx: 'arc', color: null },
+    ftilt: { pose: 'punch', fx: 'arc', color: null },
+    dtilt: { pose: 'low', fx: 'arc', color: null },
+    nair: { pose: 'spin', fx: 'spin', color: null },
+    nspecial: { pose: 'punch', fx: 'energy', color: ATTACK_COLORS.special.yoyo },
+    sspecial: { pose: 'low', fx: 'zap', color: ATTACK_COLORS.special.yoyo },
+    uspecial: { pose: 'uppercut', fx: 'energy', color: ATTACK_COLORS.special.yoyo },
+    dspecial: { pose: 'spin', fx: 'spin', color: ATTACK_COLORS.special.yoyo },
+  },
+  bard: {
+    jab: { pose: 'thrust', fx: 'arc', color: null },
+    jab2: { pose: 'thrust', fx: 'arc', color: null },
+    ftilt: { pose: 'slash', fx: 'arc', color: null },
+    fsmash: { pose: 'overhead', fx: 'shock', color: ATTACK_COLORS.smash },
+    usmash: { pose: 'strum', fx: 'zap', color: ATTACK_COLORS.smash },
+    nspecial: { pose: 'strum', fx: 'energy', color: ATTACK_COLORS.special.bard },
+    sspecial: { pose: 'strum', fx: 'energy', color: ATTACK_COLORS.haste },
+    uspecial: { pose: 'rise', fx: 'shock', color: ATTACK_COLORS.special.bard },
+    dspecial: { pose: 'strum', fx: 'wind', color: ATTACK_COLORS.slow },
   },
 };
 

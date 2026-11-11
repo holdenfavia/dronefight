@@ -358,6 +358,109 @@ describe('fighter sim', () => {
     expect(b!.percent).toBeGreaterThan(15);
   });
 
+  it("the Gunslinger fires six shots, then reloads", () => {
+    const w = createWorld('helipad', [{ id: 'gunslinger' }, { id: 'titan' }]);
+    skipCountdown(w);
+    const f = w.fighters[0]!;
+    f.x = -300; f.facing = 1;
+    w.fighters[1]!.x = 600;
+    for (let n = 0; n < 6; n++) run(w, 20, (i) => [{ ...NO_INPUT, aimRight: true, special: i === 0 }]);
+    expect(f.ammo).toBe(0);
+    run(w, 2, (i) => [{ ...NO_INPUT, aimRight: true, special: i === 0 }]);
+    expect(f.move).toBe('reload');
+    run(w, 60);
+    expect(f.ammo).toBe(6);
+  });
+
+  it("the Chef's pan flip sends a shot back", () => {
+    const w = createWorld('helipad', [{ id: 'chef' }, { id: 'gunslinger' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = -100; a!.facing = 1;
+    b!.x = 200; b!.facing = -1;
+    run(w, 40, (i) => [
+      { ...NO_INPUT, right: i === 4, aimRight: i === 4, special: i === 4 },
+      { ...NO_INPUT, aimLeft: true, special: i === 0 },
+    ]);
+    expect(a!.percent).toBe(0);
+    expect(b!.percent).toBeGreaterThan(5);
+  });
+
+  it("the Chef's pot sits on the floor and burns whoever stands in it", () => {
+    const w = createWorld('helipad', [{ id: 'chef' }, { id: 'titan' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = 0; a!.facing = 1;
+    b!.x = 400;
+    run(w, 60, (i) => [{ ...NO_INPUT, aimDown: true, special: i === 0 }]);
+    const pot = w.projectiles.find((p) => p.kind === 'hazard');
+    expect(pot?.stuck).toBe(true);
+    b!.x = pot!.x;
+    run(w, 70);
+    expect(b!.percent).toBeGreaterThan(7);
+  });
+
+  it("the Ghost's wisp swaps its target's left and right", () => {
+    const w = createWorld('helipad', [{ id: 'ghost' }, { id: 'titan' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = -100; a!.facing = 1;
+    b!.x = 60;
+    run(w, 40, (i) => [{ ...NO_INPUT, aimRight: true, special: i === 0 }]);
+    expect(b!.cursed).toBeGreaterThan(0);
+    run(w, 30);
+    const x0 = b!.x;
+    run(w, 20, () => [NO_INPUT, { ...NO_INPUT, right: true }]);
+    expect(b!.x).toBeLessThan(x0 - 20);
+  });
+
+  it("the Yo-yo Kid's yo-yo comes back", () => {
+    const w = createWorld('helipad', [{ id: 'yoyo' }, { id: 'titan' }]);
+    skipCountdown(w);
+    const f = w.fighters[0]!;
+    f.x = -300; f.facing = 1;
+    w.fighters[1]!.x = 600;
+    run(w, 40, (i) => [{ ...NO_INPUT, aimRight: true, special: i === 0 }]);
+    const yo = w.projectiles[0]!;
+    expect(yo.returning).toBe(true);
+    run(w, 80);
+    expect(w.projectiles.length).toBe(0);
+  });
+
+  it("the Yo-yo Kid's tether pulls it onto the stage from far below", () => {
+    const w = createWorld('helipad', [{ id: 'yoyo' }, { id: 'titan' }]);
+    skipCountdown(w);
+    const f = w.fighters[0]!;
+    const main = w.stage.platforms[0]!;
+    f.x = main.x2 + 90; f.y = main.y - 200; f.grounded = false; f.action = 'air'; f.airJumpsLeft = 0;
+    run(w, 10, (i) => [{ ...NO_INPUT, left: true, aimUp: true, special: i === 0 }]);
+    expect(f.grounded).toBe(true);
+    expect(f.y).toBe(main.y);
+  });
+
+  it("the Ninja's shadow step appears behind its target", () => {
+    const w = createWorld('helipad', [{ id: 'ninja' }, { id: 'titan' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = -200; a!.facing = 1;
+    b!.x = 60; b!.facing = -1;
+    run(w, 30, (i) => [{ ...NO_INPUT, right: i === 0, aimRight: i === 0, special: i === 0 }]);
+    expect(a!.x).toBeGreaterThan(b!.x - 1);
+    expect(b!.percent).toBeGreaterThan(5);
+  });
+
+  it("the Bard's lullaby slows and its tempo song speeds up", () => {
+    const w = createWorld('helipad', [{ id: 'bard' }, { id: 'titan' }]);
+    skipCountdown(w);
+    const [a, b] = w.fighters;
+    a!.x = 0; a!.facing = 1;
+    b!.x = 70;
+    run(w, 50, (i) => [{ ...NO_INPUT, aimDown: true, special: i === 0 }]);
+    expect(b!.slowed).toBeGreaterThan(0);
+    run(w, 50, (i) => [{ ...NO_INPUT, left: i === 0, aimLeft: i === 0, special: i === 0 }]);
+    expect(a!.hasted).toBeGreaterThan(0);
+  });
+
   it('every fighter has its own moveset', () => {
     const sig = (id: (typeof FIGHTER_IDS)[number]) => JSON.stringify(FIGHTERS[id].moves);
     const sigs = new Set(FIGHTER_IDS.map(sig));

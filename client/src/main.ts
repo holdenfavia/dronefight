@@ -114,8 +114,10 @@ function playEvents(events: readonly GameEvent[]): void {
       case 'jump': sfx.jump(e.air, pan(world.fighters[e.slot]!.x)); break;
       case 'land': if (e.hard) sfx.land(pan(world.fighters[e.slot]!.x)); break;
       case 'swing': sfx.swing(pan(world.fighters[e.slot]!.x)); break;
-      case 'shot': sfx.shot(e.kind, pan(world.fighters[e.slot]!.x)); break;
-      case 'explode': sfx.explode(pan(e.x)); break;
+      case 'shot': sfx.shot(e.kind, e.look, pan(world.fighters[e.slot]!.x)); break;
+      case 'reflect': sfx.parry(pan(e.x)); break;
+      case 'status': sfx.status(e.status, pan(world.fighters[e.slot]!.x)); break;
+      case 'explode': if (e.look === 'smoke' || e.look === 'tomato' || e.look === 'pie') sfx.land(pan(e.x)); else sfx.explode(pan(e.x)); break;
       case 'go': sfx.beep(true); goTimer = GO_FRAMES; break;
       default: break;
     }
