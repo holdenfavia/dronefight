@@ -869,7 +869,7 @@ export class Ui {
       row('Fast fall · hold to drop through', k.down),
       row('Attack that way', k.arrows),
       row('Special: hold Space, or tap Space then an arrow', `${k.special} + ${k.arrows}`),
-      row('Smash: move key + same arrow, hold to charge', `${k.move} + ← →`),
+      row('Smash: hold Shift + arrow, hold the arrow to charge', `${k.smash} + ${k.arrows}`),
       row('Grab, then an arrow throws', k.grab),
       row('Shield · with a direction: dodge', k.shield),
     );

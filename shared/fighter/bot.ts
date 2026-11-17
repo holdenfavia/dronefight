@@ -227,16 +227,16 @@ function attackToward(bot: Bot, world: World, me: Fighter, target: Fighter, dx: 
   if (me.grounded) {
     // A smash when it would finish them, charged a little.
     const fs = def.moves.fsmash.hitboxes![0]!;
-    const charge: Frame[] = Array.from({ length: Math.floor(rand() * 18) }, () => ({ ...move(toward), ...aim(toward) }));
+    const charge: Frame[] = Array.from({ length: Math.floor(rand() * 18) }, () => ({ ...aim(toward), smash: true }));
     if (dy > 45) {
       const us = def.moves.usmash.hitboxes!.at(-1)!;
       bot.seq = wouldKo(world, target, us.dmg, us.bkb, us.kbg) && rand() < 0.6
-        ? [{}, { up: true, aimUp: true, attack: true }]
+        ? [{}, { aimUp: true, attack: true, smash: true }]
         : [{}, { aimUp: true, attack: true }];
       return;
     }
     if (wouldKo(world, target, fs.dmg * 1.15, fs.bkb, fs.kbg) && rand() < 0.65) {
-      bot.seq = [{}, { ...move(toward), ...aim(toward) }, ...charge];
+      bot.seq = [{}, { ...aim(toward), smash: true }, ...charge];
       return;
     }
     const r = rand();

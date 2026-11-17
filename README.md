@@ -39,7 +39,8 @@ Open http://localhost:5173 in Chrome or Edge and press **Fight!**
 | | Key |
 |---|---|
 | Move / jump / fast fall | A D / W / S |
-| Attack that way (move key + same arrow = smash, hold to charge) | ← → ↑ ↓ |
+| Attack that way | ← → ↑ ↓ |
+| Smash attack that way (hold the arrow to charge) | hold Shift + ← → ↑ ↓ |
 | Special that way | hold Space, or tap Space to prime the next arrow |
 | Shield / dodge | E (+ direction) |
 | Grab, then an arrow throws | ? |
