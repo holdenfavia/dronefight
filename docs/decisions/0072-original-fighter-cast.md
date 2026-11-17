@@ -1,6 +1,6 @@
 # ADR-0072: An original cast of fighters replaces the drones
 
-- **Status:** Accepted (roster grown to ten by ADR-0073, 2026-11-10)
+- **Status:** Accepted (roster grown to ten by ADR-0073, 2026-11-10; the Brawler's rage became the KO meter by ADR-0078, 2026-11-17)
 - **Date:** 2026-11-10
 - **Amends:** ADR-0070 (the theme and roster: no longer drones), ADR-0071 (the per-drone movesets)
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { botInput, createBot } from './bot.js';
-import { MATCH } from './config.js';
+import { MATCH, SIGNATURE } from './config.js';
 import { ALL_FIGHTER_IDS, FIGHTER_IDS, FIGHTERS, SECRET_FIGHTER_IDS } from './fighters.js';
 import { createWorld, knockback, NO_INPUT, step, type Fighter, type Input, type World } from './sim.js';
 import { STAGE_IDS } from './stages.js';
@@ -326,21 +326,27 @@ describe('fighter sim', () => {
     expect(hitAt(100)).toBeGreaterThan(hitAt(40) * 1.4);
   });
 
-  it("the Brawler's full rage makes its next smash hit much harder", () => {
-    const smash = (rage: number) => {
+  it("the Brawler's full KO meter turns Haymaker into a Knockout Punch (ADR-0078)", () => {
+    const punch = (meter: number) => {
       const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'titan' }]);
       skipCountdown(w);
       const [a, b] = w.fighters;
-      a!.x = 0; a!.facing = 1; a!.rage = rage;
-      b!.x = 50;
-      run(w, 30, (i) => [{ ...NO_INPUT, right: i < 2, aimRight: true, attack: i < 2 }]);
-      return { dmg: b!.percent, rage: a!.rage };
+      a!.x = 0; a!.facing = 1; a!.meter = meter;
+      b!.x = 60;
+      let move = '';
+      run(w, 40, (i) => {
+        if (i === 2) move = a!.move ?? '';
+        return [{ ...NO_INPUT, aimRight: true, special: i === 0 }];
+      });
+      return { dmg: b!.percent, meter: a!.meter, move, kb: b!.lastKb };
     };
-    const calm = smash(0);
-    const raging = smash(FIGHTERS.brawler.rage!.max);
-    expect(raging.dmg).toBeGreaterThan(calm.dmg * 1.4);
-    expect(raging.rage).toBe(0);
-    expect(calm.rage).toBeGreaterThan(0);
+    const plain = punch(0);
+    const ko = punch(SIGNATURE.ko.max);
+    expect(plain.move).toBe('nspecial');
+    expect(ko.move).toBe('kopunch');
+    expect(ko.kb).toBeGreaterThan(plain.kb * 1.5);
+    expect(ko.meter).toBe(0);
+    expect(plain.meter).toBeGreaterThan(0);
   });
 
   it("the Titan's sky carry grabs through a shield, leaps and slams", () => {

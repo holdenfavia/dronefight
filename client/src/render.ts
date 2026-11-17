@@ -2,10 +2,11 @@
 // backdrop, stage art, fighters, hit effects and screen shake.
 
 import { FIGHTERS, type MoveId } from '../../shared/fighter/fighters';
-import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, rageFraction, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
+import { INGREDIENTS, koFraction } from '../../shared/fighter/signature';
+import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
 import { SHIELD } from '../../shared/fighter/config';
 import type { Platform } from '../../shared/fighter/stages';
-import { ATTACK_COLORS, CAMERA, CPU_TAG, FEEL, PALETTE, SLOT_COLORS } from './config';
+import { ATTACK_COLORS, CAMERA, CPU_TAG, FEEL, PALETTE, SIGNATURE_LOOKS, SLOT_COLORS } from './config';
 import { moveLook, type MoveLook } from './moveLooks';
 import { drawFighterFigure } from './figures';
 import { cheatOn } from './cheats';
@@ -130,11 +131,12 @@ export class Renderer {
             this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 14, max: 14, size: 16 + e.dmg, color: ATTACK_COLORS.tip, kind: 'star', grow: 2.5 });
             this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 12, max: 12, size: 8, color: ATTACK_COLORS.tip, kind: 'ring', grow: 5 });
           }
-          if (e.rage) {
-            // The Brawler unloads its rage.
-            for (let i = 0; i < 30; i++) this.ember(e.x, e.y, i % 3 ? ATTACK_COLORS.rage : ATTACK_COLORS.smashCore, 600);
-            this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 26, max: 26, size: 24, color: ATTACK_COLORS.rage, kind: 'ring', grow: 10 });
-            this.popup(attacker, 'RAGE!', ATTACK_COLORS.rage);
+          if (e.sig) {
+            // A signature hit (ADR-0078): the Knockout Punch, Flash Cut, Payback, Assassinate.
+            const sc = SIGNATURE_LOOKS[e.sig] ?? { text: e.sig.toUpperCase(), color: ATTACK_COLORS.rage };
+            for (let i = 0; i < 30; i++) this.ember(e.x, e.y, i % 3 ? sc.color : ATTACK_COLORS.smashCore, 600);
+            this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 26, max: 26, size: 24, color: sc.color, kind: 'ring', grow: 10 });
+            this.popup(attacker, sc.text, sc.color);
             this.shake = Math.min(FEEL.maxShake, this.shake + 10);
           }
           this.shake = Math.min(FEEL.maxShake, this.shake + e.kb * FEEL.shakePerKb);
@@ -202,6 +204,42 @@ export class Renderer {
           this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 14, max: 14, size: 12, color: '#ffffff', kind: 'ring', grow: 5 });
           this.popup(world.fighters[e.slot]!, 'REFLECT!', '#ffffff');
           break;
+        case 'signature': {
+          // Meters filling, recipes served, possessions (ADR-0078).
+          const f = world.fighters[e.slot]!;
+          const on = e.target >= 0 ? world.fighters[e.target]! : f;
+          let text: string;
+          let color: string = ATTACK_COLORS.special[f.id] ?? '#fff';
+          switch (e.kind) {
+            case 'koReady': text = 'KO READY'; color = ATTACK_COLORS.rage; break;
+            case 'kopunch': text = 'KNOCKOUT!'; color = ATTACK_COLORS.rage; break;
+            case 'edge': text = `EDGE ${f.meter}`; break;
+            case 'flashcut': text = 'FLASH CUT'; break;
+            case 'fizzle': text = 'FIZZLE'; color = '#9aa4b0'; break;
+            case 'undo': text = 'UNDONE'; break;
+            case 'payback': text = 'PAYBACK'; break;
+            case 'mark': text = `MARK ${on.tags[e.slot] ?? 0}`; break;
+            case 'assassinate': text = 'ASSASSINATE'; break;
+            case 'golden': text = 'GOLDEN'; break;
+            case 'ingredient': text = (INGREDIENTS[f.pantry[f.pantry.length - 1] ?? 0] ?? '').toUpperCase(); break;
+            case 'chili': text = 'CHILI! HITS BURN'; break;
+            case 'soup': text = 'TOMATO SOUP! DAZING FOOD'; break;
+            case 'stew': text = 'STEW! HEALED'; break;
+            case 'feast': text = "CHEF'S SPECIAL!"; break;
+            case 'haunt': text = `HAUNT ${on.tags[e.slot] ?? 0}`; color = ATTACK_COLORS.curse; break;
+            case 'possess': text = 'POSSESSED!'; color = ATTACK_COLORS.curse; break;
+            case 'trick': text = `x${f.chain} TRICK`; break;
+            case 'groove': text = 'ON BEAT'; break;
+            case 'offbeat': text = 'OFF BEAT'; color = '#9aa4b0'; break;
+            case 'encore': text = 'ENCORE!'; break;
+            default: text = '';
+          }
+          // Small, frequent ones only get a ring; the big moments get a popup.
+          const quiet = e.kind === 'groove' || e.kind === 'offbeat' || e.kind === 'mark' || e.kind === 'haunt';
+          if (text && !quiet) this.popup(on, text, color);
+          this.particles.push({ x: on.x, y: centerY(on), vx: 0, vy: 0, life: 18, max: 18, size: quiet ? 8 : 14, color, kind: 'ring', grow: quiet ? 2.5 : 6 });
+          break;
+        }
         case 'status': {
           const f = world.fighters[e.slot]!;
           const text = { curse: 'CURSED', slow: 'SLOWED', haste: 'TEMPO!', reload: 'RELOADED' }[e.status];
@@ -472,7 +510,7 @@ export class Renderer {
       const pv = prev[f.slot];
       const x = pv && f.hitlag === 0 ? pv.x + (f.x - pv.x) * alpha : f.x;
       const y = pv && f.hitlag === 0 ? pv.y + (f.y - pv.y) * alpha : f.y;
-      this.drawFighter(f, x, y);
+      this.drawFighter(world, f, x, y);
     }
     this.drawParticles(true);
     this.drawKoBeams();
@@ -838,6 +876,18 @@ export class Renderer {
         ctx.restore();
         return true;
       }
+      case 'goldbullet': {
+        // The Gunslinger's last round: thick, golden, glowing.
+        const d = Math.sign(p.vx) || 1;
+        ctx.strokeStyle = '#ffd23faa';
+        ctx.lineWidth = r * 1.6;
+        ctx.beginPath();
+        ctx.moveTo(px - d * r * 9, py);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+        ball('#fff2b0', r * 1.3);
+        return true;
+      }
       case 'bullet': {
         const d = Math.sign(p.vx) || 1;
         ctx.strokeStyle = color + '88';
@@ -977,7 +1027,7 @@ export class Renderer {
     return { tilt: lean * 0.28, spin: 0 };
   }
 
-  private drawFighter(f: Fighter, x: number, y: number): void {
+  private drawFighter(world: World, f: Fighter, x: number, y: number): void {
     const ctx = this.ctx;
     const def = fighterDef(f);
     const color = SLOT_COLORS[f.slot] ?? '#fff';
@@ -1018,7 +1068,7 @@ export class Renderer {
     const thrust = f.grounded ? 0.2 : f.vy > 0 ? 1 : 0.5;
     drawFighterFigure(ctx, f.id, {
       color,
-      rage: rageFraction(f),
+      rage: koFraction(f),
       phase: this.time * (0.9 + thrust * 0.8) + f.slot,
       blink: this.blinkAmount(f.slot) + (f.action === 'hitstun' || f.action === 'shieldbreak' ? 1 : 0),
       flash: this.flashes.get(f.slot) ?? 0,
@@ -1055,8 +1105,8 @@ export class Renderer {
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.stroke();
     }
-    // Full rage: a flickering red aura.
-    if (rageFraction(f) >= 1) {
+    // Full KO meter: a flickering red aura.
+    if (koFraction(f) >= 1) {
       const r = (def.hurtR + 10 + Math.sin(this.time * 0.6) * 3) * s;
       const g = ctx.createRadialGradient(cx, cy, r * 0.4, cx, cy, r);
       g.addColorStop(0, ATTACK_COLORS.rage + '00');
@@ -1121,11 +1171,53 @@ export class Renderer {
         ctx.stroke();
       }
     }
+    // Marks (Ninja) and haunting (Ghost) on this fighter: little pips over the head, in the marker's color (ADR-0078).
+    let pipRow = 0;
+    for (let slot = 0; slot < f.tags.length; slot++) {
+      const n = f.tags[slot] ?? 0;
+      const by = world.fighters[slot];
+      if (!n || !by) continue;
+      const haunt = by.id === 'ghost';
+      const py = headY - (16 + pipRow * 9) * s;
+      for (let i = 0; i < n; i++) {
+        const px = cx + (i - (n - 1) / 2) * 9 * s;
+        ctx.fillStyle = haunt ? ATTACK_COLORS.curse : ATTACK_COLORS.special.ninja;
+        ctx.strokeStyle = SLOT_COLORS[slot] ?? '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        if (haunt) ctx.arc(px, py, 3.2 * s, 0, Math.PI * 2);
+        else { ctx.moveTo(px, py - 4 * s); ctx.lineTo(px + 4 * s, py); ctx.lineTo(px, py + 4 * s); ctx.lineTo(px - 4 * s, py); ctx.closePath(); }
+        ctx.fill();
+        ctx.stroke();
+      }
+      pipRow++;
+    }
+    // Possessed: purple strings up to the Ghost pulling them.
+    if (f.puppet > 0) {
+      const g = world.fighters[f.puppetBy];
+      if (g) {
+        ctx.save();
+        ctx.strokeStyle = ATTACK_COLORS.curse + 'cc';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.lineDashOffset = -this.time;
+        for (const off of [-0.5, 0.5]) {
+          ctx.beginPath();
+          ctx.moveTo(cx + off * def.halfW * s, headY);
+          ctx.lineTo(this.sx(g.x), this.sy(centerY(g)));
+          ctx.stroke();
+        }
+        ctx.restore();
+        if (this.time % 20 < 12) this.label('MASH!', cx, headY - 30 * s, ATTACK_COLORS.curse);
+      }
+    }
+    // Chef's recipe: a steam wisp while it lasts.
+    if (f.buff > 0 && this.time % 6 === 0) this.ember(f.x + (Math.random() - 0.5) * def.halfW, f.y + def.height, f.buffKind === 'chili' ? '#ff4a2a' : f.buffKind === 'feast' ? '#ffd23f' : '#ffffff', 40);
     // Gunslinger: shots left.
     const maxAmmo = def.ammo;
     if (maxAmmo) {
       for (let i = 0; i < maxAmmo; i++) {
-        ctx.fillStyle = i < f.ammo ? ATTACK_COLORS.special.gunslinger : '#00000055';
+        ctx.fillStyle = i < f.ammo ? (i === 0 ? '#fff2b0' : ATTACK_COLORS.special.gunslinger) : '#00000055';
         ctx.fillRect(cx + (i - maxAmmo / 2) * 6 * s, cy + (def.height / 2 + 6) * s, 4 * s, 4 * s);
       }
     }

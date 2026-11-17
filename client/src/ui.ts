@@ -5,6 +5,7 @@ import { BOT_LEVEL_NAMES, type BotLevel } from '../../shared/fighter/bot';
 import { MATCH } from '../../shared/fighter/config';
 import { ALL_FIGHTER_IDS, FIGHTER_IDS, FIGHTERS, type FighterId } from '../../shared/fighter/fighters';
 import type { MatchRules, World } from '../../shared/fighter/sim';
+import { INGREDIENTS, signatureGauge, type SignatureGauge } from '../../shared/fighter/signature';
 import { activeCheats, cheatRules, CHEATS, enterCode, onCheatsChange, rosterIds } from './cheats';
 import { STAGE_IDS, STAGES, type StageId } from '../../shared/fighter/stages';
 import { MENU, SLOT_COLORS } from './config';
@@ -157,7 +158,7 @@ export class Ui {
   readonly root: HTMLElement;
   private hud: HTMLElement;
   private banner: HTMLElement;
-  private cards: { percent: HTMLElement; stocks: HTMLElement; card: HTMLElement; lastPercent: number; lastStocks: number }[] = [];
+  private cards: { percent: HTMLElement; stocks: HTMLElement; sig: HTMLElement; card: HTMLElement; lastPercent: number; lastStocks: number; lastSig: string }[] = [];
   private setup: MatchSetup;
   private screen: HTMLElement | null = null;
   private screenId: ScreenId | null = null;
@@ -962,11 +963,12 @@ export class Ui {
       const icon = previewCanvas(f.id, SLOT_COLORS[f.slot]!, 44);
       const percent = el('div', 'percent', '0%');
       const stocks = el('div', 'stocks');
+      const sig = el('div', 'sig');
       const info = el('div', 'info');
-      info.append(percent, el('div', 'name', names[f.slot]!), stocks);
+      info.append(percent, el('div', 'name', names[f.slot]!), stocks, sig);
       card.append(icon, info);
       bar.appendChild(card);
-      this.cards.push({ percent, stocks, card, lastPercent: -1, lastStocks: -1 });
+      this.cards.push({ percent, stocks, sig, card, lastPercent: -1, lastStocks: -1, lastSig: '' });
     }
     this.hud.classList.add('on');
     this.updateHud(world);
@@ -997,6 +999,13 @@ export class Ui {
         c.stocks.replaceChildren(...Array.from({ length: Math.max(0, f.stocks) }, () => el('span', 'stock')));
         c.card.classList.toggle('out', f.stocks <= 0);
       }
+      // The fighter's signature meter (ADR-0078), redrawn only when it changes.
+      const g = signatureGauge(world, f);
+      const key = g ? JSON.stringify(g) : '';
+      if (key !== c.lastSig) {
+        c.lastSig = key;
+        renderGauge(c.sig, g);
+      }
     });
   }
 
@@ -1013,6 +1022,42 @@ export class Ui {
       if (text) this.banner.classList.add('pop');
     }
   }
+}
+
+const INGREDIENT_ICONS = ['🍅', '🌶️', '🥩'];
+
+/** One signature meter: name, then pips, pantry slots or a bar, then a short note. */
+function renderGauge(box: HTMLElement, g: SignatureGauge | null): void {
+  box.classList.toggle('ready', !!g?.ready);
+  if (!g) { box.replaceChildren(); return; }
+  const parts: HTMLElement[] = [el('span', 'sig-label', g.label)];
+  if (g.items) {
+    const row = el('span', 'sig-items');
+    for (const i of g.items) {
+      const slot = el('span', `sig-item ${i < 0 ? 'empty' : ''}`, i < 0 ? '' : INGREDIENT_ICONS[i] ?? '');
+      if (i >= 0) slot.title = INGREDIENTS[i] ?? '';
+      row.appendChild(slot);
+    }
+    parts.push(row);
+  } else if (g.pips) {
+    const row = el('span', 'sig-pips');
+    for (let i = 0; i < g.pips; i++) row.appendChild(el('span', `sig-pip ${i < (g.lit ?? 0) ? 'lit' : ''}`));
+    parts.push(row);
+  } else {
+    const barEl = el('span', 'sig-bar');
+    const fill = el('span', 'sig-fill');
+    fill.style.width = `${Math.round(Math.max(0, Math.min(1, g.value)) * 100)}%`;
+    barEl.appendChild(fill);
+    parts.push(barEl);
+  }
+  if (g.beat !== undefined) {
+    const dot = el('span', 'sig-beat');
+    dot.style.opacity = String(0.25 + 0.75 * g.beat);
+    dot.style.transform = `scale(${0.7 + 0.5 * g.beat})`;
+    parts.push(dot);
+  }
+  if (g.text) parts.push(el('span', 'sig-text', g.text));
+  box.replaceChildren(...parts);
 }
 
 /** Plain notice that the game is unfinished (owner's request, 2026-11-10). */
