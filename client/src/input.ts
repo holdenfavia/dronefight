@@ -1,5 +1,5 @@
 // Keyboard controls (ADR-0071): one player per keyboard. WASD moves; the arrow keys attack in their
-// direction. Space makes arrows specials: hold it, or tap it once to prime the next arrow (owner's idea,
+// direction; hold Shift for smash attacks (ADR-0080). Space makes arrows specials: hold it, or tap it once to prime the next arrow (owner's idea,
 // 2026-11-10; moved from Q to Space by ADR-0074). E shields and dodges, ? (the slash key) grabs. Key codes are physical keys, so the layout works
 // the same on any keyboard language.
 
@@ -10,6 +10,8 @@ const AIM = { aimLeft: 'ArrowLeft', aimRight: 'ArrowRight', aimUp: 'ArrowUp', ai
 const SPECIAL_KEY = 'Space';
 const GRAB_KEY = 'Slash'; // The ? key.
 const SHIELD_KEY = 'KeyE';
+/** Held, it makes grounded arrow attacks smash attacks (ADR-0080). Either Shift works. */
+const SMASH_KEYS = ['ShiftLeft', 'ShiftRight'] as const;
 
 /** Short labels for the controls card. */
 export const KEY_LABELS = {
@@ -20,9 +22,10 @@ export const KEY_LABELS = {
   special: 'Space',
   grab: '?',
   shield: 'E',
+  smash: 'Shift',
 } as const;
 
-const GAME_KEYS = new Set<string>([...Object.values(MOVE), ...Object.values(AIM), SPECIAL_KEY, GRAB_KEY, SHIELD_KEY]);
+const GAME_KEYS = new Set<string>([...Object.values(MOVE), ...Object.values(AIM), SPECIAL_KEY, GRAB_KEY, SHIELD_KEY, ...SMASH_KEYS]);
 
 export class Keyboard {
   private down = new Set<string>();
@@ -85,6 +88,7 @@ export class Keyboard {
     }
     input.grab = this.down.has(GRAB_KEY);
     input.shield = this.down.has(SHIELD_KEY);
+    input.smash = SMASH_KEYS.some((code) => this.down.has(code));
     if (this.mirrored) {
       [input.left, input.right] = [input.right, input.left];
       [input.aimLeft, input.aimRight] = [input.aimRight, input.aimLeft];

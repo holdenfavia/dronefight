@@ -3,7 +3,7 @@
 
 import {
   AIRDODGE, CHEAT_RULES, DODGE, DROP_HOLD_FRAMES, DT, GRAB, HITLAG, KNOCKBACK, KNOCKDOWN, LEDGE, MATCH, MOVEMENT, PARRY, SHIELD,
-  REFLECT, REWIND_HISTORY_FRAMES, SHIELD_DROP_FRAMES, STATUS, SMASH, STALE, TECH, UP_SPECIAL_JUMP_REFUND,
+  REFLECT, REWIND_HISTORY_FRAMES, SHIELD_DROP_FRAMES, STATUS, STALE, TECH, UP_SPECIAL_JUMP_REFUND,
 } from './config.js';
 import { FIGHTERS, type FighterDef, type FighterId, type Hitbox, type HitStats, type MoveDef, type MoveId, type ProjectileDef } from './fighters.js';
 import { nextRandom } from './rng.js';
@@ -12,7 +12,8 @@ import { STAGES, type Platform, type StageDef, type StageId } from './stages.js'
 /**
  * One frame of controls. left/right/up/down move (up jumps). attack and special are held while an
  * attack or special is asked for; the aim keys say which way (arrow keys). With no aim key held,
- * attacks and specials take their direction from movement.
+ * attacks and specials take their direction from movement. smash is held (Shift) to make a grounded
+ * attack a smash attack.
  */
 export interface Input {
   left: boolean;
@@ -27,12 +28,13 @@ export interface Input {
   special: boolean;
   shield: boolean;
   grab: boolean;
+  smash: boolean;
 }
 
 export const NO_INPUT: Input = {
   left: false, right: false, up: false, down: false,
   attack: false, aimLeft: false, aimRight: false, aimUp: false, aimDown: false,
-  special: false, shield: false, grab: false,
+  special: false, shield: false, grab: false, smash: false,
 };
 
 const INPUT_KEYS = Object.keys(NO_INPUT) as (keyof Input)[];
@@ -115,8 +117,6 @@ export interface Fighter {
   dodgeDash: boolean;
   /** Damage the counter strikes back with. */
   counterDmg: number;
-  /** World frame each direction key last went down (for smash attacks). */
-  pressFrame: { left: number; right: number; up: number; down: number };
   /** Presses made while busy, replayed when free (a few frames of input buffer). */
   buffer: Pressed | null;
   bufferFrame: number;
@@ -276,7 +276,6 @@ export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: nu
       airJumpFrame: -9999,
       dodgeDash: false,
       counterDmg: 0,
-      pressFrame: { left: -9999, right: -9999, up: -9999, down: -9999 },
       buffer: null,
       bufferFrame: -9999,
       stale: [],
@@ -433,35 +432,27 @@ function aimOf(input: Input, press: Pressed): { x: number; y: number } | null {
   return fromKeys(press.aimLeft, press.aimRight, press.aimUp, press.aimDown) ?? fromKeys(input.aimLeft, input.aimRight, input.aimUp, input.aimDown);
 }
 
-/** The direction key was pressed just now (within the smash window). */
-function fresh(world: World, f: Fighter, key: 'left' | 'right' | 'up' | 'down'): boolean {
-  return world.frame - f.pressFrame[key] <= SMASH.flickFrames;
-}
-
-function dirKey(x: number): 'left' | 'right' {
-  return x > 0 ? 'right' : 'left';
-}
-
 /**
  * Which grounded attack an attack press means. Aimed (arrow keys): up = up tilt, down = down tilt,
- * forward = jab; holding the same way with the movement keys = forward tilt; pressing that movement key
- * together with the arrow = smash. Not aimed: the old "attack + direction" rules.
+ * forward = jab; holding a movement key = forward tilt that way. With smash held (Shift), the arrow's
+ * direction is a smash attack instead (ADR-0080). Not aimed: the old "attack + direction" rules.
  */
-function groundAttack(world: World, f: Fighter, input: Input, press: Pressed): { move: MoveId; facing?: 1 | -1 } {
+function groundAttack(f: Fighter, input: Input, press: Pressed): { move: MoveId; facing?: 1 | -1 } {
   const aim = aimOf(input, press);
   const mx = stickX(input);
+  const smash = input.smash;
   if (aim) {
-    if (aim.y > 0) return { move: input.up && fresh(world, f, 'up') ? 'usmash' : 'utilt' };
-    if (aim.y < 0) return { move: input.down && fresh(world, f, 'down') ? 'dsmash' : 'dtilt' };
+    if (aim.y > 0) return { move: smash ? 'usmash' : 'utilt' };
+    if (aim.y < 0) return { move: smash ? 'dsmash' : 'dtilt' };
     const face: 1 | -1 = aim.x > 0 ? 1 : -1;
-    if (mx === face) return { move: fresh(world, f, dirKey(face)) ? 'fsmash' : 'ftilt', facing: face };
-    if (mx === -face) return { move: 'ftilt', facing: face };
+    if (smash) return { move: 'fsmash', facing: face };
+    if (mx !== 0) return { move: 'ftilt', facing: face };
     return { move: 'jab', facing: face };
   }
-  if (input.up) return { move: 'utilt' };
-  if (input.down) return { move: fresh(world, f, 'down') ? 'dsmash' : 'dtilt' };
-  if (mx !== 0) return { move: fresh(world, f, dirKey(mx)) ? 'fsmash' : 'ftilt', facing: mx > 0 ? 1 : -1 };
-  return { move: 'jab' };
+  if (input.up) return { move: smash ? 'usmash' : 'utilt' };
+  if (input.down) return { move: smash ? 'dsmash' : 'dtilt' };
+  if (mx !== 0) return { move: smash ? 'fsmash' : 'ftilt', facing: mx > 0 ? 1 : -1 };
+  return { move: smash ? 'fsmash' : 'jab', facing: f.facing };
 }
 
 /** Which aerial an attack press means. Aimed forward with no movement held is the neutral aerial. */
@@ -555,7 +546,6 @@ function updateFighter(world: World, f: Fighter, rawInput: Input): void {
   if (f.cursed > 0) f.cursed--;
   if (f.slowed > 0) f.slowed--;
   if (f.hasted > 0) f.hasted--;
-  for (const k of ['left', 'right', 'up', 'down'] as const) if (press[k]) f.pressFrame[k] = world.frame;
   f.downHeld = input.down ? f.downHeld + 1 : 0;
   if (press.shield) {
     // Teching: one press in the window counts; mashing (pressing again too soon) doesn't.
@@ -617,7 +607,7 @@ function updateFighter(world: World, f: Fighter, rawInput: Input): void {
     case 'jumpsquat': {
       // Up attacks and up special during jumpsquat replace the jump; other attacks wait for the air.
       if (press.attack) {
-        const g = groundAttack(world, f, input, press);
+        const g = groundAttack(f, input, press);
         if (g.move === 'utilt' || g.move === 'usmash') { startMove(world, f, g.move, 'attack'); break; }
       }
       if (press.special && specialDir(f, input, press).up) { startUpSpecial(world, f); break; }
@@ -662,7 +652,7 @@ function updateFighter(world: World, f: Fighter, rawInput: Input): void {
       // Out of shield: jump, grab, up special, up smash.
       if (press.grab) { startMove(world, f, 'grab', null); break; }
       if (press.special && specialDir(f, input, press).up) { startUpSpecial(world, f); break; }
-      if (press.attack && press.aimUp) { startMove(world, f, 'usmash', 'attack'); break; }
+      if (press.attack && press.aimUp && input.smash) { startMove(world, f, 'usmash', 'attack'); break; }
       if (press.up) { setAction(f, 'jumpsquat'); break; }
       break;
     case 'shieldstun':
@@ -805,7 +795,7 @@ function climbOnto(world: World, f: Fighter, p: Platform, side: -1 | 1): void {
 /** Grounded options from idle. Returns true when an action started. */
 function groundActions(world: World, f: Fighter, input: Input, press: Pressed, dir: number): boolean {
   if (press.attack) {
-    const g = groundAttack(world, f, input, press);
+    const g = groundAttack(f, input, press);
     if (g.facing) f.facing = g.facing;
     startMove(world, f, g.move, 'attack');
     return true;
@@ -981,7 +971,7 @@ function runMove(world: World, f: Fighter, input: Input, press: Pressed, dir: nu
   // Jab combos: press again (a press during hitlag counts too).
   if (m.next && f.frame >= m.next.from && def.moves[m.next.move]) {
     const p = withBuffer(world, f, press);
-    if (p.attack && groundAttack(world, f, input, p).move === 'jab') { startMove(world, f, m.next.move, 'attack'); return; }
+    if (p.attack && groundAttack(f, input, p).move === 'jab') { startMove(world, f, m.next.move, 'attack'); return; }
   }
   if (inRange(f.frame, m.invincible)) f.invincible = Math.max(f.invincible, 1);
 
