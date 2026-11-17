@@ -17,6 +17,7 @@ A **side-view platform fighter** to play with friends: an original cast of ten f
 
 - Hits add **percent damage**; the higher it is, the further the fighter flies when hit (knockback grows with damage and shrinks with weight). Holding a direction when hit bends the launch a little.
 - Knocked past a **blast zone** (off any edge of the screen) = lose a **stock**; respawn on a hovering pad with brief invincibility. Last fighter with stocks wins. Default 3 stocks (1–5).
+- **Free-for-all** or **Teams** (ADR-0081): up to four teams (Red, Blue, Green, Yellow), teammates wear the team color, friendly fire off unless turned on, last team with stocks wins. Online, each player picks their own team; the host sets the mode, friendly fire and CPUs' teams.
 - KO credit goes to whoever last hit you within 8 s.
 - Hitlag (a freeze on every hit), screen shake and sparks scale with how hard the hit was.
 
@@ -69,7 +70,7 @@ Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Cr
 
 ## Look and sound
 
-- Bright sky over a parallax city, orange / black / white (ADR-0007), characters drawn as **placeholder stick figures** for now (owner's request), each with its own silhouette (gloves, sword, pointed hat, huge build, hood, cowboy hat, toque, sheet, cap and yo-yo, guitar) in the player's color (one color per slot: orange, lime, cyan, pink; ADR-0026). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
+- Bright sky over a parallax city, orange / black / white (ADR-0007), characters drawn as **placeholder stick figures** for now (owner's request), each with its own silhouette (gloves, sword, pointed hat, huge build, hood, cowboy hat, toque, sheet, cap and yo-yo, guitar) in the player's color (one color per slot: orange, lime, cyan, pink; ADR-0026; the team color in team battles, ADR-0081). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
 - Menus: bold condensed caps on dark translucent panels with orange accents (ADR-0039).
 - All sound synthesized in the browser (ADR-0010).
 

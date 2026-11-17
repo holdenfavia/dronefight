@@ -36,6 +36,27 @@ export function isInputBits(v: unknown): v is number {
 export interface MemberPick {
   fighter: FighterId;
   ready: boolean;
+  /** Team for team battles (ADR-0081), 0 to TEAM_COUNT - 1. */
+  team: number;
+}
+
+/** Team battles (ADR-0081): up to four teams, one color each. */
+export const TEAM_COUNT = 4;
+
+export function isTeam(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < TEAM_COUNT;
+}
+
+/** The team a newcomer starts on: the smaller of the first two, so 2v2 and 1v1 need no clicks. */
+export function startingTeam(taken: readonly number[]): number {
+  const a = taken.filter((t) => t === 0).length;
+  const b = taken.filter((t) => t === 1).length;
+  return b < a ? 1 : 0;
+}
+
+/** Distinct sides in a fight: each team once, each fighter with no team once. */
+export function sideCount(teams: readonly number[]): number {
+  return new Set(teams.map((t, i) => (t >= 0 ? `t${t}` : `s${i}`))).size;
 }
 
 /** The host's match settings. Each CPU is one entry: its level. */
@@ -45,10 +66,16 @@ export interface RoomSettings {
   cpus: BotLevel[];
   /** The host's rule cheats (ADR-0077), used by the whole room. Unset = none. */
   rules?: MatchRules;
+  /** Team battle instead of a free-for-all (ADR-0081). */
+  teams?: boolean;
+  /** In a team battle, teammates can hurt each other. Off by default. */
+  friendlyFire?: boolean;
+  /** Each CPU's team, in the same order as `cpus`. */
+  cpuTeams?: number[];
 }
 
 export function defaultRoomSettings(): RoomSettings {
-  return { stage: 'rooftop', stocks: MATCH.defaultStocks, cpus: [], rules: {} };
+  return { stage: 'rooftop', stocks: MATCH.defaultStocks, cpus: [], rules: {}, teams: false, friendlyFire: false, cpuTeams: [] };
 }
 
 export function isFighterId(v: unknown): v is FighterId {
@@ -68,6 +95,8 @@ export interface MatchFighter {
   fighter: FighterId;
   member: number;
   level: BotLevel | 0;
+  /** Team in a team battle (ADR-0081), -1 in a free-for-all. */
+  team: number;
 }
 
 export interface MatchStart {

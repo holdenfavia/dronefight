@@ -2,5 +2,5 @@
 
 export const GAME_NAME = 'dronefight';
 /** Bump when the room protocol changes. */
-export const PROTOCOL_VERSION = 105;
+export const PROTOCOL_VERSION = 106;
 export const DEFAULT_SERVER_PORT = 8787;

@@ -6,7 +6,7 @@ import { INGREDIENTS, koFraction } from '../../shared/fighter/signature';
 import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
 import { SHIELD } from '../../shared/fighter/config';
 import type { Platform } from '../../shared/fighter/stages';
-import { ATTACK_COLORS, CAMERA, CPU_TAG, FEEL, PALETTE, SIGNATURE_LOOKS, SLOT_COLORS } from './config';
+import { ATTACK_COLORS, CAMERA, CPU_TAG, FEEL, PALETTE, SIGNATURE_LOOKS, fighterColor } from './config';
 import { moveLook, type MoveLook } from './moveLooks';
 import { drawFighterFigure } from './figures';
 import { cheatOn } from './cheats';
@@ -118,7 +118,7 @@ export class Renderer {
         case 'hit': {
           const attacker = world.fighters[e.attacker]!;
           const look = e.move ? moveLook(attacker.id, e.move) : null;
-          const color = look?.color ?? SLOT_COLORS[e.attacker] ?? '#fff';
+          const color = look?.color ?? fighterColor(world.fighters[e.attacker]!);
           if (look) this.hitFx(look, e.x, e.y, color, e.kb, e.dmg);
           const n = 6 + Math.min(20, Math.floor(e.dmg * 1.4));
           for (let i = 0; i < n; i++) this.spark(e.x, e.y, color, 200 + e.kb * 6);
@@ -153,7 +153,7 @@ export class Renderer {
         }
         case 'grab': {
           const f = world.fighters[e.target]!;
-          this.particles.push({ x: f.x, y: centerY(f), vx: 0, vy: 0, life: 10, max: 10, size: 12, color: SLOT_COLORS[e.slot] ?? '#fff', kind: 'ring', grow: 3 });
+          this.particles.push({ x: f.x, y: centerY(f), vx: 0, vy: 0, life: 10, max: 10, size: 12, color: fighterColor(world.fighters[e.slot]!), kind: 'ring', grow: 3 });
           break;
         }
         case 'tech':
@@ -169,7 +169,7 @@ export class Renderer {
           break;
         }
         case 'ko': {
-          const color = SLOT_COLORS[e.slot] ?? '#fff';
+          const color = fighterColor(world.fighters[e.slot]!);
           this.koBeams.push({ x: e.x, y: e.y, color, life: 50 });
           for (let i = 0; i < 40; i++) this.spark(e.x, e.y, i % 2 ? color : '#fff', 900);
           this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 30, max: 30, size: 30, color, kind: 'ring', grow: 16 });
@@ -265,7 +265,7 @@ export class Renderer {
         }
         case 'respawn': {
           const f = world.fighters[e.slot]!;
-          this.particles.push({ x: f.x, y: centerY(f), vx: 0, vy: 0, life: 24, max: 24, size: 10, color: SLOT_COLORS[e.slot] ?? '#fff', kind: 'ring', grow: 5 });
+          this.particles.push({ x: f.x, y: centerY(f), vx: 0, vy: 0, life: 24, max: 24, size: 10, color: fighterColor(world.fighters[e.slot]!), kind: 'ring', grow: 5 });
           break;
         }
         default:
@@ -471,12 +471,12 @@ export class Renderer {
       if (!isAlive(f)) { this.trails.delete(f.slot); continue; }
       if (f.hitlag > 0) continue;
       const look = f.action === 'attack' && f.move ? moveLook(f.id, f.move) : null;
-      if (look) this.swingFx(f, look, look.color ?? SLOT_COLORS[f.slot] ?? '#fff');
+      if (look) this.swingFx(f, look, look.color ?? fighterColor(f));
       else if (this.trails.has(f.slot)) { const t = this.trails.get(f.slot)!; t.shift(); if (!t.length) this.trails.delete(f.slot); }
       // Charging: sparks gather in.
       const charge = chargeFraction(f);
       if (charge > 0 && this.time % 2 === 0) {
-        const c = look?.color ?? SLOT_COLORS[f.slot] ?? '#fff';
+        const c = look?.color ?? fighterColor(f);
         const a = Math.random() * Math.PI * 2;
         const d = 40 + Math.random() * 20;
         const cy0 = centerY(f);
@@ -504,7 +504,7 @@ export class Renderer {
     this.drawStage(world);
     this.drawParticles(false);
     this.lastWorld = world;
-    for (const p of world.projectiles) this.drawProjectile(p, ATTACK_COLORS.special[world.fighters[p.owner]!.id] ?? SLOT_COLORS[p.owner] ?? '#fff', SLOT_COLORS[p.owner] ?? '#fff');
+    for (const p of world.projectiles) this.drawProjectile(p, ATTACK_COLORS.special[world.fighters[p.owner]!.id] ?? fighterColor(world.fighters[p.owner]!), fighterColor(world.fighters[p.owner]!));
     for (const f of world.fighters) {
       if (!isAlive(f)) continue;
       const pv = prev[f.slot];
@@ -1036,7 +1036,7 @@ export class Renderer {
   private drawFighter(world: World, f: Fighter, x: number, y: number): void {
     const ctx = this.ctx;
     const def = fighterDef(f);
-    const color = SLOT_COLORS[f.slot] ?? '#fff';
+    const color = fighterColor(f);
     const cx = this.sx(x);
     const cy = this.sy(y + def.height / 2);
     const s = this.scale;
@@ -1188,7 +1188,7 @@ export class Renderer {
       for (let i = 0; i < n; i++) {
         const px = cx + (i - (n - 1) / 2) * 9 * s;
         ctx.fillStyle = haunt ? ATTACK_COLORS.curse : ATTACK_COLORS.special.ninja;
-        ctx.strokeStyle = SLOT_COLORS[slot] ?? '#fff';
+        ctx.strokeStyle = fighterColor(by);
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         if (haunt) ctx.arc(px, py, 3.2 * s, 0, Math.PI * 2);
@@ -1493,7 +1493,7 @@ export class Renderer {
       if (x > -10 && x < this.w + 10 && y > -10 && y < this.h + 10) continue;
       const bx = Math.max(m, Math.min(this.w - m, x));
       const by = Math.max(m, Math.min(this.h - m, y));
-      const color = SLOT_COLORS[f.slot] ?? '#fff';
+      const color = fighterColor(f);
       ctx.fillStyle = 'rgba(20,21,22,0.75)';
       ctx.strokeStyle = color;
       ctx.lineWidth = 3;

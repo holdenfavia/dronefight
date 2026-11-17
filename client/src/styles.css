@@ -533,3 +533,23 @@ kbd {
 /* Online lobby (ADR-0076): settings only the host can change show as plain labels to everyone else. */
 .options .option.static, .slot div.kind { text-transform: uppercase; letter-spacing: 0.05em; }
 .options .option.static { cursor: default; opacity: 0.75; display: inline-flex; align-items: center; }
+
+/* Team battles (ADR-0081): a pill in the team's color on each player panel, the team under each HUD card. */
+.team-pill {
+  margin-top: 6px;
+  padding: 3px 10px;
+  border: 2px solid var(--team);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--team) 25%, transparent);
+  color: #fff;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.team-pill:hover:not(.static) { background: var(--team); color: var(--ink); }
+.team-pill.static { cursor: default; }
+.card .team-name { font-size: 0.7rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; color: var(--slot); }
+.team-winners { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; }

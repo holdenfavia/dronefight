@@ -4,7 +4,7 @@
 import type { BotLevel } from '../../shared/fighter/bot.js';
 import { MATCH } from '../../shared/fighter/config.js';
 import { FIGHTER_IDS, type FighterId } from '../../shared/fighter/fighters.js';
-import { defaultRoomSettings, serializeWorld, SNAPSHOT_EVERY_FRAMES, type MatchFighter, type RoomSettings } from '../../shared/online.js';
+import { defaultRoomSettings, serializeWorld, sideCount, SNAPSHOT_EVERY_FRAMES, startingTeam, type MatchFighter, type RoomSettings } from '../../shared/online.js';
 import { MAX_ROOM_MEMBERS, type ClientMessage, type RoomMember, type ServerMessage } from '../../shared/protocol.js';
 import { OnlineMatch } from './match.js';
 
@@ -19,6 +19,8 @@ interface Member {
   peer: Peer;
   fighter: FighterId;
   ready: boolean;
+  /** Team for team battles (ADR-0081). */
+  team: number;
 }
 
 interface Room {
@@ -74,6 +76,7 @@ export class RoomManager {
         const m = at.room.members.get(at.id)!;
         m.fighter = msg.fighter;
         m.ready = msg.ready;
+        if (msg.team !== undefined) m.team = msg.team;
         this.broadcastRoom(at.room);
         return;
       }
@@ -93,6 +96,9 @@ export class RoomManager {
         const members = [...at.room.members.values()];
         if (!members.every((m) => m.ready)) return send(peer, { t: 'error', code: 'not-ready', message: 'Not everyone is ready' });
         if (members.length + at.room.settings.cpus.length < 2) return send(peer, { t: 'error', code: 'not-ready', message: 'Add a CPU or wait for a friend' });
+        if (at.room.settings.teams && sideCount([...members.map((m) => m.team), ...(at.room.settings.cpuTeams ?? [])]) < 2) {
+          return send(peer, { t: 'error', code: 'not-ready', message: 'Everyone is on one team: put someone on another' });
+        }
         this.startMatch(at.room);
         return;
       }
@@ -156,12 +162,15 @@ export class RoomManager {
   }
 
   private startMatch(room: Room): void {
-    const fighters: MatchFighter[] = [...room.members.entries()].map(([id, m]) => ({ fighter: m.fighter, member: id, level: 0 }));
-    for (const level of room.settings.cpus) {
-      if (fighters.length >= MATCH.maxFighters) break;
-      fighters.push({ fighter: FIGHTER_IDS[Math.floor(this.random() * FIGHTER_IDS.length)]!, member: -1, level });
-    }
-    const start = { stage: room.settings.stage, stocks: room.settings.stocks, seed: Math.floor(this.random() * 1e9), fighters, rules: { ...room.settings.rules } };
+    const s = room.settings;
+    const teams = !!s.teams;
+    const fighters: MatchFighter[] = [...room.members.entries()].map(([id, m]) => ({ fighter: m.fighter, member: id, level: 0, team: teams ? m.team : -1 }));
+    s.cpus.forEach((level, i) => {
+      if (fighters.length >= MATCH.maxFighters) return;
+      fighters.push({ fighter: FIGHTER_IDS[Math.floor(this.random() * FIGHTER_IDS.length)]!, member: -1, level, team: teams ? (s.cpuTeams?.[i] ?? 0) : -1 });
+    });
+    const rules = { ...s.rules, friendlyFire: teams && !!s.friendlyFire };
+    const start = { stage: s.stage, stocks: s.stocks, seed: Math.floor(this.random() * 1e9), fighters, rules };
     room.match = new OnlineMatch(start);
     room.pending = [];
     for (const [id, m] of room.members) send(m.peer, { t: 'match', start, you: room.match.slotOf(id) });
@@ -181,7 +190,8 @@ export class RoomManager {
     const id = room.nextId++;
     const taken = new Set([...room.members.values()].map((m) => m.fighter));
     const fighter = FIGHTER_IDS.find((f) => !taken.has(f)) ?? FIGHTER_IDS[0]!;
-    room.members.set(id, { peer, fighter, ready: false });
+    const team = startingTeam([...room.members.values()].map((m) => m.team));
+    room.members.set(id, { peer, fighter, ready: false, team });
     this.peerRoom.set(peer, { room, id });
     trimCpus(room);
     this.broadcastRoom(room);
@@ -195,7 +205,7 @@ export class RoomManager {
   }
 
   private broadcastRoom(room: Room): void {
-    const members: RoomMember[] = [...room.members.entries()].map(([id, m]) => ({ id, fighter: m.fighter, ready: m.ready }));
+    const members: RoomMember[] = [...room.members.entries()].map(([id, m]) => ({ id, fighter: m.fighter, ready: m.ready, team: m.team }));
     const host = hostOf(room);
     for (const [id, m] of room.members) {
       send(m.peer, { t: 'room', code: room.code, you: id, members, host, settings: room.settings, playing: !!room.match });
@@ -228,7 +238,10 @@ function hostOf(room: Room): number {
 /** People come first: drop CPUs that no longer fit in four fighters. */
 function trimCpus(room: Room): void {
   const room4 = MATCH.maxFighters - room.members.size;
-  if (room.settings.cpus.length > room4) room.settings = { ...room.settings, cpus: room.settings.cpus.slice(0, Math.max(0, room4)) };
+  if (room.settings.cpus.length > room4) {
+    const n = Math.max(0, room4);
+    room.settings = { ...room.settings, cpus: room.settings.cpus.slice(0, n), cpuTeams: room.settings.cpuTeams?.slice(0, n) };
+  }
 }
 
 function send(peer: Peer, msg: ServerMessage): void {

@@ -3,6 +3,15 @@
 /** One color per slot: orange and lime first (ADR-0026). */
 export const SLOT_COLORS = ['#ff6a13', '#9be22d', '#2ec5ff', '#ff4fa3'] as const;
 
+/** Team battles (ADR-0081): every fighter on a team wears its color instead of the slot's. */
+export const TEAM_COLORS = ['#ff3b30', '#2f7bff', '#36d15a', '#ffd21f'] as const;
+export const TEAM_NAMES = ['Red', 'Blue', 'Green', 'Yellow'] as const;
+
+/** A fighter's color: its team's in a team battle, otherwise its slot's. */
+export function fighterColor(f: { slot: number; team: number }): string {
+  return (f.team >= 0 ? TEAM_COLORS[f.team] : SLOT_COLORS[f.slot]) ?? '#fff';
+}
+
 /** Menu layout (ADR-0075). */
 export const MENU = {
   /** Height (px) of a fighter portrait on the roster grid. */

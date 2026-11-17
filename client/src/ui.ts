@@ -8,7 +8,8 @@ import type { MatchRules, World } from '../../shared/fighter/sim';
 import { INGREDIENTS, signatureGauge, type SignatureGauge } from '../../shared/fighter/signature';
 import { activeCheats, cheatRules, CHEATS, enterCode, onCheatsChange, rosterIds } from './cheats';
 import { STAGE_IDS, STAGES, type StageId } from '../../shared/fighter/stages';
-import { MENU, SLOT_COLORS } from './config';
+import { MENU, SLOT_COLORS, TEAM_COLORS, TEAM_NAMES, fighterColor } from './config';
+import { isTeam, sideCount, startingTeam, TEAM_COUNT } from '../../shared/online';
 import { drawFighterFigure } from './figures';
 import { KEY_LABELS } from './input';
 import type { NetClient } from './net';
@@ -22,12 +23,18 @@ export interface SlotSetup {
   level: BotLevel;
   /** Picked the Random tile: a fighter is drawn when the match starts. */
   random?: boolean;
+  /** Team in a team battle (ADR-0081). */
+  team: number;
 }
 
 export interface MatchSetup {
   slots: SlotSetup[];
   stage: StageId;
   stocks: number;
+  /** Team battle instead of a free-for-all (ADR-0081). */
+  teams: boolean;
+  /** In a team battle, teammates can hurt each other. */
+  friendlyFire: boolean;
 }
 
 const STORAGE_KEY = 'dronefight.brawl.setup.v3';
@@ -41,13 +48,15 @@ const FEEDBACK_MAX_TEXT = 1000;
 export function defaultSetup(): MatchSetup {
   return {
     slots: [
-      { kind: 'p1', fighter: 'brawler', level: 2 },
-      { kind: 'bot', fighter: 'blade', level: 2 },
-      { kind: 'off', fighter: 'spark', level: 2 },
-      { kind: 'off', fighter: 'titan', level: 2 },
+      { kind: 'p1', fighter: 'brawler', level: 2, team: 0 },
+      { kind: 'bot', fighter: 'blade', level: 2, team: 1 },
+      { kind: 'off', fighter: 'spark', level: 2, team: 0 },
+      { kind: 'off', fighter: 'titan', level: 2, team: 1 },
     ],
     stage: 'rooftop',
     stocks: MATCH.defaultStocks,
+    teams: false,
+    friendlyFire: false,
   };
 }
 
@@ -62,6 +71,10 @@ export function loadSetup(): MatchSetup {
       if (!ALL_FIGHTER_IDS.includes(slot.fighter) || !['p1', 'bot', 'off'].includes(slot.kind) || ![1, 2, 3].includes(slot.level)) return d;
       slot.random = slot.random === true;
     }
+    // Setups saved before team battles (ADR-0081): two teams, alternating.
+    s.slots.forEach((slot, i) => { if (!isTeam(slot.team)) slot.team = i % 2; });
+    s.teams = s.teams === true;
+    s.friendlyFire = s.friendlyFire === true;
     s.stocks = Math.max(1, Math.min(5, Math.round(s.stocks) || d.stocks));
     return s;
   } catch {
@@ -93,6 +106,14 @@ export function slotLabel(slot: SlotSetup): string {
 /** The short tag over a fighter's head and on its HUD card: "P1", or "CPU 3" for a Hard CPU (ADR-0075). */
 export function slotTag(slot: SlotSetup): string {
   return slot.kind === 'bot' ? `CPU ${slot.level}` : 'P1';
+}
+
+/** Why this setup can't start yet, or null when it can. */
+function setupProblem(s: MatchSetup): string | null {
+  const on = s.slots.filter((x) => x.kind !== 'off');
+  if (on.length < 2) return 'Add at least two fighters';
+  if (s.teams && sideCount(on.map((x) => x.team)) < 2) return 'Everyone is on one team: put someone on another';
+  return null;
 }
 
 /** Cycle a slot through You, CPU (three levels) and Off. */
@@ -566,7 +587,7 @@ export class Ui {
 
     const panels = el('div', 'slots');
     s.slots.forEach((slot, i) => {
-      const color = SLOT_COLORS[i]!;
+      const color = s.teams ? TEAM_COLORS[slot.team]! : SLOT_COLORS[i]!;
       const card = el('div', `slot ${slot.kind === 'off' ? 'off' : ''} ${slot.kind === 'bot' ? 'cpu' : ''} ${i === this.editSlot && slot.kind !== 'off' ? 'editing' : ''}`);
       card.style.setProperty('--slot', color);
       const kind = this.button('kind', slotLabel(slot), () => {
@@ -578,6 +599,12 @@ export class Ui {
       });
       kind.title = 'Click to change who plays this fighter';
       card.appendChild(kind);
+      if (slot.kind !== 'off' && s.teams) {
+        card.appendChild(this.teamButton(slot.team, () => {
+          slot.team = (slot.team + 1) % TEAM_COUNT;
+          this.commit();
+        }));
+      }
       if (slot.kind !== 'off') {
         const def = FIGHTERS[slot.fighter];
         card.append(
@@ -608,12 +635,24 @@ export class Ui {
       s.stocks = (s.stocks % 5) + 1;
       this.commit();
     });
+    const modeBtn = this.button('option', s.teams ? 'Mode: Teams' : 'Mode: Free-for-all', () => {
+      s.teams = !s.teams;
+      this.commit();
+    });
+    modeBtn.title = 'Free-for-all, or teams: the last team with fighters left wins';
+    const ffBtn = this.button(`option ${s.friendlyFire ? 'on' : ''}`, `Friendly fire: ${s.friendlyFire ? 'On' : 'Off'}`, () => {
+      s.friendlyFire = !s.friendlyFire;
+      this.commit();
+    });
+    ffBtn.title = 'Whether your hits land on your own teammates';
     const fight = el('button', 'fight', 'Fight!');
-    const players = s.slots.filter((x) => x.kind !== 'off').length;
-    fight.disabled = players < 2;
-    fight.title = players < 2 ? 'Add at least two fighters' : 'Enter';
+    const problem = setupProblem(s);
+    fight.disabled = !!problem;
+    fight.title = problem ?? 'Enter';
     fight.onclick = () => this.fight();
-    options.append(stageBtn, el('div', 'stage-blurb', STAGES[s.stage].blurb), stocksBtn, fight);
+    options.append(stageBtn, el('div', 'stage-blurb', STAGES[s.stage].blurb), stocksBtn, modeBtn);
+    if (s.teams) options.appendChild(ffBtn);
+    options.appendChild(fight);
     page.appendChild(options);
     page.appendChild(el('div', 'menu-hint', 'Enter to fight · Esc back · Controls are in the main menu and the pause screen'));
     this.show('select', page);
@@ -697,8 +736,20 @@ export class Ui {
     this.showSelect();
   }
 
+  /** A small pill showing a fighter's team; click to move to the next team (ADR-0081). */
+  private teamButton(team: number, next: (() => void) | null): HTMLElement {
+    const label = `${TEAM_NAMES[team]} team`;
+    const b = next ? this.button('team-pill', label, next) : el('div', 'team-pill static', label);
+    b.style.setProperty('--team', TEAM_COLORS[team]!);
+    if (next) {
+      b.title = 'Click to change team';
+      b.addEventListener('click', (e) => e.stopPropagation());
+    }
+    return b;
+  }
+
   fight(): void {
-    if (this.setup.slots.filter((x) => x.kind !== 'off').length < 2) return;
+    if (setupProblem(this.setup)) return;
     saveSetup(this.setup);
     this.handlers.onFight(this.setup);
   }
@@ -770,9 +821,9 @@ export class Ui {
       return m.id === room.you ? net.me : m;
     };
     const asSlot = (i: number): SlotSetup | null => {
-      if (i < members.length) return { kind: 'p1', fighter: pickOf(i).fighter, level: 2 };
+      if (i < members.length) return { kind: 'p1', fighter: pickOf(i).fighter, level: 2, team: pickOf(i).team };
       const level = settings.cpus[i - members.length];
-      return level ? { kind: 'bot', fighter: 'brawler', level, random: true } : null;
+      return level ? { kind: 'bot', fighter: 'brawler', level, random: true, team: 0 } : null;
     };
     page.appendChild(this.rosterGrid(
       asSlot,
@@ -783,19 +834,24 @@ export class Ui {
 
     // The host's rule cheats (MOONJUMP, ONEHIT) are the room's rules (ADR-0077).
     if (isHost && !room.playing && !sameRules(settings.rules, cheatRules())) net.setSettings({ ...settings, rules: cheatRules() });
-    const setCpus = (cpus: BotLevel[]) => net.setSettings({ ...settings, cpus });
+    const cpuTeams = settings.cpus.map((_c, i) => settings.cpuTeams?.[i] ?? 0);
+    const setCpus = (cpus: BotLevel[], teams = cpuTeams) => net.setSettings({ ...settings, cpus, cpuTeams: teams.slice(0, cpus.length) });
+    const teamOn = !!settings.teams;
     const panels = el('div', 'slots');
     for (let i = 0; i < MATCH.maxFighters; i++) {
-      const color = SLOT_COLORS[i]!;
-      const card = el('div', 'slot');
-      card.style.setProperty('--slot', color);
       const cpuIndex = i - members.length;
       const cpu = cpuIndex >= 0 ? settings.cpus[cpuIndex] : undefined;
+      const team = i < members.length ? pickOf(i).team : cpu ? cpuTeams[cpuIndex]! : -1;
+      const color = teamOn && team >= 0 ? TEAM_COLORS[team]! : SLOT_COLORS[i]!;
+      const card = el('div', 'slot');
+      card.style.setProperty('--slot', color);
       if (i < members.length) {
         const m = members[i]!;
         const p = pickOf(i);
         const who = m.id === room.you ? 'You' : `Player ${i + 1}`;
         card.appendChild(el('div', 'kind', `${who}${m.id === host ? ' · Host' : ''}`));
+        // You pick your own team; nobody else can move you (ADR-0081).
+        if (teamOn) card.appendChild(this.teamButton(p.team, m.id === room.you && !room.playing ? () => net.setPick({ team: (p.team + 1) % TEAM_COUNT, ready: false }) : null));
         card.append(previewCanvas(p.fighter, color), el('div', 'fighter-name', FIGHTERS[p.fighter].name));
         card.appendChild(el('div', `ready-tag ${p.ready ? 'on' : ''}`, p.ready ? 'Ready' : 'Picking…'));
       } else if (cpu) {
@@ -803,17 +859,28 @@ export class Ui {
         const kind = isHost
           ? this.button('kind', `CPU · ${BOT_LEVEL_NAMES[cpu]}`, () => {
             const cpus = [...settings.cpus];
+            const teams = [...cpuTeams];
             if (cpu < 3) cpus[cpuIndex] = (cpu + 1) as BotLevel;
-            else cpus.splice(cpuIndex, 1);
-            setCpus(cpus);
+            else { cpus.splice(cpuIndex, 1); teams.splice(cpuIndex, 1); }
+            setCpus(cpus, teams);
           })
           : el('div', 'kind', `CPU · ${BOT_LEVEL_NAMES[cpu]}`);
         if (isHost) kind.title = 'Click to change the level (after Hard: remove)';
-        card.append(kind, randomArt('panel-art'), el('div', 'fighter-name', 'Random'), el('div', 'blurb', 'Picked when the fight starts'));
+        card.appendChild(kind);
+        // The host sets the CPUs' teams.
+        if (teamOn) {
+          card.appendChild(this.teamButton(cpuTeams[cpuIndex]!, isHost ? () => {
+            const teams = [...cpuTeams];
+            teams[cpuIndex] = (teams[cpuIndex]! + 1) % TEAM_COUNT;
+            setCpus(settings.cpus, teams);
+          } : null));
+        }
+        card.append(randomArt('panel-art'), el('div', 'fighter-name', 'Random'), el('div', 'blurb', 'Picked when the fight starts'));
       } else {
         card.classList.add('off');
         if (isHost && cpuIndex === settings.cpus.length) {
-          const add = this.button('kind', 'Add CPU', () => setCpus([...settings.cpus, 2]));
+          // A new CPU joins the smaller of the first two teams.
+          const add = this.button('kind', 'Add CPU', () => setCpus([...settings.cpus, 2], [...cpuTeams, startingTeam([...members.map((_m, j) => pickOf(j).team), ...cpuTeams])]));
           card.append(add, el('div', 'empty', `Or wait for a friend… code ${room.code}`));
         } else {
           card.append(el('div', 'kind', 'Open'), el('div', 'empty', `Waiting for a friend… code ${room.code}`));
@@ -828,7 +895,8 @@ export class Ui {
     const leave = this.button('option', 'Leave room', () => net.leave());
     const everyone = members.every((_m, i) => pickOf(i).ready);
     const fighters = members.length + settings.cpus.length;
-    const canStart = everyone && fighters >= 2 && !room.playing;
+    const oneTeam = teamOn && sideCount([...members.map((_m, i) => pickOf(i).team), ...cpuTeams]) < 2;
+    const canStart = everyone && fighters >= 2 && !oneTeam && !room.playing;
     const stage = isHost
       ? this.button('option', `Stage: ${STAGES[settings.stage].name}`, () => net.setSettings({ ...settings, stage: STAGE_IDS[(STAGE_IDS.indexOf(settings.stage) + 1) % STAGE_IDS.length]! }))
       : el('div', 'option static', `Stage: ${STAGES[settings.stage].name}`);
@@ -837,8 +905,18 @@ export class Ui {
       : el('div', 'option static', `Stocks: ${settings.stocks}`);
     const start = this.button('fight', 'Start', () => net.start());
     start.disabled = !canStart;
-    start.title = canStart ? 'Start the fight' : fighters < 2 ? 'Add a CPU or wait for a friend' : 'Waiting for everyone to be ready';
-    options.append(stage, stocks, ready, isHost ? start : el('span', ''), leave);
+    start.title = canStart ? 'Start the fight' : fighters < 2 ? 'Add a CPU or wait for a friend' : oneTeam ? 'Everyone is on one team: put someone on another' : 'Waiting for everyone to be ready';
+    const modeText = teamOn ? 'Mode: Teams' : 'Mode: Free-for-all';
+    const mode = isHost
+      ? this.button('option', modeText, () => net.setSettings({ ...settings, teams: !teamOn, cpuTeams }))
+      : el('div', 'option static', modeText);
+    const ffText = `Friendly fire: ${settings.friendlyFire ? 'On' : 'Off'}`;
+    const ff = isHost
+      ? this.button(`option ${settings.friendlyFire ? 'on' : ''}`, ffText, () => net.setSettings({ ...settings, friendlyFire: !settings.friendlyFire }))
+      : el('div', 'option static', ffText);
+    options.append(stage, stocks, mode);
+    if (teamOn) options.appendChild(ff);
+    options.append(ready, isHost ? start : el('span', ''), leave);
     page.appendChild(options);
     const rules = rulesText(settings.rules);
     if (rules) page.appendChild(el('div', 'cheat-rules', `Cheats on (host's): ${rules}`));
@@ -921,19 +999,25 @@ export class Ui {
     const page = el('div', 'screen modal');
     const panel = el('div', 'panel results');
     const winner = world.winner >= 0 ? world.fighters[world.winner]! : null;
-    const title = el('h2', '', winner ? `${names[winner.slot]} wins!` : 'No contest');
-    if (winner) title.style.color = SLOT_COLORS[winner.slot]!;
+    // A team battle crowns the team, and shows every fighter on it (ADR-0081).
+    const team = world.winnerTeam;
+    const title = el('h2', '', team >= 0 ? `${TEAM_NAMES[team]} team wins!` : winner ? `${names[winner.slot]} wins!` : 'No contest');
+    if (winner) title.style.color = fighterColor(winner);
     panel.appendChild(title);
-    if (winner) panel.appendChild(previewCanvas(winner.id, SLOT_COLORS[winner.slot]!, 140));
+    if (team >= 0) {
+      const row = el('div', 'team-winners');
+      for (const f of world.fighters) if (f.team === team) row.appendChild(previewCanvas(f.id, fighterColor(f), 100));
+      panel.appendChild(row);
+    } else if (winner) panel.appendChild(previewCanvas(winner.id, fighterColor(winner), 140));
     const table = el('table', 'stats');
     const head = el('tr');
     for (const h of ['', 'KOs', 'Falls', 'Damage dealt']) head.appendChild(el('th', '', h));
     table.appendChild(head);
-    const order = [...world.fighters].sort((a, b) => b.stocks - a.stocks || b.stats.kos - a.stats.kos);
+    const order = [...world.fighters].sort((a, b) => (b.team === team ? 1 : 0) - (a.team === team ? 1 : 0) || b.stocks - a.stocks || b.stats.kos - a.stats.kos);
     for (const f of order) {
       const tr = el('tr');
       const name = el('td', 'who', names[f.slot]!);
-      name.style.color = SLOT_COLORS[f.slot]!;
+      name.style.color = fighterColor(f);
       tr.append(name, el('td', '', String(f.stats.kos)), el('td', '', String(f.stats.falls)), el('td', '', `${Math.round(f.stats.damageDealt)}%`));
       table.appendChild(tr);
     }
@@ -959,13 +1043,17 @@ export class Ui {
     bar.replaceChildren();
     for (const f of world.fighters) {
       const card = el('div', `card ${cpu[f.slot] ? 'cpu' : ''}`);
-      card.style.setProperty('--slot', SLOT_COLORS[f.slot]!);
-      const icon = previewCanvas(f.id, SLOT_COLORS[f.slot]!, 44);
+      card.style.setProperty('--slot', fighterColor(f));
+      const icon = previewCanvas(f.id, fighterColor(f), 44);
       const percent = el('div', 'percent', '0%');
       const stocks = el('div', 'stocks');
       const sig = el('div', 'sig');
       const info = el('div', 'info');
       info.append(percent, el('div', 'name', names[f.slot]!), stocks, sig);
+      if (f.team >= 0) {
+        card.classList.add('team');
+        info.appendChild(el('div', 'team-name', `${TEAM_NAMES[f.team]} team`));
+      }
       card.append(icon, info);
       bar.appendChild(card);
       this.cards.push({ percent, stocks, sig, card, lastPercent: -1, lastStocks: -1, lastSig: '' });
