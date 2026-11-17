@@ -176,17 +176,21 @@ const OWN: Record<FighterId, Partial<Record<MoveId, MoveLook>>> = {
     uspecial: { pose: 'rise', fx: 'shock', color: ATTACK_COLORS.special.bard },
     dspecial: { pose: 'strum', fx: 'wind', color: ATTACK_COLORS.slow },
   },
-  // River (secret): sad little slaps, a trip, a hop and a nap.
+  // River (secret): slaps and shoves, a belly bump, a bounce and the Belly Flop.
   river: {
     jab: { pose: 'punch', fx: 'puff', color: null },
-    jab2: { pose: 'punch', fx: 'puff', color: null },
-    fsmash: { pose: 'overhead', fx: 'puff', color: ATTACK_COLORS.smash },
-    usmash: { pose: 'uppercut', fx: 'puff', color: ATTACK_COLORS.smash },
-    dsmash: { pose: 'stomp', fx: 'puff', color: ATTACK_COLORS.smash },
-    nspecial: { pose: 'throw', fx: 'puff', color: ATTACK_COLORS.special.river },
-    sspecial: { pose: 'dash', fx: 'puff', color: ATTACK_COLORS.special.river },
-    uspecial: { pose: 'rise', fx: 'puff', color: ATTACK_COLORS.special.river },
-    dspecial: { pose: 'low', fx: 'puff', color: ATTACK_COLORS.special.river },
+    jab2: { pose: 'punch', fx: 'arc', color: null },
+    fsmash: { pose: 'overhead', fx: 'flame', color: ATTACK_COLORS.smash },
+    dsmash: { pose: 'stomp', fx: 'shock', color: ATTACK_COLORS.smash },
+    nspecial: { pose: 'throw', fx: 'arc', color: ATTACK_COLORS.special.river },
+    sspecial: { pose: 'dash', fx: 'energy', color: ATTACK_COLORS.special.river },
+    uspecial: { pose: 'rise', fx: 'energy', color: ATTACK_COLORS.special.river },
+    dspecial: { pose: 'spike', fx: 'spike', color: ATTACK_COLORS.special.river },
+    dspecialAir: { pose: 'spike', fx: 'spike', color: ATTACK_COLORS.special.river },
+    bellyflop: { pose: 'stomp', fx: 'shock', color: ATTACK_COLORS.special.river },
+    fthrow: { pose: 'throw', fx: 'flame', color: ATTACK_COLORS.special.river },
+    bthrow: { pose: 'throw', fx: 'flame', color: ATTACK_COLORS.special.river },
+    uthrow: { pose: 'throw', fx: 'flame', color: ATTACK_COLORS.special.river },
   },
 };
 

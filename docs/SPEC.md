@@ -56,7 +56,7 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 | Yo-yo Kid | 88 | 2 | combos and juggles; yo-yo reach out and back, **returning yo-yo**, **tether** recovery |
 | Bard | 92 | 2 | guitar; sound waves, **tempo song** speeds up, **lullaby** slows foes, amp slams |
 
-**Secret:** River, unlocked by the code RIVER (ADR-0077): big, round and really bad, but takes 0.4× knockback. Never drawn by Random or CPUs.
+**Secret:** River, unlocked by the code RIVER (ADR-0077): a big, round **glass cannon** (ADR-0078): fastest walk, hard hits, the strongest grabs and throws, a Belly Flop down special, but light and takes 1.25× knockback. Never drawn by Random or CPUs.
 
 ## Cheat codes (ADR-0077)
 
