@@ -47,13 +47,13 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 |---|---|---|---|
 | Brawler | 105 | 1 | fast fists, short reach; **KO meter** fills from combos, full = Haymaker becomes a Knockout Punch |
 | Blade | 95 | 1 | long sword reach; tip hits sharpen the **edge**, full = Flash Cut through shields; parry stance |
-| Spark | 85 | 2 | floaty caster on **mana** (fizzles when empty); fireball, homing orb, blink, **rewind** that undoes damage |
-| Titan | 150 | 1 | huge and slow, **armored**; soaked damage is stored as **payback** for the next smash; sky carry, earthquake |
+| Spark | 88 | 2 | floaty caster on **mana** (fizzles when empty); fireball, homing orb, blink, **rewind** that undoes damage |
+| Titan | 115 | 1 | huge and slow, **armored**; soaked damage is stored as **payback** for the next smash; sky carry, earthquake |
 | Ninja | 82 | 2 | fast; hits **mark** foes, Shadow Step onto a marked foe assassinates; smoke bomb dazes |
 | Gunslinger | 98 | 1 | **six shots then reload**; hits in a row build a **hot streak**, the last bullet is golden; lasso, quick-draw counter |
-| Chef | 108 | 1 | hits fill a **pantry** (tomato, pepper, meat); full = **Cook** a recipe; food toss, **pan flip reflects** |
+| Chef | 104 | 1 | hits fill a **pantry** (tomato, pepper, meat); full = **Cook** a recipe; food toss, **pan flip reflects** |
 | Ghost | 75 | 3 | floaty; hits **haunt** foes, a wisp on a fully haunted foe **possesses** them (the Ghost steers them) |
-| Yo-yo Kid | 88 | 2 | juggles; a live **trick combo** makes each chained hit stronger; returning yo-yo, tether |
+| Yo-yo Kid | 92 | 2 | juggles; a live **trick combo** makes each chained hit stronger; returning yo-yo, tether |
 | Bard | 92 | 2 | guitar; attacks **on the beat** build groove, full = **encore** songs (long tempo, sleeping lullaby) |
 
 **Secret:** River, unlocked by the code RIVER (ADR-0077): a big, round **glass cannon** (ADR-0078): fastest walk, hard hits, the strongest grabs and throws, a Belly Flop down special, but light and takes 1.25× knockback. Never drawn by Random or CPUs.

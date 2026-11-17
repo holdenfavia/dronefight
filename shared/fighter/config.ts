@@ -206,11 +206,11 @@ export const SIGNATURE = {
   /** Blade's edge: each sword-tip hit sharpens it a level (every level adds damage); getting hit dulls it to nothing. Full: Lunge becomes Flash Cut. */
   edge: { max: 3, dmgPerLevel: 0.1 },
   /** Spark's mana: specials cost it, it refills over time and from landing hits. Too little: the spell fizzles (weaker). */
-  mana: { max: 100, regen: 0.12, perMeleeHit: 6, cost: { nspecial: 12, sspecial: 25, uspecial: 20, dspecial: 40 } as Record<string, number>, fizzleDmg: 0.5, fizzleBlink: 0.55 },
+  mana: { max: 100, regen: 0.12, perMeleeHit: 6, cost: { nspecial: 12, sspecial: 25, uspecial: 10, dspecial: 40 } as Record<string, number>, fizzleDmg: 0.5, fizzleBlink: 0.55 },
   /** Titan's payback: damage soaked by armor is stored and added to the next smash or Earthquake. */
   payback: { max: 40, dmgShare: 0.6, kbPerStored: 1 / 70 },
   /** Ninja's marks on a foe: each Ninja hit adds one; Shadow Step cashes them in as Assassinate. */
-  marks: { max: 3, frames: 360, dmgPer: 4, kbPer: 0.22 },
+  marks: { max: 3, frames: 360, dmgPer: 3, kbPer: 0.12 },
   /** Gunslinger's hot streak: bullets that hit in a row. The last bullet in the cylinder is golden and grows with the streak. */
   streak: { max: 5, goldenDmg: 1.5, dmgPer: 0.25, kbPer: 0.1 },
   /** Chef's pantry: ground hits gather tomatoes, air hits peppers, throws meat. A full pantry turns Boiling Pot into Cook. */
@@ -225,7 +225,7 @@ export const SIGNATURE = {
   /** Ghost's haunting: each Ghost hit haunts the foe a level; a Possess wisp on a fully haunted foe takes over their movement. */
   haunt: { max: 3, frames: 480, puppetFrames: 100, mash: 6 },
   /** Yo-yo Kid's trick combo: every hit in a chain adds damage; from the 4th hit on, the launch grows too. */
-  trick: { window: 50, dmgPer: 0.06, maxDmg: 1.45, finisherFrom: 4, kbPer: 0.05 },
+  trick: { window: 50, dmgPer: 0.06, maxDmg: 1.45, finisherFrom: 3, kbPer: 0.05 },
   /** Bard's groove: attacks started on the beat build it (and hit harder), off-beat ones lose it. Full: the songs become encores. */
   groove: { beat: 30, window: 4, max: 4, dmgPer: 0.07 },
 } as const;

@@ -321,17 +321,17 @@ function blade(): FighterDef {
     jumpSpeed: 820, airJumpSpeed: 760, airJumps: 1,
     upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
     moves: {
-      jab: { frames: 18, hitboxes: [hb(4, 5, 30, 2, 18, 3, 60, 25, 25), tip(4, 5, 58, 2, 14, 4, 60, 30, 30)], next: { move: 'jab2', from: 7 } },
+      jab: { frames: 16, hitboxes: [hb(3, 4, 30, 2, 18, 3, 60, 25, 25), tip(3, 4, 58, 2, 14, 4, 60, 30, 30)], next: { move: 'jab2', from: 6 } },
       jab2: { frames: 26, hitboxes: [hb(5, 7, 34, 2, 18, 4, 40, 30, 50), tip(5, 7, 64, 2, 14, 7, 35, 40, 70)] },
-      ftilt: { frames: 28, hitboxes: [hb(8, 10, 36, 4, 20, 8, 40, 30, 80), tip(8, 10, 66, 4, 16, 13, 38, 36, 100)] },
-      utilt: { frames: 28, hitboxes: [hb(7, 12, 8, 26, 20, 7, 85, 36, 80), tip(7, 12, 10, 56, 18, 11, 90, 40, 96)] },
-      dtilt: { frames: 20, hitboxes: [hb(5, 6, 32, -14, 16, 5, 30, 30, 40), tip(5, 6, 62, -14, 14, 8, 25, 36, 70)] },
+      ftilt: { frames: 25, hitboxes: [hb(6, 8, 36, 4, 20, 10, 40, 34, 94), tip(6, 8, 66, 4, 16, 15, 38, 38, 104)] },
+      utilt: { frames: 25, hitboxes: [hb(5, 10, 8, 26, 20, 9, 85, 36, 88), tip(5, 10, 10, 56, 18, 11, 90, 40, 96)] },
+      dtilt: { frames: 19, hitboxes: [hb(4, 5, 32, -14, 16, 6, 30, 30, 50), tip(4, 5, 62, -14, 14, 8, 25, 36, 70)] },
       // Step, step, lunge: two quick cuts that carry them along, then a long thrust with a deadly tip.
       fsmash: {
         frames: 58, charge: { frame: 10, max: 60, dmg: 0.4 }, lunge: { frame: 12, vx: 360, vy: 0 }, rehit: 6,
         hitboxes: [
           hb(12, 13, 40, 6, 22, 3, 10, 22, 0, { stun: 10 }), hb(17, 18, 44, 6, 22, 3, 10, 22, 0, { stun: 10 }),
-          hb(23, 25, 44, 4, 22, 11, 40, 34, 90), tip(23, 25, 80, 4, 18, 20, 34, 42, 106),
+          hb(23, 25, 44, 4, 22, 13, 40, 36, 98), tip(23, 25, 80, 4, 18, 20, 34, 42, 106),
         ],
       },
       usmash: {
@@ -341,8 +341,8 @@ function blade(): FighterDef {
       dsmash: {
         frames: 48, charge: { frame: 7, max: 60, dmg: 0.4 },
         hitboxes: [
-          hb(11, 12, 34, -14, 20, 10, 30, 34, 80),
-          hb(18, 19, -34, -14, 20, 10, 150, 34, 80),
+          hb(11, 12, 34, -14, 20, 12, 30, 36, 90),
+          hb(18, 19, -34, -14, 20, 12, 150, 36, 90),
           tip(11, 12, 66, -14, 16, 16, 28, 40, 98),
           tip(18, 19, -66, -14, 16, 16, 152, 40, 98),
         ],
@@ -357,9 +357,9 @@ function blade(): FighterDef {
           tip(10, 11, -48, 0, 14, 11, 135, 32, 95),
         ],
       },
-      fair: { frames: 32, landLag: 9, hitboxes: [hb(7, 10, 32, 6, 20, 8, 45, 28, 80), tip(7, 10, 58, 10, 16, 13, 40, 32, 100)] },
-      bair: { frames: 30, landLag: 9, hitboxes: [hb(6, 9, -32, 2, 20, 8, 140, 28, 80), tip(6, 9, -60, 2, 16, 14, 145, 32, 104)] },
-      uair: { frames: 28, landLag: 7, hitboxes: [hb(5, 10, 0, 30, 20, 7, 85, 28, 80), tip(5, 10, 0, 60, 16, 12, 88, 32, 96)] },
+      fair: { frames: 30, landLag: 8, hitboxes: [hb(6, 9, 32, 6, 20, 10, 45, 30, 88), tip(6, 9, 58, 10, 16, 13, 40, 32, 100)] },
+      bair: { frames: 30, landLag: 9, hitboxes: [hb(6, 9, -32, 2, 20, 10, 140, 30, 88), tip(6, 9, -60, 2, 16, 14, 145, 32, 104)] },
+      uair: { frames: 28, landLag: 7, hitboxes: [hb(5, 10, 0, 30, 20, 9, 85, 30, 88), tip(5, 10, 0, 60, 16, 12, 88, 32, 96)] },
       dair: { frames: 36, landLag: 14, hitboxes: [hb(10, 13, 0, -30, 20, 8, -60, 24, 70), tip(10, 13, 0, -60, 16, 15, -80, 26, 92)] },
       // A slash that flies.
       nspecial: {
@@ -407,8 +407,8 @@ function spark(): FighterDef {
     blurb: 'A caster running on mana. Fireballs, a homing orb, blink, and a rewind that undoes damage.',
     specials: { neutral: 'Fireball', side: 'Homing Orb', up: 'Blink', down: 'Rewind' },
     halfW: 22, height: 30, hurtR: 21,
-    weight: 85,
-    walkSpeed: 300, airSpeed: 330, airAccel: 2400,
+    weight: 88,
+    walkSpeed: 330, airSpeed: 330, airAccel: 2400,
     gravity: 1900, maxFall: 760, fastFall: 1250,
     jumpSpeed: 780, airJumpSpeed: 720, airJumps: 2,
     upSpecials: 1, sideSpecials: 1, downSpecials: 1, hoverFrames: 45,
@@ -416,26 +416,26 @@ function spark(): FighterDef {
       // Hold attack for a stream of sparks.
       jab: { frames: 20, loop: { from: 3, to: 6 }, rehit: 3, hitboxes: [hb(3, 6, 34, 2, 18, 1, 80, 12, 0), hb(10, 11, 38, 2, 22, 4, 40, 38, 70)] },
       // Static palm: a short zap that locks them up for a moment.
-      ftilt: { frames: 26, hitboxes: [hb(7, 9, 40, 2, 22, 6, 50, 30, 50, { stun: 22 })] },
+      ftilt: { frames: 26, hitboxes: [hb(7, 9, 40, 2, 22, 8, 50, 30, 56, { stun: 22 })] },
       utilt: { frames: 28, hitboxes: [hb(8, 14, 0, 40, 30, 8, 90, 40, 92)] },
       dtilt: { frames: 22, hitboxes: [hb(6, 8, 40, -16, 20, 6, 30, 32, 60)] },
       // A blast that goes off a long way in front.
       // Fire pillar: flames burst up out of the floor a step away, catch, then blow them up and out.
       fsmash: {
         frames: 56, charge: { frame: 10, max: 60, dmg: 0.4 }, rehit: 4,
-        hitboxes: [hb(16, 23, 84, 10, 30, 2, 90, 30, 0, { stun: 6 }), hb(24, 26, 84, 30, 36, 13, 70, 40, 102)],
+        hitboxes: [hb(16, 23, 84, 10, 30, 2, 90, 30, 0, { stun: 6 }), hb(24, 26, 84, 30, 36, 15, 70, 42, 110)],
       },
       usmash: {
         frames: 48, charge: { frame: 8, max: 60, dmg: 0.4 }, rehit: 4,
-        hitboxes: [hb(12, 20, 0, 50, 28, 2, 90, 40, 10), hb(21, 23, 0, 64, 32, 8, 88, 40, 108)],
+        hitboxes: [hb(12, 20, 0, 50, 28, 2, 90, 40, 10), hb(21, 23, 0, 64, 32, 11, 88, 42, 108)],
       },
       dsmash: {
         frames: 44, charge: { frame: 6, max: 60, dmg: 0.4 },
-        hitboxes: [hb(12, 15, 46, -14, 22, 13, 25, 38, 96), hb(12, 15, -46, -14, 22, 13, 155, 38, 96)],
+        hitboxes: [hb(12, 15, 46, -14, 22, 14, 25, 40, 102), hb(12, 15, -46, -14, 22, 14, 155, 40, 102)],
       },
-      nair: { frames: 28, landLag: 6, rehit: 5, hitboxes: [hb(5, 16, 0, 0, 36, 2, 60, 20, 0), hb(18, 19, 0, 0, 38, 5, 45, 34, 80)] },
-      fair: { frames: 30, landLag: 9, hitboxes: [hb(8, 11, 46, 2, 22, 11, 40, 30, 98)] },
-      bair: { frames: 30, landLag: 9, hitboxes: [hb(7, 10, -46, 2, 22, 12, 145, 30, 100)] },
+      nair: { frames: 28, landLag: 6, rehit: 5, hitboxes: [hb(5, 16, 0, 0, 36, 2, 60, 20, 0), hb(18, 19, 0, 0, 38, 7, 45, 36, 88)] },
+      fair: { frames: 30, landLag: 9, hitboxes: [hb(8, 11, 46, 2, 22, 12, 40, 32, 104)] },
+      bair: { frames: 30, landLag: 9, hitboxes: [hb(7, 10, -46, 2, 22, 13, 145, 32, 106)] },
       uair: { frames: 26, landLag: 7, hitboxes: [hb(6, 10, 0, 44, 26, 10, 88, 30, 96)] },
       dair: { frames: 34, landLag: 12, hitboxes: [hb(10, 13, 0, -38, 22, 12, -75, 26, 86)] },
       // Hold special to grow the fireball.
@@ -475,30 +475,30 @@ function titan(): FighterDef {
     blurb: 'Huge, slow, armored. Hits it shrugs off are stored as Payback for its next smash.',
     specials: { neutral: 'Boulder Toss', side: 'Sky Carry', up: 'Titan Leap', down: 'Earthquake' },
     halfW: 42, height: 48, hurtR: 38,
-    weight: 150,
+    weight: 115,
     walkSpeed: 240, airSpeed: 235, airAccel: 1700,
     gravity: 2150, maxFall: 860, fastFall: 1250,
     jumpSpeed: 770, airJumpSpeed: 730, airJumps: 1,
     upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
     moves: {
-      jab: { frames: 26, armor: { from: 1, to: 6, kb: 60 }, hitboxes: [hb(6, 8, 48, 2, 30, 8, 55, 36, 40)], next: { move: 'jab2', from: 10 } },
+      jab: { frames: 26, armor: { from: 1, to: 6, kb: 40 }, hitboxes: [hb(6, 8, 48, 2, 30, 8, 55, 36, 40)], next: { move: 'jab2', from: 10 } },
       jab2: { frames: 36, hitboxes: [hb(8, 10, 54, 2, 34, 12, 40, 50, 82)] },
       // Shoulder charge: armored, plows forward.
-      ftilt: { frames: 40, armor: { from: 1, to: 16, kb: 80 }, lunge: { frame: 9, vx: 480, vy: 0 }, hitboxes: [hb(10, 16, 40, 4, 34, 13, 30, 40, 96)] },
-      utilt: { frames: 38, armor: { from: 1, to: 10, kb: 80 }, hitboxes: [hb(10, 14, 0, 58, 40, 13, 88, 42, 100)] },
-      dtilt: { frames: 32, armor: { from: 1, to: 8, kb: 80 }, hitboxes: [hb(9, 11, 50, -22, 30, 12, 80, 48, 70)] },
+      ftilt: { frames: 40, armor: { from: 1, to: 16, kb: 55 }, lunge: { frame: 9, vx: 480, vy: 0 }, hitboxes: [hb(10, 16, 40, 4, 34, 12, 30, 38, 86)] },
+      utilt: { frames: 38, armor: { from: 1, to: 10, kb: 55 }, hitboxes: [hb(10, 14, 0, 58, 40, 13, 88, 42, 100)] },
+      dtilt: { frames: 32, armor: { from: 1, to: 8, kb: 55 }, hitboxes: [hb(9, 11, 50, -22, 30, 12, 80, 48, 70)] },
       // Double-fist slam: crushing up close (pops them high), and the floor cracks out in front.
       fsmash: {
-        frames: 66, charge: { frame: 12, max: 60, dmg: 0.4 }, armor: { from: 1, to: 24, kb: 130 },
-        hitboxes: [hb(22, 25, 60, 0, 40, 24, 70, 44, 98), hb(25, 28, 128, -26, 26, 10, 40, 40, 70)],
+        frames: 66, charge: { frame: 12, max: 60, dmg: 0.4 }, armor: { from: 1, to: 24, kb: 90 },
+        hitboxes: [hb(22, 25, 60, 0, 40, 20, 70, 40, 94), hb(25, 28, 128, -26, 26, 9, 40, 36, 66)],
       },
       usmash: {
-        frames: 60, charge: { frame: 9, max: 60, dmg: 0.4 }, armor: { from: 1, to: 20, kb: 120 },
-        hitboxes: [hb(18, 22, 0, 64, 46, 22, 88, 42, 98)],
+        frames: 60, charge: { frame: 9, max: 60, dmg: 0.4 }, armor: { from: 1, to: 20, kb: 90 },
+        hitboxes: [hb(18, 22, 0, 64, 46, 19, 88, 40, 94)],
       },
       dsmash: {
-        frames: 60, charge: { frame: 8, max: 60, dmg: 0.4 }, armor: { from: 1, to: 18, kb: 120 },
-        hitboxes: [hb(16, 19, 64, -20, 36, 18, 28, 44, 94), hb(16, 19, -64, -20, 36, 18, 152, 44, 94)],
+        frames: 60, charge: { frame: 8, max: 60, dmg: 0.4 }, armor: { from: 1, to: 18, kb: 90 },
+        hitboxes: [hb(16, 19, 64, -20, 36, 16, 28, 40, 90), hb(16, 19, -64, -20, 36, 16, 152, 40, 90)],
       },
       nair: { frames: 36, landLag: 10, hitboxes: [hb(8, 13, 0, 0, 54, 13, 45, 36, 90)] },
       // The sweet spot right at the start spikes; later it just hits hard.
@@ -534,7 +534,7 @@ function titan(): FighterDef {
       grab: grab(44, 26, 9, 36),
       pummel: pummel(3, 20),
       fthrow: throwMove(32, 14, 11, 38, 58, 75),
-      bthrow: throwMove(40, 20, 13, 140, 52, 98, true),
+      bthrow: throwMove(40, 20, 12, 140, 50, 90, true),
       uthrow: throwMove(36, 16, 10, 90, 60, 80),
       dthrow: throwMove(34, 16, 9, 70, 52, 55),
       getupattack: getupAttack(46, 9),
@@ -554,7 +554,7 @@ function ninja(): FighterDef {
     specials: { neutral: 'Throwing Stars', side: 'Shadow Step', up: 'Vanish', down: 'Smoke Bomb' },
     halfW: 22, height: 30, hurtR: 21,
     weight: 82,
-    walkSpeed: 450, airSpeed: 360, airAccel: 2800,
+    walkSpeed: 410, airSpeed: 360, airAccel: 2800,
     gravity: 2500, maxFall: 1000, fastFall: 1650,
     jumpSpeed: 860, airJumpSpeed: 760, airJumps: 2,
     upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
@@ -569,17 +569,17 @@ function ninja(): FighterDef {
       // Two quick blade slashes.
       // Dash-through cut: blurs straight past them, cutting on the way, and ends facing back.
       fsmash: {
-        frames: 42, charge: { frame: 8, max: 60, dmg: 0.4 }, lunge: { frame: 10, vx: 1050, vy: 0 }, invincible: { from: 10, to: 16 }, turn: true,
-        hitboxes: [hb(11, 17, 10, 2, 30, 13, 40, 34, 100)],
+        frames: 46, charge: { frame: 10, max: 60, dmg: 0.4 }, lunge: { frame: 12, vx: 1050, vy: 0 }, invincible: { from: 12, to: 15 }, turn: true,
+        hitboxes: [hb(13, 19, 10, 2, 30, 12, 40, 32, 92)],
       },
-      usmash: { frames: 38, charge: { frame: 6, max: 60, dmg: 0.4 }, hitboxes: [hb(9, 13, 0, 34, 28, 14, 88, 36, 102)] },
+      usmash: { frames: 38, charge: { frame: 6, max: 60, dmg: 0.4 }, hitboxes: [hb(9, 13, 0, 34, 28, 13, 88, 34, 94)] },
       dsmash: {
         frames: 36, charge: { frame: 5, max: 60, dmg: 0.4 },
-        hitboxes: [hb(7, 9, 34, -12, 22, 11, 25, 36, 96), hb(7, 9, -34, -12, 22, 11, 155, 36, 96)],
+        hitboxes: [hb(7, 9, 34, -12, 22, 10, 25, 34, 90), hb(7, 9, -34, -12, 22, 10, 155, 34, 90)],
       },
       nair: { frames: 24, landLag: 5, hitboxes: [hb(4, 12, 0, 0, 30, 7, 50, 26, 80)] },
       fair: { frames: 24, landLag: 7, hitboxes: [hb(5, 8, 32, 2, 20, 9, 42, 30, 96)] },
-      bair: { frames: 24, landLag: 7, hitboxes: [hb(5, 8, -32, 2, 20, 11, 145, 28, 100)] },
+      bair: { frames: 24, landLag: 7, hitboxes: [hb(5, 8, -32, 2, 20, 10, 145, 28, 92)] },
       uair: { frames: 22, landLag: 6, hitboxes: [hb(4, 8, 0, 30, 22, 8, 88, 30, 94)] },
       dair: { frames: 30, landLag: 10, hitboxes: [hb(8, 10, 0, -28, 20, 10, -70, 25, 84)] },
       nspecial: {
@@ -588,8 +588,8 @@ function ninja(): FighterDef {
       },
       // Vanish and appear behind the nearest opponent, then cut.
       sspecial: {
-        frames: 34, recovery: true, invincible: { from: 3, to: 10 }, gravity: { from: 1, to: 14, scale: 0 },
-        shadowStep: { frame: 8, range: 340 }, hitboxes: [hb(11, 14, 30, 2, 26, 10, 40, 45, 80)],
+        frames: 38, recovery: true, invincible: { from: 3, to: 8 }, gravity: { from: 1, to: 14, scale: 0 },
+        shadowStep: { frame: 8, range: 340 }, hitboxes: [hb(13, 16, 30, 2, 26, 9, 40, 42, 70)],
       },
       uspecial: { frames: 24, recovery: true, helpless: true, invincible: { from: 4, to: 10 }, teleport: { frame: 6, dist: 200 } },
       dspecial: {
@@ -680,9 +680,9 @@ function gunslinger(): FighterDef {
 // Chef: fights with kitchen gear. A frying pan for normals, thrown food that changes every throw
 // (tomato, pie, meatball), a pan flip that bats shots back, and a boiling pot left on the stage.
 
-const TOMATO: ProjectileDef = { kind: 'bomb', look: 'tomato', speed: 640, angle: 30, r: 9, lifeFrames: 90, gravity: 1500, blastR: 32, limit: 2, hit: { dmg: 5, angle: 45, bkb: 26, kbg: 40 } };
+const TOMATO: ProjectileDef = { kind: 'bomb', look: 'tomato', speed: 640, angle: 30, r: 9, lifeFrames: 90, gravity: 1500, blastR: 32, limit: 2, hit: { dmg: 4, angle: 45, bkb: 26, kbg: 40 } };
 const PIE: ProjectileDef = { kind: 'bomb', look: 'pie', speed: 560, angle: 34, r: 12, lifeFrames: 90, gravity: 1500, blastR: 40, limit: 2, hit: { dmg: 6, angle: 70, bkb: 18, kbg: 10, stun: 36 } };
-const MEATBALL: ProjectileDef = { kind: 'bomb', look: 'meatball', speed: 520, angle: 26, r: 13, lifeFrames: 90, gravity: 1800, blastR: 36, limit: 2, hit: { dmg: 11, angle: 40, bkb: 38, kbg: 78 } };
+const MEATBALL: ProjectileDef = { kind: 'bomb', look: 'meatball', speed: 520, angle: 26, r: 13, lifeFrames: 90, gravity: 1800, blastR: 36, limit: 2, hit: { dmg: 9, angle: 40, bkb: 36, kbg: 74 } };
 
 function chef(): FighterDef {
   return {
@@ -691,7 +691,7 @@ function chef(): FighterDef {
     blurb: 'Hits gather ingredients; a full pantry cooks a recipe. Food toss, a pan flip that bats shots back.',
     specials: { neutral: 'Food Toss', side: 'Pan Flip', up: 'Steam Jump', down: 'Boiling Pot' },
     halfW: 26, height: 32, hurtR: 24,
-    weight: 108,
+    weight: 104,
     walkSpeed: 320, airSpeed: 290, airAccel: 2200,
     gravity: 2300, maxFall: 900, fastFall: 1400,
     jumpSpeed: 820, airJumpSpeed: 750, airJumps: 1,
@@ -708,7 +708,7 @@ function chef(): FighterDef {
       // Rolling pin spin: rolls them over and over, then bowls them away.
       fsmash: {
         frames: 56, charge: { frame: 11, max: 60, dmg: 0.4 }, lunge: { frame: 14, vx: 300, vy: 0 }, rehit: 5,
-        hitboxes: [hb(14, 24, 44, 2, 30, 2, 20, 28, 0, { stun: 6 }), hb(25, 27, 48, 4, 32, 12, 32, 42, 104)],
+        hitboxes: [hb(14, 24, 44, 2, 30, 2, 20, 28, 0, { stun: 6 }), hb(25, 27, 48, 4, 32, 10, 32, 40, 100)],
       },
       usmash: { frames: 46, charge: { frame: 8, max: 60, dmg: 0.4 }, hitboxes: [hb(13, 17, 0, 46, 32, 17, 88, 38, 100)] },
       dsmash: {
@@ -821,36 +821,36 @@ function yoyo(): FighterDef {
     blurb: 'Combos and juggles. Every hit in a chain hits harder; long chains end in a big launch.',
     specials: { neutral: 'Yo-yo Throw', side: 'Walk the Dog', up: 'Tether', down: 'Around the World' },
     halfW: 22, height: 28, hurtR: 21,
-    weight: 88,
-    walkSpeed: 380, airSpeed: 330, airAccel: 2500,
+    weight: 92,
+    walkSpeed: 400, airSpeed: 330, airAccel: 2500,
     gravity: 2300, maxFall: 920, fastFall: 1450,
     jumpSpeed: 830, airJumpSpeed: 760, airJumps: 2,
     upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
     moves: {
       // Out and back: two hits with the yo-yo.
-      jab: { frames: 20, hitboxes: [hb(4, 6, 56, 2, 16, 3, 60, 26, 20), hb(9, 11, 30, 2, 16, 3, 70, 30, 30)] },
-      ftilt: { frames: 26, hitboxes: [hb(6, 9, 70, 2, 18, 7, 40, 30, 92), hb(12, 14, 36, 2, 18, 3, 60, 30, 30)] },
+      jab: { frames: 18, hitboxes: [hb(3, 5, 56, 2, 16, 3, 60, 26, 20), hb(8, 10, 30, 2, 16, 4, 70, 30, 34)] },
+      ftilt: { frames: 26, hitboxes: [hb(6, 9, 70, 2, 18, 10, 40, 34, 100), hb(12, 14, 36, 2, 18, 3, 60, 30, 30)] },
       // Juggles: low knockback growth, straight up.
-      utilt: { frames: 20, hitboxes: [hb(4, 8, 4, 50, 20, 6, 90, 52, 40)] },
+      utilt: { frames: 20, hitboxes: [hb(4, 8, 4, 50, 20, 7, 90, 52, 44)] },
       dtilt: { frames: 22, hitboxes: [hb(5, 9, 64, -16, 16, 5, 80, 40, 40)] },
       // Rock the baby: the yo-yo spins in place far out, grinding, then snaps out to launch.
       fsmash: {
         frames: 56, charge: { frame: 10, max: 60, dmg: 0.4 }, rehit: 4,
-        hitboxes: [hb(14, 23, 80, 2, 24, 2, 60, 24, 0, { stun: 6 }), hb(24, 26, 96, 4, 26, 12, 38, 40, 104)],
+        hitboxes: [hb(14, 23, 80, 2, 24, 2, 60, 24, 0, { stun: 6 }), hb(24, 26, 96, 4, 26, 14, 38, 42, 110)],
       },
-      usmash: { frames: 46, charge: { frame: 8, max: 60, dmg: 0.4 }, hitboxes: [hb(13, 17, 0, 76, 24, 15, 90, 38, 102)] },
+      usmash: { frames: 46, charge: { frame: 8, max: 60, dmg: 0.4 }, hitboxes: [hb(13, 17, 0, 76, 24, 16, 90, 40, 108)] },
       dsmash: {
         frames: 46, charge: { frame: 6, max: 60, dmg: 0.4 },
-        hitboxes: [hb(11, 13, 70, -16, 20, 12, 25, 38, 96), hb(17, 19, -70, -16, 20, 12, 155, 38, 96)],
+        hitboxes: [hb(11, 13, 70, -16, 20, 13, 25, 40, 104), hb(17, 19, -70, -16, 20, 13, 155, 40, 104)],
       },
-      nair: { frames: 28, landLag: 6, hitboxes: [hb(5, 14, 0, 0, 44, 7, 60, 34, 70)] },
-      fair: { frames: 30, landLag: 8, hitboxes: [hb(7, 10, 62, 2, 18, 9, 45, 30, 90)] },
-      bair: { frames: 30, landLag: 8, hitboxes: [hb(7, 10, -62, 2, 18, 11, 145, 30, 98)] },
-      uair: { frames: 22, landLag: 6, hitboxes: [hb(4, 8, 0, 58, 20, 6, 88, 50, 45)] },
+      nair: { frames: 28, landLag: 6, hitboxes: [hb(5, 14, 0, 0, 44, 8, 60, 34, 76)] },
+      fair: { frames: 28, landLag: 7, hitboxes: [hb(6, 9, 62, 2, 18, 11, 45, 32, 96)] },
+      bair: { frames: 30, landLag: 8, hitboxes: [hb(7, 10, -62, 2, 18, 13, 145, 32, 108)] },
+      uair: { frames: 22, landLag: 6, hitboxes: [hb(4, 8, 0, 58, 20, 7, 88, 50, 50)] },
       dair: { frames: 34, landLag: 11, hitboxes: [hb(10, 13, 0, -58, 18, 10, -70, 26, 84)] },
       nspecial: {
         frames: 26,
-        projectile: { frame: 8, def: { kind: 'shot', look: 'yoyo', speed: 820, angle: 0, r: 11, lifeFrames: 50, gravity: 0, limit: 1, returns: true, hit: { dmg: 5, angle: 60, bkb: 30, kbg: 30 } } },
+        projectile: { frame: 8, def: { kind: 'shot', look: 'yoyo', speed: 820, angle: 0, r: 11, lifeFrames: 50, gravity: 0, limit: 1, returns: true, hit: { dmg: 7, angle: 60, bkb: 30, kbg: 34 } } },
       },
       // The yo-yo rolls along the floor in front, hitting over and over.
       sspecial: {

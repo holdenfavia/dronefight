@@ -27,6 +27,15 @@ Most fighters also get more distinct forward smashes and forward tilts: Brawler'
 
 All state lives on the fighters in the world, so online snapshots carry it and the sim stays deterministic. The world's shape changed, so `PROTOCOL_VERSION` is 103.
 
+### Balance pass (same day)
+Holden asked which fighters were unbalanced and chose to fix all six that stood out. A round robin of Hard CPUs (every pairing 40 times, 1v1 on all three stages) started at Titan 88%, Ninja 74%, Chef 64% wins against Blade 20%, Yo-yo Kid 20%, Spark 31%. After the changes everyone is between 40% and 63%:
+- **Titan:** weight 150 → 115, lighter armor on jab, tilts and smashes, smashes and back throw a little weaker.
+- **Ninja:** walk 450 → 410, slower dash-through cut and Shadow Step with less invincibility, less kill power on smashes and back air; marks give +3 damage and +12% knockback each (was +4, +22%).
+- **Chef:** weight 108 → 104, weaker tomato, meatball and rolling pin.
+- **Blade:** quicker jab and tilts, stronger base of the blade on tilts, aerials and smashes.
+- **Yo-yo Kid:** weight 88 → 92, walk 380 → 400, more damage and launch on jab, tilts, aerials, smashes and the yo-yo; trick finisher from the 3rd hit.
+- **Spark:** weight 85 → 88, walk 300 → 330, stronger close-range attacks and smashes, Blink costs 10 mana (was 20).
+
 ## Alternatives considered
 - **Copy the Smash boxer's KO meter as is:** a meter from damage dealt/taken with one KO uppercut. Ours fills from combos, drains when launched and powers the Haymaker, to stay original (Hard rule 3).
 - **Pickup items for the Chef's ingredients:** items are out of scope; ingredients come from the kind of hit instead.
