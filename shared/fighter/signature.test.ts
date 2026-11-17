@@ -73,7 +73,7 @@ describe('signature mechanics (ADR-0079)', () => {
     const smash = (stored: number) => {
       const w = duel('titan', 'brawler', 70);
       w.fighters[0]!.meter = stored;
-      run(w, 60, (i) => [{ ...NO_INPUT, right: i < 2, aimRight: true, attack: i < 2 }]);
+      run(w, 60, (i) => [{ ...NO_INPUT, smash: i < 2, aimRight: true, attack: i < 2 }]);
       return { dmg: w.fighters[1]!.percent, left: w.fighters[0]!.meter };
     };
     const plain = smash(0);
@@ -87,7 +87,7 @@ describe('signature mechanics (ADR-0079)', () => {
     const [t, b] = w.fighters;
     b!.facing = -1;
     // Titan winds up a charged forward smash (armored); the Brawler jabs into it.
-    run(w, 20, (i) => [{ ...NO_INPUT, right: i < 2, aimRight: true, attack: true }, { ...NO_INPUT, aimLeft: i === 6, attack: i === 6 }]);
+    run(w, 20, (i) => [{ ...NO_INPUT, smash: i < 2, aimRight: true, attack: true }, { ...NO_INPUT, aimLeft: i === 6, attack: i === 6 }]);
     expect(t!.percent).toBeGreaterThan(0);
     expect(t!.meter).toBeGreaterThan(0);
   });
@@ -204,7 +204,7 @@ describe('signature mechanics (ADR-0079)', () => {
 
   it('every fighter\'s forward smash and forward tilt land on someone standing in front', () => {
     for (const id of ['brawler', 'blade', 'spark', 'titan', 'ninja', 'gunslinger', 'chef', 'ghost', 'yoyo', 'bard'] as const) {
-      for (const [move, keys] of [['fsmash', { right: true, aimRight: true, attack: true }], ['ftilt', { left: true, aimRight: true, attack: true }]] as const) {
+      for (const [move, keys] of [['fsmash', { smash: true, aimRight: true, attack: true }], ['ftilt', { left: true, aimRight: true, attack: true }]] as const) {
         const w = duel(id, 'titan', 70);
         w.fighters[0]!.facing = 1;
         run(w, 80, tap(keys));

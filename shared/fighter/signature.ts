@@ -58,7 +58,7 @@ export function newSignatureState(id: FighterId): Pick<Fighter,
     tagTime: [0, 0, 0, 0],
     puppetBy: -1,
     puppet: 0,
-    rawPrev: { left: false, right: false, up: false, down: false, attack: false, aimLeft: false, aimRight: false, aimUp: false, aimDown: false, special: false, shield: false, grab: false },
+    rawPrev: { left: false, right: false, up: false, down: false, attack: false, aimLeft: false, aimRight: false, aimUp: false, aimDown: false, special: false, shield: false, grab: false, smash: false },
     moveMod: 1,
     moveKb: 1,
     moveBonus: 0,
@@ -116,7 +116,7 @@ export function puppetInput(f: Fighter, raw: Input, inputs: readonly Input[]): I
   f.puppet = Math.max(0, f.puppet - presses * SIGNATURE.haunt.mash);
   if (f.puppet <= 0) { f.puppet = 0; f.puppetBy = -1; return raw; }
   const g = inputs[f.puppetBy];
-  return { left: !!g?.left, right: !!g?.right, up: !!g?.up, down: !!g?.down, attack: false, aimLeft: false, aimRight: false, aimUp: false, aimDown: false, special: false, shield: false, grab: false };
+  return { left: !!g?.left, right: !!g?.right, up: !!g?.up, down: !!g?.down, attack: false, aimLeft: false, aimRight: false, aimUp: false, aimDown: false, special: false, shield: false, grab: false, smash: false };
 }
 
 // ---------------------------------------------------------------------------------------------

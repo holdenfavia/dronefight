@@ -90,12 +90,6 @@ export const LEDGE = {
   invincibleFrames: 14,
 } as const;
 
-/** Smash attacks: press a direction key and the matching attack together (ADR-0071). */
-export const SMASH = {
-  /** The direction key counts as "together" if pressed this many frames before the attack, or less. */
-  flickFrames: 5,
-} as const;
-
 /** Grabs and throws (ADR-0071). */
 export const GRAB = {
   /** Frames a grab holds before letting go on its own, plus more the more damage the held fighter has. */
@@ -202,7 +196,7 @@ export const SIGNATURE = {
   /** Hits landed within this many frames of each other count as one chain (Brawler's combos, Yo-yo Kid's tricks). */
   chainWindow: 60,
   /** Brawler's KO meter: fills from damage dealt (more in a combo) and a little from damage taken; getting launched knocks some out. Full: Haymaker becomes the Knockout Punch. */
-  ko: { max: 100, perDealt: 2.2, chainBonus: 0.25, chainMaxMult: 2, perTaken: 0.6, launchLoss: 20 },
+  ko: { max: 100, perDealt: 1.8, chainBonus: 0.25, chainMaxMult: 2, perTaken: 0.6, launchLoss: 20 },
   /** Blade's edge: each sword-tip hit sharpens it a level (every level adds damage); getting hit dulls it to nothing. Full: Lunge becomes Flash Cut. */
   edge: { max: 3, dmgPerLevel: 0.1 },
   /** Spark's mana: specials cost it, it refills over time and from landing hits. Too little: the spell fizzles (weaker). */

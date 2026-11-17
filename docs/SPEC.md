@@ -20,13 +20,14 @@ A **side-view platform fighter** to play with friends: an original cast of ten f
 - KO credit goes to whoever last hit you within 8 s.
 - Hitlag (a freeze on every hit), screen shake and sparks scale with how hard the hit was.
 
-## Controls (ADR-0071)
+## Controls (ADR-0071, ADR-0080)
 
 | | Key |
 |---|---|
 | Move / jump (again in the air) | A D / W |
 | Fast fall, hold to drop through | S |
-| Attack that way | ← → ↑ ↓ (forward with no move key = neutral; move key + same arrow together = smash, hold to charge) |
+| Attack that way | ← → ↑ ↓ (forward with no move key = neutral, with a move key = tilt) |
+| Smash attack that way | hold **Shift** + arrow, hold the arrow to charge (ADR-0080) |
 | Special that way | hold **Space**, or tap Space to prime the next arrow (ADR-0074) |
 | Shield · roll / spot dodge / air dodge | E (+ direction) |
 | Grab, then an arrow throws | ? |
@@ -45,9 +46,9 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 
 | Fighter | Weight | Air jumps | Style and signature mechanic (ADR-0079) |
 |---|---|---|---|
-| Brawler | 105 | 1 | fast fists, short reach; **KO meter** fills from combos, full = Haymaker becomes a Knockout Punch |
+| Brawler | 100 | 1 | fast fists, short reach; **KO meter** fills from combos, full = Haymaker becomes a Knockout Punch |
 | Blade | 95 | 1 | long sword reach; tip hits sharpen the **edge**, full = Flash Cut through shields; parry stance |
-| Spark | 88 | 2 | floaty caster on **mana** (fizzles when empty); fireball, homing orb, blink, **rewind** that undoes damage |
+| Spark | 94 | 2 | floaty caster on **mana** (fizzles when empty); fireball, homing orb, blink, **rewind** that undoes damage |
 | Titan | 115 | 1 | huge and slow, **armored**; soaked damage is stored as **payback** for the next smash; sky carry, earthquake |
 | Ninja | 82 | 2 | fast; hits **mark** foes, Shadow Step onto a marked foe assassinates; smoke bomb dazes |
 | Gunslinger | 98 | 1 | **six shots then reload**; hits in a row build a **hot streak**, the last bullet is golden; lasso, quick-draw counter |

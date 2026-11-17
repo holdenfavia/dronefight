@@ -48,12 +48,28 @@ describe('fighter sim', () => {
     const [a, b] = w.fighters;
     a!.x = 300; a!.facing = 1;
     b!.x = 345; b!.percent = 110;
-    // Move key and arrow together = smash; hold the arrow to charge.
-    run(w, 20, () => [{ ...NO_INPUT, right: true, aimRight: true, attack: true }]);
+    // Shift + arrow = smash; hold the arrow to charge.
+    run(w, 20, () => [{ ...NO_INPUT, smash: true, aimRight: true, attack: true }]);
     expect(a!.move).toBe('fsmash');
     run(w, 240);
     expect(b!.stocks).toBe(MATCH.defaultStocks - 1);
     expect(a!.stats.kos).toBe(1);
+  });
+
+  it('only Shift makes a smash: a move key with the arrow is a tilt', () => {
+    const first = (input: Partial<Input>) => {
+      const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'brawler' }]);
+      skipCountdown(w);
+      w.fighters[0]!.facing = 1;
+      step(w, [{ ...NO_INPUT, ...input, attack: true }]);
+      return w.fighters[0]!.move;
+    };
+    expect(first({ right: true, aimRight: true })).toBe('ftilt');
+    expect(first({ down: true, aimDown: true })).toBe('dtilt');
+    expect(first({ smash: true, aimRight: true })).toBe('fsmash');
+    expect(first({ smash: true, aimLeft: true })).toBe('fsmash');
+    expect(first({ smash: true, aimUp: true })).toBe('usmash');
+    expect(first({ smash: true, aimDown: true })).toBe('dsmash');
   });
 
   it('the forward tilt at low percent does not KO', () => {
@@ -165,7 +181,7 @@ describe('fighter sim', () => {
       const [a, b] = w.fighters;
       a!.x = 0; a!.facing = 1;
       b!.x = 50;
-      run(w, 130, (i) => [i <= 9 + chargeFrames ? { ...NO_INPUT, right: i === 0, aimRight: true, attack: true } : NO_INPUT]);
+      run(w, 130, (i) => [i <= 9 + chargeFrames ? { ...NO_INPUT, smash: i === 0, aimRight: true, attack: true } : NO_INPUT]);
       return b!.percent;
     };
     expect(hitWith(50)).toBeGreaterThan(hitWith(0) * 1.25);
@@ -260,7 +276,7 @@ describe('fighter sim', () => {
     const [a, b] = w.fighters;
     a!.x = 0; a!.facing = 1;
     b!.x = 60; b!.facing = -1;
-    run(w, 40, (i) => [{ ...NO_INPUT, right: true, aimRight: true, attack: true }, { ...NO_INPUT, aimLeft: true, attack: i === 4 }]);
+    run(w, 40, (i) => [{ ...NO_INPUT, smash: true, aimRight: true, attack: true }, { ...NO_INPUT, aimLeft: true, attack: i === 4 }]);
     expect(a!.percent).toBeGreaterThan(0);
     expect(a!.action).toBe('attack');
     expect(a!.move).toBe('fsmash');
@@ -519,7 +535,7 @@ describe('fighter sim', () => {
       const [a, b] = w.fighters;
       a!.x = -100; a!.facing = 1;
       b!.x = -55; b!.percent = 20;
-      run(w, 20, () => [{ ...NO_INPUT, right: true, aimRight: true, attack: true }]);
+      run(w, 20, () => [{ ...NO_INPUT, smash: true, aimRight: true, attack: true }]);
       run(w, 240);
       expect(b!.stocks < MATCH.defaultStocks, id).toBe(falls);
     }

@@ -242,7 +242,7 @@ function brawler(): FighterDef {
     blurb: 'Fast fists, short reach. Combos fill the KO meter; full, Haymaker becomes a Knockout Punch.',
     specials: { neutral: 'Haymaker', side: 'Dash Uppercut', up: 'Spiral Kick', down: 'Counter-punch' },
     halfW: 26, height: 32, hurtR: 24,
-    weight: 105,
+    weight: 100,
     walkSpeed: 390, airSpeed: 320, airAccel: 2500,
     gravity: 2400, maxFall: 960, fastFall: 1500,
     jumpSpeed: 850, airJumpSpeed: 770, airJumps: 1,
@@ -258,8 +258,8 @@ function brawler(): FighterDef {
       dtilt: { frames: 18, hitboxes: [hb(4, 6, 34, -14, 20, 5, 80, 36, 50)] },
       // One-two rush: a quick jab that holds them in place, then a full-body straight.
       fsmash: {
-        frames: 46, charge: { frame: 9, max: 60, dmg: 0.4 }, lunge: { frame: 14, vx: 380, vy: 0 }, rehit: 5,
-        hitboxes: [hb(10, 11, 34, 4, 22, 3, 0, 4, 0, { stun: 10 }), hb(15, 17, 42, 4, 28, 16, 36, 40, 106)],
+        frames: 50, charge: { frame: 12, max: 60, dmg: 0.4 }, lunge: { frame: 17, vx: 380, vy: 0 }, rehit: 6,
+        hitboxes: [hb(13, 14, 34, 4, 22, 3, 0, 4, 0, { stun: 10 }), hb(18, 20, 42, 4, 28, 13, 36, 36, 90)],
       },
       usmash: { frames: 42, charge: { frame: 7, max: 60, dmg: 0.4 }, hitboxes: [hb(10, 14, 10, 30, 26, 16, 88, 36, 104)] },
       // Punches the floor: a shockwave both ways.
@@ -316,7 +316,7 @@ function blade(): FighterDef {
     specials: { neutral: 'Sword Wave', side: 'Lunge', up: 'Rising Spin', down: 'Parry Stance' },
     halfW: 25, height: 34, hurtR: 24,
     weight: 95,
-    walkSpeed: 350, airSpeed: 300, airAccel: 2200,
+    walkSpeed: 370, airSpeed: 300, airAccel: 2200,
     gravity: 2250, maxFall: 900, fastFall: 1400,
     jumpSpeed: 820, airJumpSpeed: 760, airJumps: 1,
     upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
@@ -331,12 +331,12 @@ function blade(): FighterDef {
         frames: 58, charge: { frame: 10, max: 60, dmg: 0.4 }, lunge: { frame: 12, vx: 360, vy: 0 }, rehit: 6,
         hitboxes: [
           hb(12, 13, 40, 6, 22, 3, 10, 22, 0, { stun: 10 }), hb(17, 18, 44, 6, 22, 3, 10, 22, 0, { stun: 10 }),
-          hb(23, 25, 44, 4, 22, 13, 40, 36, 98), tip(23, 25, 80, 4, 18, 20, 34, 42, 106),
+          hb(23, 25, 44, 4, 22, 15, 40, 40, 110), tip(23, 25, 80, 4, 18, 21, 34, 44, 112),
         ],
       },
       usmash: {
         frames: 48, charge: { frame: 9, max: 60, dmg: 0.4 },
-        hitboxes: [hb(13, 17, 0, 36, 26, 12, 88, 34, 92), tip(13, 17, 0, 70, 20, 19, 90, 38, 104)],
+        hitboxes: [hb(13, 17, 0, 36, 26, 14, 88, 36, 100), tip(13, 17, 0, 70, 20, 19, 90, 38, 104)],
       },
       dsmash: {
         frames: 48, charge: { frame: 7, max: 60, dmg: 0.4 },
@@ -351,7 +351,7 @@ function blade(): FighterDef {
       nair: {
         frames: 30, landLag: 7,
         hitboxes: [
-          hb(5, 11, 0, 0, 30, 6, 50, 24, 60),
+          hb(5, 11, 0, 0, 30, 8, 50, 26, 70),
           tip(5, 7, 48, 0, 14, 11, 45, 32, 95),
           tip(8, 9, 0, 48, 14, 11, 80, 32, 95),
           tip(10, 11, -48, 0, 14, 11, 135, 32, 95),
@@ -388,7 +388,7 @@ function blade(): FighterDef {
       grab: grab(30, 20, 7, 30),
       pummel: pummel(2),
       fthrow: throwMove(26, 11, 9, 42, 52, 70),
-      bthrow: throwMove(30, 13, 10, 140, 48, 92, true),
+      bthrow: throwMove(30, 13, 11, 140, 50, 100, true),
       uthrow: throwMove(26, 11, 7, 90, 62, 62),
       dthrow: throwMove(26, 12, 6, 75, 48, 45),
       getupattack: getupAttack(44, 7),
@@ -407,7 +407,7 @@ function spark(): FighterDef {
     blurb: 'A caster running on mana. Fireballs, a homing orb, blink, and a rewind that undoes damage.',
     specials: { neutral: 'Fireball', side: 'Homing Orb', up: 'Blink', down: 'Rewind' },
     halfW: 22, height: 30, hurtR: 21,
-    weight: 88,
+    weight: 94,
     walkSpeed: 330, airSpeed: 330, airAccel: 2400,
     gravity: 1900, maxFall: 760, fastFall: 1250,
     jumpSpeed: 780, airJumpSpeed: 720, airJumps: 2,
@@ -423,7 +423,7 @@ function spark(): FighterDef {
       // Fire pillar: flames burst up out of the floor a step away, catch, then blow them up and out.
       fsmash: {
         frames: 56, charge: { frame: 10, max: 60, dmg: 0.4 }, rehit: 4,
-        hitboxes: [hb(16, 23, 84, 10, 30, 2, 90, 30, 0, { stun: 6 }), hb(24, 26, 84, 30, 36, 15, 70, 42, 110)],
+        hitboxes: [hb(16, 23, 62, 10, 32, 2, 90, 30, 0, { stun: 6 }), hb(24, 26, 62, 30, 38, 17, 70, 44, 120)],
       },
       usmash: {
         frames: 48, charge: { frame: 8, max: 60, dmg: 0.4 }, rehit: 4,
@@ -431,7 +431,7 @@ function spark(): FighterDef {
       },
       dsmash: {
         frames: 44, charge: { frame: 6, max: 60, dmg: 0.4 },
-        hitboxes: [hb(12, 15, 46, -14, 22, 14, 25, 40, 102), hb(12, 15, -46, -14, 22, 14, 155, 40, 102)],
+        hitboxes: [hb(12, 15, 46, -14, 22, 15, 25, 42, 108), hb(12, 15, -46, -14, 22, 15, 155, 42, 108)],
       },
       nair: { frames: 28, landLag: 6, rehit: 5, hitboxes: [hb(5, 16, 0, 0, 36, 2, 60, 20, 0), hb(18, 19, 0, 0, 38, 7, 45, 36, 88)] },
       fair: { frames: 30, landLag: 9, hitboxes: [hb(8, 11, 46, 2, 22, 12, 40, 32, 104)] },
@@ -456,7 +456,7 @@ function spark(): FighterDef {
       grab: grab(26, 18, 7, 30),
       pummel: pummel(2),
       fthrow: throwMove(26, 11, 9, 45, 50, 72),
-      bthrow: throwMove(30, 13, 10, 145, 46, 92, true),
+      bthrow: throwMove(30, 13, 11, 145, 48, 104, true),
       uthrow: throwMove(26, 11, 6, 90, 70, 60),
       dthrow: throwMove(26, 12, 6, 100, 50, 40),
       getupattack: getupAttack(30, 6),
@@ -589,7 +589,7 @@ function ninja(): FighterDef {
       // Vanish and appear behind the nearest opponent, then cut.
       sspecial: {
         frames: 38, recovery: true, invincible: { from: 3, to: 8 }, gravity: { from: 1, to: 14, scale: 0 },
-        shadowStep: { frame: 8, range: 340 }, hitboxes: [hb(13, 16, 30, 2, 26, 9, 40, 42, 70)],
+        shadowStep: { frame: 8, range: 340 }, hitboxes: [hb(13, 16, 30, 2, 26, 8, 40, 40, 66)],
       },
       uspecial: { frames: 24, recovery: true, helpless: true, invincible: { from: 4, to: 10 }, teleport: { frame: 6, dist: 200 } },
       dspecial: {
