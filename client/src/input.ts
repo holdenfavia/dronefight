@@ -70,6 +70,9 @@ export class Keyboard {
     this.specialArrows.clear();
   }
 
+  /** Swap left and right (the MIRROR cheat flips the screen, so keys follow what you see). */
+  mirrored = false;
+
   /** The player's input this frame. */
   read(): Input {
     const input: Input = { ...NO_INPUT };
@@ -82,6 +85,10 @@ export class Keyboard {
     }
     input.grab = this.down.has(GRAB_KEY);
     input.shield = this.down.has(SHIELD_KEY);
+    if (this.mirrored) {
+      [input.left, input.right] = [input.right, input.left];
+      [input.aimLeft, input.aimRight] = [input.aimRight, input.aimLeft];
+    }
     return input;
   }
 }

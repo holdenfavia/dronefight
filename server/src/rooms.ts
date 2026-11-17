@@ -161,7 +161,7 @@ export class RoomManager {
       if (fighters.length >= MATCH.maxFighters) break;
       fighters.push({ fighter: FIGHTER_IDS[Math.floor(this.random() * FIGHTER_IDS.length)]!, member: -1, level });
     }
-    const start = { stage: room.settings.stage, stocks: room.settings.stocks, seed: Math.floor(this.random() * 1e9), fighters };
+    const start = { stage: room.settings.stage, stocks: room.settings.stocks, seed: Math.floor(this.random() * 1e9), fighters, rules: { ...room.settings.rules } };
     room.match = new OnlineMatch(start);
     room.pending = [];
     for (const [id, m] of room.members) send(m.peer, { t: 'match', start, you: room.match.slotOf(id) });

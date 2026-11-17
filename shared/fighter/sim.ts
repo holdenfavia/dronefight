@@ -2,7 +2,7 @@
 // Pure data in, pure data out, no rendering, so the server can run it too when online play arrives.
 
 import {
-  AIRDODGE, DODGE, DROP_HOLD_FRAMES, DT, GRAB, HITLAG, KNOCKBACK, KNOCKDOWN, LEDGE, MATCH, MOVEMENT, PARRY, SHIELD,
+  AIRDODGE, CHEAT_RULES, DODGE, DROP_HOLD_FRAMES, DT, GRAB, HITLAG, KNOCKBACK, KNOCKDOWN, LEDGE, MATCH, MOVEMENT, PARRY, SHIELD,
   REFLECT, REWIND_HISTORY_FRAMES, SHIELD_DROP_FRAMES, STATUS, SMASH, STALE, TECH, UP_SPECIAL_JUMP_REFUND,
 } from './config.js';
 import { FIGHTERS, type FighterDef, type FighterId, type Hitbox, type HitStats, type MoveDef, type MoveId, type ProjectileDef } from './fighters.js';
@@ -197,6 +197,14 @@ export interface FighterSetup {
   id: FighterId;
 }
 
+/** Rule cheats for one match (ADR-0077). Every machine in an online fight uses the same ones. */
+export interface MatchRules {
+  /** Low gravity: high, floaty jumps. */
+  moonJump?: boolean;
+  /** Any hit is a knockout. */
+  oneHit?: boolean;
+}
+
 export interface World {
   stage: StageDef;
   frame: number;
@@ -210,9 +218,10 @@ export interface World {
   winner: number;
   /** Events from the last step, for sound and effects. */
   events: GameEvent[];
+  rules: MatchRules;
 }
 
-export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: number = MATCH.defaultStocks, seed = 1): World {
+export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: number = MATCH.defaultStocks, seed = 1, rules: MatchRules = {}): World {
   const stage = STAGES[stageId];
   const fighters = setups.map((setup, slot): Fighter => {
     const spawn = stage.spawns[slot % stage.spawns.length]!;
@@ -287,6 +296,7 @@ export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: nu
     over: false,
     winner: -1,
     events: [],
+    rules: { moonJump: !!rules.moonJump, oneHit: !!rules.oneHit },
   };
 }
 
@@ -1193,10 +1203,11 @@ function integrate(world: World, f: Fighter, input: Input): void {
   if (!f.grounded) {
     const slamming = !!m?.slam && m.slam.speed > 0 && f.frame >= m.slam.frame;
     const dashing = f.action === 'airdodge' && f.dodgeDash && f.frame <= AIRDODGE.dashFrames;
-    const g = def.gravity * (m?.gravity && inRange(f.frame, m.gravity) ? m.gravity.scale : 1) * (f.hovering ? 0 : 1);
+    const moon = world.rules.moonJump;
+    const g = def.gravity * (m?.gravity && inRange(f.frame, m.gravity) ? m.gravity.scale : 1) * (f.hovering ? 0 : 1) * (moon ? CHEAT_RULES.moonGravity : 1);
     if (!slamming && !dashing) {
       f.vy -= g * DT;
-      const maxFall = f.fastFalling ? def.fastFall : def.maxFall;
+      const maxFall = (f.fastFalling ? def.fastFall : def.maxFall) * (moon ? CHEAT_RULES.moonFall : 1);
       if (f.vy < -maxFall && f.action !== 'hitstun') f.vy = -maxFall;
     }
   }
@@ -1732,7 +1743,9 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
   const lag = Math.min(HITLAG.max, Math.floor(HITLAG.base + dmg * HITLAG.perDamage));
   target.percent = Math.min(999, target.percent + dmg);
   attacker.stats.damageDealt += dmg;
-  const kb = knockback(target.percent, dmg, fighterDef(target).weight, hit.bkb * rageKb, hit.kbg * rageKb);
+  let kb = knockback(target.percent, dmg, fighterDef(target).weight, hit.bkb * rageKb, hit.kbg * rageKb) * (fighterDef(target).kbTaken ?? 1);
+  // ONEHIT: anything that does damage sends you flying.
+  if (world.rules.oneHit && dmg > 0) kb = Math.max(kb, CHEAT_RULES.oneHitKb);
   target.lastHitBy = attacker.slot;
   target.lastHitFrame = world.frame;
 

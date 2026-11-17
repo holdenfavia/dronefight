@@ -9,7 +9,8 @@ import { FIGHTER_IDS, FIGHTERS } from '../../shared/fighter/fighters';
 import { createWorld, NO_INPUT, step, type GameEvent, type Input, type World } from '../../shared/fighter/sim';
 import { Sfx } from './audio';
 import { Keyboard } from './input';
-import { ONLINE } from './config';
+import { cheatOn, cheatRules, onCheatsChange, TripleTap } from './cheats';
+import { CHEAT_LOOKS, ONLINE } from './config';
 import { Renderer, type Prev } from './render';
 import { NetClient } from './net';
 import { Ui, slotTag, type MatchSetup } from './ui';
@@ -54,6 +55,15 @@ let onlineBuffering = true;
 let onlineMenu = false;
 let desyncs = 0;
 
+/** Three quick Space taps on a menu open the cheat code box (ADR-0077). */
+const spaceTaps = new TripleTap(CHEAT_LOOKS.tapWindowMs);
+function applyCheatLooks(): void {
+  renderer.setMirror(cheatOn('mirror'));
+  keyboard.mirrored = cheatOn('mirror');
+}
+onCheatsChange(applyCheatLooks);
+applyCheatLooks();
+
 net.match = {
   onMatch: (start, you) => startOnline(start, you),
   onFrames: (from, inputs) => {
@@ -94,7 +104,7 @@ function startMatch(setup: MatchSetup): void {
     .filter((s) => s.kind !== 'off')
     .map((s) => ({ ...s, fighter: s.random ? FIGHTER_IDS[Math.floor(Math.random() * FIGHTER_IDS.length)]! : s.fighter }));
   const seed = (Math.random() * 1e9) | 0;
-  world = createWorld(setup.stage, active.map((s) => ({ id: s.fighter })), setup.stocks, seed);
+  world = createWorld(setup.stage, active.map((s) => ({ id: s.fighter })), setup.stocks, seed, cheatRules());
   bots = active.map((s, i) => (s.kind === 'bot' ? createBot(i, s.level, seed) : null));
   human = active.map((s) => s.kind === 'p1');
   names = active.map((s) => `${slotTag(s)} ${FIGHTERS[s.fighter].name}`);
@@ -114,7 +124,7 @@ function startMatch(setup: MatchSetup): void {
 
 /** An online fight starts (or, joining mid-fight, is going on and we watch). */
 function startOnline(start: MatchStart, you: number): void {
-  world = createWorld(start.stage, start.fighters.map((f) => ({ id: f.fighter })), start.stocks, start.seed);
+  world = createWorld(start.stage, start.fighters.map((f) => ({ id: f.fighter })), start.stocks, start.seed, start.rules);
   bots = [];
   human = [];
   onlineYou = you;
@@ -299,6 +309,7 @@ function handleKeys(): void {
     sfx.unlock();
     // Typing a room code or feedback: leave the keys to the text box.
     if (typing) continue;
+    if (code === 'Space' && ui.current && spaceTaps.tap(performance.now())) { ui.openCheats(); continue; }
     if (code === 'KeyM') { sfx.setMuted(!sfx.muted); continue; }
     if (code === 'KeyF' && mode !== 'game') { toggleFullscreen(); continue; }
     if (mode === 'game') {
@@ -337,7 +348,8 @@ function frame(now: number): void {
   last = now;
   handleKeys();
   if (mode === 'game' || mode === 'menu' || mode === 'results' || mode === 'online') {
-    acc += dt;
+    // TURBO runs offline fights faster; online fights keep the server's clock.
+    acc += dt * (mode === 'game' && cheatOn('turbo') ? CHEAT_LOOKS.turbo : 1);
     let steps = 0;
     while (acc >= DT && steps < MAX_STEPS_PER_FRAME) {
       if (mode === 'game') stepGame();

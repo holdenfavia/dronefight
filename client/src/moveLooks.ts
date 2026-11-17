@@ -176,6 +176,18 @@ const OWN: Record<FighterId, Partial<Record<MoveId, MoveLook>>> = {
     uspecial: { pose: 'rise', fx: 'shock', color: ATTACK_COLORS.special.bard },
     dspecial: { pose: 'strum', fx: 'wind', color: ATTACK_COLORS.slow },
   },
+  // River (secret): sad little slaps, a trip, a hop and a nap.
+  river: {
+    jab: { pose: 'punch', fx: 'puff', color: null },
+    jab2: { pose: 'punch', fx: 'puff', color: null },
+    fsmash: { pose: 'overhead', fx: 'puff', color: ATTACK_COLORS.smash },
+    usmash: { pose: 'uppercut', fx: 'puff', color: ATTACK_COLORS.smash },
+    dsmash: { pose: 'stomp', fx: 'puff', color: ATTACK_COLORS.smash },
+    nspecial: { pose: 'throw', fx: 'puff', color: ATTACK_COLORS.special.river },
+    sspecial: { pose: 'dash', fx: 'puff', color: ATTACK_COLORS.special.river },
+    uspecial: { pose: 'rise', fx: 'puff', color: ATTACK_COLORS.special.river },
+    dspecial: { pose: 'low', fx: 'puff', color: ATTACK_COLORS.special.river },
+  },
 };
 
 const FALLBACK: MoveLook = { pose: 'punch', fx: 'arc', color: null };

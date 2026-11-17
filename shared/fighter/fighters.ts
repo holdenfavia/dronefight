@@ -3,9 +3,16 @@
 // Every fighter plays its own way: its own reach, speed and power, its own specials and its own gimmick
 // (Brawler's rage, Blade's sword tip, Spark's teleports and rewind, Titan's armor and carry grab).
 
-export type FighterId = 'brawler' | 'blade' | 'spark' | 'titan' | 'ninja' | 'gunslinger' | 'chef' | 'ghost' | 'yoyo' | 'bard';
+export type FighterId = 'brawler' | 'blade' | 'spark' | 'titan' | 'ninja' | 'gunslinger' | 'chef' | 'ghost' | 'yoyo' | 'bard' | 'river';
 
+/** The roster everyone sees (and the pool Random and CPUs draw from). */
 export const FIGHTER_IDS: readonly FighterId[] = ['brawler', 'blade', 'spark', 'titan', 'ninja', 'gunslinger', 'chef', 'ghost', 'yoyo', 'bard'];
+
+/** Secret fighters, unlocked by a cheat code on the menus (ADR-0077). Never drawn by Random or CPUs. */
+export const SECRET_FIGHTER_IDS: readonly FighterId[] = ['river'];
+
+/** Every fighter the sim knows, secret ones included (what online picks may be). */
+export const ALL_FIGHTER_IDS: readonly FighterId[] = [...FIGHTER_IDS, ...SECRET_FIGHTER_IDS];
 
 /** Moves every fighter has. */
 export type CoreMoveId =
@@ -192,6 +199,8 @@ export interface FighterDef {
   rage?: RageDef;
   /** Shots before the neutral special has to reload (the reload move plays instead when empty). */
   ammo?: number;
+  /** Multiplier on the knockback this fighter takes (River: very hard to launch). Defaults to 1. */
+  kbTaken?: number;
   moves: Moveset;
 }
 
@@ -883,6 +892,72 @@ function bard(): FighterDef {
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// River (secret, ADR-0077): a joke fighter for a friend, unlocked with the code RIVER. Really, really bad:
+// slow, low jumps, slow tiny slaps that barely hurt, a recovery that barely recovers, and a nap for a
+// down special, and a big round belly that is easy to hit. One thing going for him: he takes very little knockback, so he is very hard to launch.
+
+/** River takes this share of normal knockback: KOs only at very high percent (about 350% from a big smash). */
+const RIVER_KB_TAKEN = 0.4;
+
+function river(): FighterDef {
+  return {
+    id: 'river',
+    name: 'River',
+    blurb: 'Secret. Big, round, slow, weak and clumsy, but almost impossible to launch.',
+    specials: { neutral: 'Pocket Lint', side: 'Trip', up: 'Little Hop', down: 'Nap' },
+    // Wide and round: a big target.
+    halfW: 34, height: 34, hurtR: 32,
+    weight: 130,
+    walkSpeed: 200, airSpeed: 190, airAccel: 1300,
+    gravity: 2300, maxFall: 900, fastFall: 1300,
+    jumpSpeed: 640, airJumpSpeed: 520, airJumps: 1,
+    upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
+    kbTaken: RIVER_KB_TAKEN,
+    moves: {
+      // A slow slap and a slower second slap.
+      jab: { frames: 24, hitboxes: [hb(8, 9, 22, 4, 12, 1, 70, 8, 5)], next: { move: 'jab2', from: 14 } },
+      jab2: { frames: 30, hitboxes: [hb(10, 11, 24, 4, 12, 2, 50, 14, 20)] },
+      ftilt: { frames: 34, hitboxes: [hb(14, 15, 26, -4, 12, 3, 40, 14, 40)] },
+      utilt: { frames: 34, hitboxes: [hb(13, 15, 8, 24, 12, 3, 90, 16, 40)] },
+      dtilt: { frames: 30, hitboxes: [hb(12, 13, 24, -14, 11, 2, 60, 12, 30)] },
+      // Smashes: big wind-ups, small results.
+      fsmash: { frames: 64, charge: { frame: 22, max: 60, dmg: 0.2 }, hitboxes: [hb(30, 31, 28, 4, 14, 6, 40, 20, 60)] },
+      usmash: { frames: 62, charge: { frame: 20, max: 60, dmg: 0.2 }, hitboxes: [hb(28, 30, 6, 28, 14, 5, 90, 20, 60)] },
+      dsmash: {
+        frames: 62, charge: { frame: 20, max: 60, dmg: 0.2 },
+        hitboxes: [hb(28, 29, 26, -14, 13, 5, 70, 20, 55), hb(28, 29, -26, -14, 13, 5, 110, 20, 55)],
+      },
+      nair: { frames: 36, landLag: 16, hitboxes: [hb(10, 13, 0, 0, 20, 3, 50, 14, 40)] },
+      fair: { frames: 40, landLag: 18, hitboxes: [hb(14, 15, 24, 0, 12, 4, 40, 14, 45)] },
+      bair: { frames: 40, landLag: 18, hitboxes: [hb(14, 15, -24, 2, 12, 4, 145, 14, 45)] },
+      uair: { frames: 38, landLag: 16, hitboxes: [hb(12, 14, 4, 24, 13, 3, 88, 14, 40)] },
+      dair: { frames: 46, landLag: 22, hitboxes: [hb(18, 19, 0, -24, 12, 4, -70, 12, 40)] },
+      // Throws a bit of pocket lint. It drifts and falls.
+      nspecial: {
+        frames: 44,
+        projectile: { frame: 18, def: { kind: 'shot', look: 'lint', speed: 220, angle: 10, r: 8, lifeFrames: 40, gravity: 500, limit: 1, hit: { dmg: 1, angle: 40, bkb: 8, kbg: 10 } } },
+      },
+      // Runs forward and trips: a short stumble, then a long time getting back up.
+      sspecial: {
+        frames: 52, recovery: true, gravity: { from: 1, to: 14, scale: 0.4 }, lunge: { frame: 8, vx: 460, vy: 80 },
+        hitboxes: [hb(10, 14, 18, -10, 14, 2, 30, 16, 20)],
+      },
+      // Barely leaves the ground.
+      uspecial: { frames: 30, recovery: true, helpless: true, boost: { frame: 8, speed: 760, steer: 24 } },
+      // Lies down for a nap. Does nothing.
+      dspecial: { frames: 90 },
+      grab: grab(20, 12, 10, 40),
+      pummel: pummel(1, 24),
+      fthrow: throwMove(34, 16, 2, 40, 30, 30),
+      bthrow: throwMove(38, 18, 2, 140, 30, 30, true),
+      uthrow: throwMove(34, 16, 2, 90, 34, 30),
+      dthrow: throwMove(34, 18, 1, 75, 26, 20),
+      getupattack: getupAttack(22, 2),
+    },
+  };
+}
+
 export const FIGHTERS: Record<FighterId, FighterDef> = {
   brawler: brawler(),
   blade: blade(),
@@ -894,4 +969,5 @@ export const FIGHTERS: Record<FighterId, FighterDef> = {
   ghost: ghost(),
   yoyo: yoyo(),
   bard: bard(),
+  river: river(),
 };

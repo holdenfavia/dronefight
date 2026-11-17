@@ -8,6 +8,7 @@ import type { Platform } from '../../shared/fighter/stages';
 import { ATTACK_COLORS, CAMERA, CPU_TAG, FEEL, PALETTE, SLOT_COLORS } from './config';
 import { moveLook, type MoveLook } from './moveLooks';
 import { drawFighterFigure } from './figures';
+import { cheatOn } from './cheats';
 import { isPurpleSkyTime } from './purpleSky';
 
 interface Particle {
@@ -56,6 +57,7 @@ export class Renderer {
   private near: Building[] = [];
   private time = 0;
   private purple = false;
+  private mirrored = false;
   private purpleCheck = 0;
   private platforms: Platform[] = [];
   private lastWorld: World | null = null;
@@ -454,7 +456,7 @@ export class Renderer {
 
   draw(world: World, prev: readonly Prev[], alpha: number): void {
     const ctx = this.ctx;
-    if (++this.purpleCheck % 60 === 1) this.purple = isPurpleSkyTime();
+    if (++this.purpleCheck % 60 === 1) this.purple = isPurpleSkyTime() || cheatOn('purple');
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.drawSky();
     const sh = this.shake;
@@ -1231,8 +1233,20 @@ export class Renderer {
     this.tags = [...tags];
   }
 
+  /** MIRROR cheat (ADR-0077): the whole picture flips left to right; text is drawn flipped back. */
+  setMirror(on: boolean): void {
+    this.mirrored = on;
+    this.canvas.style.transform = on ? 'scaleX(-1)' : '';
+  }
+
   private label(text: string, x: number, y: number, color: string, arrow = false, scale = 1): void {
     const ctx = this.ctx;
+    if (this.mirrored) {
+      ctx.save();
+      ctx.translate(x, 0);
+      ctx.scale(-1, 1);
+      ctx.translate(-x, 0);
+    }
     ctx.font = `800 ${Math.round(Math.max(12, this.h * 0.022) * scale)}px 'Barlow Condensed', 'Arial Narrow', sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
@@ -1248,6 +1262,7 @@ export class Renderer {
       ctx.lineTo(x, y + 7);
       ctx.fill();
     }
+    if (this.mirrored) ctx.restore();
   }
 
   private drawParticles(front: boolean): void {

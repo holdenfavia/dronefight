@@ -52,7 +52,8 @@ function parseSettings(v: unknown): RoomSettings | null {
   if (!isStageId(s.stage)) return null;
   if (typeof s.stocks !== 'number' || !Number.isInteger(s.stocks) || s.stocks < 1 || s.stocks > 5) return null;
   if (!Array.isArray(s.cpus) || s.cpus.length > MATCH.maxFighters - 1 || !s.cpus.every(isBotLevel)) return null;
-  return { stage: s.stage, stocks: s.stocks, cpus: [...s.cpus] };
+  const r = s.rules && typeof s.rules === 'object' ? (s.rules as Record<string, unknown>) : {};
+  return { stage: s.stage, stocks: s.stocks, cpus: [...s.cpus], rules: { moonJump: r.moonJump === true, oneHit: r.oneHit === true } };
 }
 
 export function parseClientMessage(raw: string): ClientMessage | null {

@@ -1,12 +1,14 @@
 // The fighters, drawn as stick figures with the Canvas 2D API (ADR-0072, ADR-0073; placeholder art, owner's
 // request 2026-11-10). Each one has its own silhouette: the Brawler's gloves and headband, the Blade's sword,
 // the Spark's pointed hat, the Titan's size and boxy head, the Ninja's hood, the Gunslinger's hat and revolver,
-// the Chef's toque and pan, the Ghost's sheet, the Yo-yo Kid's cap and yo-yo, the Bard's guitar.
+// the Chef's toque and pan, the Ghost's sheet, the Yo-yo Kid's cap and yo-yo, the Bard's guitar, and the secret
+// River's round belly and propeller beanie (ADR-0077).
 // Local units around the body centre, y down, facing +x.
 
 import type { FighterId } from '../../shared/fighter/fighters';
 import { FIGHTERS } from '../../shared/fighter/fighters';
-import { PALETTE } from './config';
+import { cheatOn } from './cheats';
+import { CHEAT_LOOKS, PALETTE } from './config';
 import type { AttackPose } from './moveLooks';
 
 export interface FigurePose {
@@ -41,9 +43,12 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
   const titan = id === 'titan';
   const H = def.height + (titan ? 8 : 6);
   const lw = Math.max(2, H * (titan ? 0.12 : id === 'spark' ? 0.08 : 0.09));
-  const headR = H * (titan ? 0.14 : 0.17);
-  const headY = -0.5 * H + headR;
-  const neckY = headY + headR;
+  const river = id === 'river';
+  const headR0 = H * (titan ? 0.14 : 0.17);
+  // BIGHEAD cheat: the head grows upward from the neck, the body stays put.
+  const headR = headR0 * (cheatOn('bigHead') ? CHEAT_LOOKS.bigHead : 1);
+  const neckY = -0.5 * H + 2 * headR0;
+  const headY = neckY - headR;
   const shoulderY = neckY + H * 0.08;
   const hipY = H * 0.12;
   const footY = 0.5 * H;
@@ -52,14 +57,14 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
   const stride = pose.stride ?? 0;
   const swing = Math.sin(pose.phase * 0.35) * 0.7 * stride;
   const airborne = stride === 0 && pose.thrust > 0.4;
-  const hipW = titan ? H * 0.1 : 0;
-  const shoulderW = titan ? H * 0.12 : 0;
+  const hipW = titan ? H * 0.1 : river ? H * 0.16 : 0;
+  const shoulderW = titan ? H * 0.12 : river ? H * 0.2 : 0;
 
   const limbs = new Path2D();
   // Spine (the Titan has broad shoulders).
   limbs.moveTo(0, neckY);
   limbs.lineTo(0, hipY);
-  if (titan) { limbs.moveTo(-shoulderW, shoulderY); limbs.lineTo(shoulderW, shoulderY); }
+  if (titan || river) { limbs.moveTo(-shoulderW, shoulderY); limbs.lineTo(shoulderW, shoulderY); }
   // Legs: running swing on the ground, tucked in the air.
   const ghost = id === 'ghost';
   const leg = (angle: number, side: number) => {
@@ -278,6 +283,28 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
     ctx.restore();
   }
 
+  // River's big round belly, behind the limbs, wobbling as he moves.
+  if (river) {
+    const wob = Math.sin(pose.phase * 0.35) * (stride ? 1.5 : 0.6);
+    const by = (shoulderY + hipY) / 2 + H * 0.04;
+    ctx.fillStyle = pose.color;
+    ctx.strokeStyle = PALETTE.ink;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(H * 0.06, by, H * 0.36 + wob, H * 0.3 - wob * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // A shine and a belly button.
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(H * 0.16, by - H * 0.12, H * 0.09, H * 0.05, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PALETTE.ink;
+    ctx.beginPath();
+    ctx.arc(H * 0.2, by + H * 0.04, 1.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // Dark outline under the color so figures read against any background.
   ctx.strokeStyle = PALETTE.ink;
   ctx.lineWidth = lw + 2.5;
@@ -285,6 +312,7 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
   ctx.strokeStyle = pose.color;
   ctx.lineWidth = lw;
   ctx.stroke(limbs);
+
 
   // The Brawler's gloves (glowing red at full rage); the Spark's glowing hands.
   if (id === 'brawler' || id === 'spark') {
@@ -492,6 +520,20 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
     ctx.beginPath();
     ctx.moveTo(-headR * 0.6, capY + headR * 0.1);
     ctx.quadraticCurveTo(-headR * 1.6, capY - headR * 0.8, -headR * 2.0, capY - headR * 0.3);
+    ctx.stroke();
+  } else if (river) {
+    // A propeller beanie; the propeller spins.
+    ctx.beginPath();
+    ctx.arc(0, capY + headR * 0.5, headR * 0.95, Math.PI, 0);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.ink;
+    ctx.fillRect(-1, capY - headR * 0.45, 2, headR * 0.5);
+    const spin = Math.cos(pose.phase * 0.6);
+    ctx.fillStyle = '#ffd23f';
+    ctx.beginPath();
+    ctx.ellipse(0, capY - headR * 0.45, headR * 0.9 * Math.abs(spin) + 1, headR * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.stroke();
   } else if (titan) {
     // A brow plate and a belt.

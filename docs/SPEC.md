@@ -56,6 +56,12 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 | Yo-yo Kid | 88 | 2 | combos and juggles; yo-yo reach out and back, **returning yo-yo**, **tether** recovery |
 | Bard | 92 | 2 | guitar; sound waves, **tempo song** speeds up, **lullaby** slows foes, amp slams |
 
+**Secret:** River, unlocked by the code RIVER (ADR-0077): big, round and really bad, but takes 0.4× knockback. Never drawn by Random or CPUs.
+
+## Cheat codes (ADR-0077)
+
+Tap Space three times quickly on any menu to open the code box; type a code again to turn it off. RIVER (secret fighter), MOONJUMP, ONEHIT (fight rules; online the host's apply to the room), BIGHEAD, PURPLE, MIRROR, TURBO (offline fights only).
+
 ## Stages
 
 Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Crane Yard (narrow deck, two high crane arms). Same blast zones on all.
