@@ -36,7 +36,7 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 
 ## Moves (ADR-0071)
 
-- **Every fighter has its own moveset and gimmick** (ADR-0072, ADR-0073): jab (combos), tilts, charged smashes, five aerials, four specials, grab, pummel and four throws, get-up attack.
+- **Every fighter has its own moveset and gimmick** (ADR-0072, ADR-0073): jab (combos), tilts, charged smashes, five aerials, four specials, grab, pummel and four throws, get-up attack. Each also has a **signature mechanic** with a meter on its damage card (ADR-0079).
 - **Defense:** shield (drains, breaks into a dizzy stun), **parry** by shielding just as a hit lands, rolls and spot dodge, one air dodge per jump (dashes if a direction is held).
 - **Launched:** press E just before hitting the floor to **tech**, or get knocked down (get up, roll or attack). Mash to escape grabs.
 - Super armor (Titan), counters (Brawler, Blade, Gunslinger), reflects (Chef), status effects (daze, swapped controls, slow, haste), stale moves (repeats get weaker), trades, a short input buffer.
@@ -44,18 +44,18 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 
 ## Fighters (ADR-0072, ADR-0073; numbers in `shared/fighter/fighters.ts`)
 
-| Fighter | Weight | Air jumps | Style and gimmick |
+| Fighter | Weight | Air jumps | Style and signature mechanic (ADR-0079) |
 |---|---|---|---|
-| Brawler | 105 | 1 | fast fists, short reach; **rage** builds as it fights, full rage makes the next smash or special huge |
-| Blade | 95 | 1 | long sword reach; **tip** hits are strong, up close is weak; sword wave, lunge, parry stance |
-| Spark | 85 | 2 | floaty caster; fireball, homing orb, **blink** teleport, **rewind** |
-| Titan | 150 | 1 | huge and slow, **armored** ground attacks; boulder, **sky carry** grab-and-slam, earthquake |
-| Ninja | 82 | 2 | fast; throwing stars, **shadow step** behind you, vanish, smoke bomb that dazes |
-| Gunslinger | 98 | 1 | **six shots then reload**, long lasso grab, shotgun jump, quick-draw counter |
-| Chef | 108 | 1 | frying pan; **food toss** (tomato, pie, meatball), **pan flip reflects**, boiling pot hazard |
-| Ghost | 75 | 3 | floaty; long swipes, **possess** swaps your left and right, fade through attacks |
-| Yo-yo Kid | 88 | 2 | combos and juggles; yo-yo reach out and back, **returning yo-yo**, **tether** recovery |
-| Bard | 92 | 2 | guitar; sound waves, **tempo song** speeds up, **lullaby** slows foes, amp slams |
+| Brawler | 100 | 1 | fast fists, short reach; **KO meter** fills from combos, full = Haymaker becomes a Knockout Punch |
+| Blade | 95 | 1 | long sword reach; tip hits sharpen the **edge**, full = Flash Cut through shields; parry stance |
+| Spark | 94 | 2 | floaty caster on **mana** (fizzles when empty); fireball, homing orb, blink, **rewind** that undoes damage |
+| Titan | 115 | 1 | huge and slow, **armored**; soaked damage is stored as **payback** for the next smash; sky carry, earthquake |
+| Ninja | 82 | 2 | fast; hits **mark** foes, Shadow Step onto a marked foe assassinates; smoke bomb dazes |
+| Gunslinger | 98 | 1 | **six shots then reload**; hits in a row build a **hot streak**, the last bullet is golden; lasso, quick-draw counter |
+| Chef | 104 | 1 | hits fill a **pantry** (tomato, pepper, meat); full = **Cook** a recipe; food toss, **pan flip reflects** |
+| Ghost | 75 | 3 | floaty; hits **haunt** foes, a wisp on a fully haunted foe **possesses** them (the Ghost steers them) |
+| Yo-yo Kid | 92 | 2 | juggles; a live **trick combo** makes each chained hit stronger; returning yo-yo, tether |
+| Bard | 92 | 2 | guitar; attacks **on the beat** build groove, full = **encore** songs (long tempo, sleeping lullaby) |
 
 **Secret:** River, unlocked by the code RIVER (ADR-0077): a big, round **glass cannon** (ADR-0078): fastest walk, hard hits, the strongest grabs and throws, a Belly Flop down special, but light and takes 1.25× knockback. Never drawn by Random or CPUs.
 

@@ -3,6 +3,7 @@
 import { KNOCKBACK } from './config.js';
 import { centerY, fighterDef, isAlive, knockback, NO_INPUT, type Fighter, type Input, type World } from './sim.js';
 import { nextRandom } from './rng.js';
+import type { Hitbox } from './fighters.js';
 import { mainPlatform } from './stages.js';
 
 export type BotLevel = 1 | 2 | 3;
@@ -226,10 +227,12 @@ function attackToward(bot: Bot, world: World, me: Fighter, target: Fighter, dx: 
   const away: 1 | -1 = toward > 0 ? -1 : 1;
   if (me.grounded) {
     // A smash when it would finish them, charged a little.
-    const fs = def.moves.fsmash.hitboxes![0]!;
+    // The strongest hit of the smash (multi-hit smashes start with weak catching hits).
+    const strongest = (hbs: readonly Hitbox[]) => hbs.reduce((m, h) => (h.dmg > m.dmg ? h : m));
+    const fs = strongest(def.moves.fsmash.hitboxes!);
     const charge: Frame[] = Array.from({ length: Math.floor(rand() * 18) }, () => ({ ...aim(toward), smash: true }));
     if (dy > 45) {
-      const us = def.moves.usmash.hitboxes!.at(-1)!;
+      const us = strongest(def.moves.usmash.hitboxes!);
       bot.seq = wouldKo(world, target, us.dmg, us.bkb, us.kbg) && rand() < 0.6
         ? [{}, { aimUp: true, attack: true, smash: true }]
         : [{}, { aimUp: true, attack: true }];

@@ -2,11 +2,15 @@
 // Pure data in, pure data out, no rendering, so the server can run it too when online play arrives.
 
 import {
-  AIRDODGE, CHEAT_RULES, DODGE, DROP_HOLD_FRAMES, DT, GRAB, HITLAG, KNOCKBACK, KNOCKDOWN, LEDGE, MATCH, MOVEMENT, PARRY, SHIELD,
+  AIRDODGE, CHEAT_RULES, SIGNATURE, DODGE, DROP_HOLD_FRAMES, DT, GRAB, HITLAG, KNOCKBACK, KNOCKDOWN, LEDGE, MATCH, MOVEMENT, PARRY, SHIELD,
   REFLECT, REWIND_HISTORY_FRAMES, SHIELD_DROP_FRAMES, STATUS, STALE, TECH, UP_SPECIAL_JUMP_REFUND,
 } from './config.js';
 import { FIGHTERS, type FighterDef, type FighterId, type Hitbox, type HitStats, type MoveDef, type MoveId, type ProjectileDef } from './fighters.js';
 import { nextRandom } from './rng.js';
+import {
+  afterStrike, beginMove, blinkScale, feastArmor, newSignatureState, onArmor, onProjectileMiss, projectileHit, puppetInput,
+  resetSignature, rewindHeals, shadowStepPriority, signatureAction, strikeMods, tickSignature, type SignatureKind,
+} from './signature.js';
 import { STAGES, type Platform, type StageDef, type StageId } from './stages.js';
 
 /**
@@ -125,10 +129,8 @@ export interface Fighter {
   lastHitFrame: number;
   /** Knockback of the last hit, for tumbling and trails. */
   lastKb: number;
-  /** Brawler's rage, 0 to its max. */
-  rage: number;
-  /** Recent feet positions, oldest first (for the rewind). */
-  history: { x: number; y: number }[];
+  /** Recent feet positions and damage, oldest first (for the rewind). */
+  history: { x: number; y: number; p: number }[];
   /** Frames left with left and right swapped (the Ghost's possess). */
   cursed: number;
   /** Frames left moving slowly (the Bard's lullaby) or fast (its tempo song). */
@@ -138,6 +140,30 @@ export interface Fighter {
   ammo: number;
   /** Which of a cycling throw comes next (the Chef's food). */
   cycle: number;
+  // Signature mechanics (ADR-0079, signature.ts).
+  /** The fighter's signature meter: KO meter, edge, mana, payback, hot streak or groove. */
+  meter: number;
+  /** The Chef's ingredients (0 tomato, 1 pepper, 2 meat). */
+  pantry: number[];
+  /** Frames left on the Chef's recipe, and which. */
+  buff: number;
+  buffKind: '' | 'chili' | 'soup' | 'stew' | 'feast';
+  /** Hits landed in a row, and the world frame of the last one. */
+  chain: number;
+  chainFrame: number;
+  /** Marks (Ninja) or haunting (Ghost) put on this fighter, by the slot that put them there, and frames until they fade. */
+  tags: number[];
+  tagTime: number[];
+  /** Possessed by the Ghost in this slot for this many frames: it steers this fighter's movement. */
+  puppetBy: number;
+  puppet: number;
+  /** The keys this fighter's player actually held last frame (to count mashing while possessed). */
+  rawPrev: Input;
+  /** The current move's damage and knockback multipliers, flat bonus damage, and signature name. */
+  moveMod: number;
+  moveKb: number;
+  moveBonus: number;
+  moveSig: string;
   prev: Input;
   stats: FighterStats;
 }
@@ -172,7 +198,8 @@ export interface Projectile {
 }
 
 export type GameEvent =
-  | { type: 'hit'; x: number; y: number; dmg: number; kb: number; attacker: number; target: number; armored?: boolean; move?: MoveId; rage?: boolean; tip?: boolean }
+  | { type: 'hit'; x: number; y: number; dmg: number; kb: number; attacker: number; target: number; armored?: boolean; move?: MoveId; sig?: string; tip?: boolean }
+  | { type: 'signature'; slot: number; kind: SignatureKind; target: number }
   | { type: 'warp'; slot: number; fromX: number; fromY: number; x: number; y: number }
   | { type: 'reflect'; x: number; y: number; slot: number }
   | { type: 'status'; slot: number; status: 'curse' | 'slow' | 'haste' | 'reload' }
@@ -273,13 +300,13 @@ export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: nu
       lastHitBy: -1,
       lastHitFrame: -9999,
       lastKb: 0,
-      rage: 0,
       history: [],
       cursed: 0,
       slowed: 0,
       hasted: 0,
       ammo: def.ammo ?? 0,
       cycle: 0,
+      ...newSignatureState(setup.id),
       prev: { ...NO_INPUT },
       stats: { kos: 0, falls: 0, selfDestructs: 0, damageDealt: 0 },
     };
@@ -348,12 +375,6 @@ export function chargeFraction(f: Fighter): number {
   return c ? f.charge / c.max : 0;
 }
 
-/** How full the Brawler's rage is, 0 to 1 (0 for fighters without rage). */
-export function rageFraction(f: Fighter): number {
-  const r = fighterDef(f).rage;
-  return r ? Math.min(1, f.rage / r.max) : 0;
-}
-
 /** Knockback (grows with the target's damage, shrinks with weight). */
 export function knockback(percentAfter: number, dmg: number, weight: number, bkb: number, kbg: number): number {
   const p = percentAfter;
@@ -371,7 +392,8 @@ export function step(world: World, inputs: readonly Input[]): void {
     return;
   }
   for (const f of world.fighters) {
-    const input = inputs[f.slot] ?? NO_INPUT;
+    // A possessed fighter moves the way its Ghost does (ADR-0079).
+    const input = puppetInput(f, inputs[f.slot] ?? NO_INPUT, inputs);
     updateFighter(world, f, input);
     f.prev = { ...input };
   }
@@ -477,7 +499,9 @@ function setAction(f: Fighter, action: Action, duration = 0): void {
   }
 }
 
-function startMove(world: World, f: Fighter, move: MoveId, button: 'attack' | 'special' | null): void {
+function startMove(world: World, f: Fighter, wanted: MoveId, button: 'attack' | 'special' | null): void {
+  // A full signature meter can turn the move into its signature version (ADR-0079).
+  const move = beginMove(world, f, wanted);
   setAction(f, 'attack');
   f.move = move;
   f.moveHits = [];
@@ -521,6 +545,7 @@ function speedMult(f: Fighter): number {
 
 function updateFighter(world: World, f: Fighter, rawInput: Input): void {
   if (f.action === 'out') return;
+  tickSignature(world, f);
   const input = f.cursed > 0 ? swapSides(rawInput) : rawInput;
   const press = pressedEdges(input, f.cursed > 0 ? swapSides(f.prev) : f.prev);
   if (f.cursed > 0) f.cursed--;
@@ -707,7 +732,7 @@ function updateFighter(world: World, f: Fighter, rawInput: Input): void {
   ledgeSnap(world, f, dir);
   checkBlastZone(world, f);
   if (isAlive(f)) {
-    f.history.push({ x: f.x, y: f.y });
+    f.history.push({ x: f.x, y: f.y, p: f.percent });
     if (f.history.length > REWIND_HISTORY_FRAMES) f.history.shift();
   }
 }
@@ -885,7 +910,8 @@ function startSpecial(world: World, f: Fighter, input: Input, press: Pressed): v
   if (up) { startUpSpecial(world, f); return; }
   if (down) {
     const id = pick('dspecial');
-    if (projectileLimitReached(world, f, moves[id])) return;
+    const cooking = f.id === 'chef' && f.pantry.length >= SIGNATURE.pantry.size;
+    if (!cooking && projectileLimitReached(world, f, moves[id])) return;
     if (!f.grounded && fighterDef(f).downSpecials !== undefined) {
       if (f.downSpecialsLeft <= 0) return;
       f.downSpecialsLeft--;
@@ -967,7 +993,8 @@ function runMove(world: World, f: Fighter, input: Input, press: Pressed, dir: nu
     f.fastFalling = false;
     world.events.push({ type: 'jump', slot: f.slot, air: false });
   }
-  if (m.teleport && fr === m.teleport.frame) teleport(world, f, input, m.teleport.dist);
+  if (m.teleport && fr === m.teleport.frame) teleport(world, f, input, m.teleport.dist * blinkScale(f));
+  if (m.signature && fr === m.signature.frame) signatureAction(world, f);
   if (m.shadowStep && fr === m.shadowStep.frame) shadowStep(world, f, m.shadowStep.range);
   if (m.tether && fr === m.tether.frame && tether(world, f, m.tether.range)) return;
   if (m.haste && fr === m.haste.frame) {
@@ -1048,18 +1075,27 @@ function rewind(world: World, f: Fighter, back: number): void {
   const fromY = f.y;
   f.x = to.x;
   f.y = to.y;
+  // Spark's rewind takes back the damage too, when there was mana for it (ADR-0079).
+  if (rewindHeals(f) && to.p < f.percent) {
+    f.percent = to.p;
+    world.events.push({ type: 'signature', slot: f.slot, kind: 'undo', target: -1 });
+  }
   f.history = [];
   arrive(world, f, fromX, fromY);
 }
 
 /** Appear behind the nearest opponent in range, facing them; with nobody in range, dash forward. */
 function shadowStep(world: World, f: Fighter, range: number): void {
+  // The most-marked foe in range first (the Ninja's marks), then the nearest.
   let best: Fighter | null = null;
   let bestD = range;
+  let bestP = -1;
   for (const o of world.fighters) {
     if (o === f || !hittable(o)) continue;
     const d = Math.hypot(o.x - f.x, o.y - f.y);
-    if (d <= bestD) { bestD = d; best = o; }
+    if (d > range) continue;
+    const pr = shadowStepPriority(f, o);
+    if (pr > bestP || (pr === bestP && d <= bestD)) { bestP = pr; bestD = d; best = o; }
   }
   if (!best) { f.vx = f.facing * 700; return; }
   const fromX = f.x;
@@ -1116,10 +1152,14 @@ function finishSlam(world: World, f: Fighter, m: MoveDef): void {
 function spawnProjectile(world: World, f: Fighter, p: ProjectileDef, charge: number): void {
   const a = (p.angle * Math.PI) / 180;
   const c = p.charged;
-  const r = p.r * (c ? 1 + (c.r - 1) * charge : 1);
-  const hit: HitStats = c
+  const r = p.r * (c ? 1 + (c.r - 1) * charge : 1) * (f.moveSig === 'fizzle' ? 0.7 : 1);
+  const base: HitStats = c
     ? { ...p.hit, dmg: p.hit.dmg * (1 + (c.dmg - 1) * charge), bkb: p.hit.bkb * (1 + (c.kb - 1) * charge), kbg: p.hit.kbg * (1 + (c.kb - 1) * charge * 0.5) }
     : p.hit;
+  // The move's signature power goes with the shot (golden bullet, fizzle, groove, the Chef's soup).
+  const sig = projectileHit(f, base);
+  const hit = sig.hit;
+  const look = sig.look ?? p.look ?? p.kind;
   world.projectiles.push({
     id: world.nextProjectileId++,
     owner: f.slot,
@@ -1141,10 +1181,10 @@ function spawnProjectile(world: World, f: Fighter, p: ProjectileDef, charge: num
     hitSlots: [],
     lastHit: [-9999, -9999, -9999, -9999],
     rehit: p.rehit ?? 0,
-    look: p.look ?? p.kind,
+    look,
     move: f.move!,
   });
-  world.events.push({ type: 'shot', slot: f.slot, kind: p.kind, look: p.look ?? p.kind });
+  world.events.push({ type: 'shot', slot: f.slot, kind: p.kind, look });
 }
 
 function walk(f: Fighter, def: FighterDef, dir: number): void {
@@ -1380,7 +1420,7 @@ function respawn(world: World, f: Fighter): void {
   f.shieldHp = SHIELD.maxHp;
   f.lastHitBy = -1;
   f.stale = [];
-  f.rage = 0;
+  resetSignature(f);
   f.history = [];
   f.cursed = f.slowed = f.hasted = 0;
   f.ammo = fighterDef(f).ammo ?? 0;
@@ -1477,6 +1517,7 @@ function updateProjectiles(world: World): void {
     p.age++;
     p.life--;
     let gone = p.life <= 0 && !p.returning;
+    let touched = false;
     // Yo-yos turn around partway, then fly back to the hand that threw them.
     if (p.returns && !p.returning && p.age >= p.life) startReturn(p);
     if (p.returning) {
@@ -1566,17 +1607,20 @@ function updateProjectiles(world: World): void {
           continue;
         }
         if (p.kind === 'shot') {
-          if (f.invincible <= 0) strike(world, owner, f, p.hit, p.vx >= 0 ? 1 : -1, p.x, p.y, { melee: false, move: p.move });
+          if (f.invincible <= 0) strike(world, owner, f, p.hit, p.vx >= 0 ? 1 : -1, p.x, p.y, { melee: false, move: p.move, sig: p.look === 'goldbullet' ? 'golden' : undefined });
         }
+        touched = true;
         gone = true;
         break;
       }
     }
     if (gone) {
       if (p.kind === 'bomb' || p.kind === 'mine') explode(world, p);
+      else if (!touched) onProjectileMiss(world, p);
     } else {
       const b = world.stage.blast;
       if (p.x > b.left && p.x < b.right && p.y > b.bottom && p.y < b.top) keep.push(p);
+      else onProjectileMiss(world, p);
     }
   }
   world.projectiles = keep;
@@ -1652,7 +1696,7 @@ function resolveHits(world: World): void {
         }
         a.moveHits.push(t.slot);
         const stats: HitStats = box.hb.counter ? { ...box.hb, dmg: a.counterDmg } : box.hb;
-        strike(world, a, t, stats, a.facing, (box.x + t.x) / 2, (box.y + centerY(t)) / 2, { melee: true, move: a.move ?? undefined, tip: box.hb.tip });
+        strike(world, a, t, stats, a.facing, (box.x + t.x) / 2, (box.y + centerY(t)) / 2, { melee: true, move: a.move ?? undefined, tip: box.hb.tip, pierce: box.hb.pierce });
         break;
       }
     }
@@ -1675,11 +1719,10 @@ interface StrikeOpts {
   isThrow?: boolean;
   move?: MoveId;
   tip?: boolean;
-}
-
-/** Moves that spend a full rage meter: smashes and specials. */
-function rageMove(move: MoveId | undefined): boolean {
-  return !!move && (move.includes('smash') || move.includes('special') || move === 'counterhit');
+  /** Goes through shields. */
+  pierce?: boolean;
+  /** A signature shot (the golden bullet). */
+  sig?: string;
 }
 
 function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats, facing: 1 | -1, x: number, y: number, opts: StrikeOpts): void {
@@ -1697,7 +1740,7 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
       world.events.push({ type: 'counter', x, y, slot: target.slot });
       return;
     }
-    if (target.action === 'shield' || target.action === 'shieldstun') {
+    if ((target.action === 'shield' || target.action === 'shieldstun') && !opts.pierce) {
       // Parry: shield on the exact moment. No shield damage, and the attacker is left open.
       if (target.action === 'shield' && target.frame <= PARRY.window) {
         world.events.push({ type: 'parry', x, y, target: target.slot });
@@ -1720,30 +1763,25 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
     pushStale(attacker, opts.move);
     if (opts.melee) attacker.staleCounted = true;
   }
-  // Rage: full meter powers up the next smash or special, then empties. Otherwise fighting fills it.
-  const ar = fighterDef(attacker).rage;
-  const raging = !!ar && attacker.rage >= ar.max && rageMove(opts.move);
-  const rageDmg = raging ? ar!.dmg : 1;
-  const rageKb = raging ? ar!.kb : 1;
-  const dmg = hit.dmg * stale * rageDmg * (opts.melee && !opts.isThrow ? attacker.chargeMult : 1);
-  if (raging) attacker.rage = 0;
-  else if (ar) attacker.rage = Math.min(ar.max, attacker.rage + dmg * ar.perDealt);
-  const tr = fighterDef(target).rage;
-  if (tr) target.rage = Math.min(tr.max, target.rage + dmg * tr.perTaken);
+  // Signature mechanics (ADR-0079): edge, combos, marks, payback, recipes...
+  const sig = strikeMods(world, attacker, target, opts);
+  const dmg = (hit.dmg * sig.dmg + (hit.dmg > 0 ? sig.bonus : 0)) * stale * (opts.melee && !opts.isThrow ? attacker.chargeMult : 1);
   const lag = Math.min(HITLAG.max, Math.floor(HITLAG.base + dmg * HITLAG.perDamage));
   target.percent = Math.min(999, target.percent + dmg);
   attacker.stats.damageDealt += dmg;
-  let kb = knockback(target.percent, dmg, fighterDef(target).weight, hit.bkb * rageKb, hit.kbg * rageKb) * (fighterDef(target).kbTaken ?? 1);
+  let kb = knockback(target.percent, dmg, fighterDef(target).weight, hit.bkb * sig.kb, hit.kbg * sig.kb) * (fighterDef(target).kbTaken ?? 1);
   // ONEHIT: anything that does damage sends you flying.
   if (world.rules.oneHit && dmg > 0) kb = Math.max(kb, CHEAT_RULES.oneHitKb);
   target.lastHitBy = attacker.slot;
   target.lastHitFrame = world.frame;
 
   // Super armor: takes the damage, doesn't flinch.
-  if (!opts.isThrow && tm?.armor && inRange(target.frame, tm.armor) && kb < tm.armor.kb) {
+  if (!opts.isThrow && ((tm?.armor && inRange(target.frame, tm.armor) && kb < tm.armor.kb) || feastArmor(target, kb))) {
     target.hitlag = lag;
     if (opts.melee) attacker.hitlag = lag;
-    world.events.push({ type: 'hit', x, y, dmg, kb: kb * 0.3, attacker: attacker.slot, target: target.slot, armored: true, move: opts.move, rage: raging, tip: opts.tip });
+    onArmor(target, dmg);
+    afterStrike(world, attacker, target, dmg, false, opts);
+    world.events.push({ type: 'hit', x, y, dmg, kb: kb * 0.3, attacker: attacker.slot, target: target.slot, armored: true, move: opts.move, sig: sig.sig, tip: opts.tip });
     return;
   }
 
@@ -1789,7 +1827,8 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
 
   target.hitlag = lag;
   if (opts.melee) attacker.hitlag = lag;
-  world.events.push({ type: 'hit', x, y, dmg, kb, attacker: attacker.slot, target: target.slot, move: opts.move, rage: raging, tip: opts.tip });
+  afterStrike(world, attacker, target, dmg, target.tumbling, opts);
+  world.events.push({ type: 'hit', x, y, dmg, kb, attacker: attacker.slot, target: target.slot, move: opts.move, sig: sig.sig, tip: opts.tip });
   // A little randomness in the spark only; the hit itself is deterministic.
   nextRandom(world.rng);
 }
