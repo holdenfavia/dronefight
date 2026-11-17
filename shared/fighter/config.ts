@@ -90,12 +90,6 @@ export const LEDGE = {
   invincibleFrames: 14,
 } as const;
 
-/** Smash attacks: press a direction key and the matching attack together (ADR-0071). */
-export const SMASH = {
-  /** The direction key counts as "together" if pressed this many frames before the attack, or less. */
-  flickFrames: 5,
-} as const;
-
 /** Grabs and throws (ADR-0071). */
 export const GRAB = {
   /** Frames a grab holds before letting go on its own, plus more the more damage the held fighter has. */

@@ -20,13 +20,14 @@ A **side-view platform fighter** to play with friends: an original cast of ten f
 - KO credit goes to whoever last hit you within 8 s.
 - Hitlag (a freeze on every hit), screen shake and sparks scale with how hard the hit was.
 
-## Controls (ADR-0071)
+## Controls (ADR-0071, ADR-0080)
 
 | | Key |
 |---|---|
 | Move / jump (again in the air) | A D / W |
 | Fast fall, hold to drop through | S |
-| Attack that way | ← → ↑ ↓ (forward with no move key = neutral; move key + same arrow together = smash, hold to charge) |
+| Attack that way | ← → ↑ ↓ (forward with no move key = neutral, with a move key = tilt) |
+| Smash attack that way | hold **Shift** + arrow, hold the arrow to charge (ADR-0080) |
 | Special that way | hold **Space**, or tap Space to prime the next arrow (ADR-0074) |
 | Shield · roll / spot dodge / air dodge | E (+ direction) |
 | Grab, then an arrow throws | ? |
