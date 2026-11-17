@@ -294,10 +294,10 @@ function stepAttract(): void {
 }
 
 function handleKeys(): void {
-  const typing = document.activeElement instanceof HTMLInputElement;
+  const typing = document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
   for (const code of keyboard.takePressed()) {
     sfx.unlock();
-    // Typing a room code: leave the keys to the text box.
+    // Typing a room code or feedback: leave the keys to the text box.
     if (typing) continue;
     if (code === 'KeyM') { sfx.setMuted(!sfx.muted); continue; }
     if (code === 'KeyF' && mode !== 'game') { toggleFullscreen(); continue; }

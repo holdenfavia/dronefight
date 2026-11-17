@@ -35,7 +35,7 @@ export class Keyboard {
 
   constructor(target: Window = window) {
     target.addEventListener('keydown', (e) => {
-      if (GAME_KEYS.has(e.code) && !(e.target instanceof HTMLInputElement)) e.preventDefault();
+      if (GAME_KEYS.has(e.code) && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) e.preventDefault();
       if (!e.repeat) {
         this.pressed.push(e.code);
         if (e.code === SPECIAL_KEY) this.primed = true;

@@ -233,6 +233,41 @@ kbd {
 .stats td { text-align: center; padding: 4px; font-weight: 700; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .stats td.who { text-align: left; font-weight: 900; text-transform: uppercase; }
 
+/* ---------- Feedback (top right of every menu screen) ---------- */
+
+.feedback-btn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 5;
+  pointer-events: auto;
+  background: var(--panel);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 16px;
+  font-weight: 800;
+}
+.feedback-btn:hover { border-color: var(--orange); }
+.feedback-overlay { z-index: 6; }
+.feedback-panel { width: min(520px, 100%); align-items: stretch; }
+.feedback-panel h2 { text-align: center; }
+.feedback-sub { color: var(--muted); font-size: 18px; text-align: center; }
+.feedback-text, .feedback-name {
+  font: inherit;
+  font-size: 18px;
+  color: var(--paper);
+  background: rgba(0, 0, 0, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 8px 10px;
+  user-select: text;
+}
+.feedback-text { resize: vertical; min-height: 120px; }
+.feedback-text:focus, .feedback-name:focus { outline: none; border-color: var(--orange); }
+.feedback-status { min-height: 20px; font-size: 16px; color: var(--orange); text-align: center; }
+.feedback-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+
 /* ---------- HUD ---------- */
 
 #hud { position: fixed; inset: 0; pointer-events: none; display: none; }

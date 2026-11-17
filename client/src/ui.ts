@@ -29,6 +29,12 @@ export interface MatchSetup {
 }
 
 const STORAGE_KEY = 'dronefight.brawl.setup.v3';
+/** The name last typed in the feedback form, so friends don't retype it. */
+const FEEDBACK_NAME_KEY = 'dronefight.feedback.name';
+/** Where the Feedback form posts (server/src/feedback.ts). */
+const FEEDBACK_URL = '/api/feedback';
+/** Longest note the form allows (matches the server's FEEDBACK_MAX_TEXT). */
+const FEEDBACK_MAX_TEXT = 1000;
 
 export function defaultSetup(): MatchSetup {
   return {
@@ -152,6 +158,10 @@ export class Ui {
   private controlsBack: () => void = () => this.showMain();
   /** The room code being typed, kept across lobby redraws. */
   private codeDraft = '';
+  /** Top-right Feedback button, shown on every menu screen. */
+  private feedbackButton: HTMLButtonElement;
+  /** The open feedback form, if any. */
+  private feedbackForm: HTMLElement | null = null;
 
   constructor(menuRoot: HTMLElement, hudRoot: HTMLElement, private handlers: MenuHandlers, private net: NetClient) {
     this.root = menuRoot;
@@ -161,6 +171,9 @@ export class Ui {
     // A small corner badge during play, so screenshots and clips never look final.
     this.hud.appendChild(el('div', 'wip-corner', 'Work in progress · not final'));
     this.primed = this.hud.appendChild(el('div', 'primed', 'Space · next arrow is a special'));
+    this.feedbackButton = this.button('feedback-btn', 'Feedback', () => this.openFeedback());
+    this.feedbackButton.hidden = true;
+    this.root.appendChild(this.feedbackButton);
     this.setup = loadSetup();
     this.net.onChange = () => {
       if (this.screenId === 'online') this.showOnline();
@@ -181,14 +194,17 @@ export class Ui {
     this.screen?.remove();
     this.screen = screen;
     this.screenId = id;
-    this.root.appendChild(screen);
+    this.root.insertBefore(screen, this.feedbackButton);
     screen.scrollTop = scroll;
+    this.feedbackButton.hidden = false;
     this.focusList = focus;
     this.focusIndex = Math.max(0, Math.min(focus.length - 1, sameScreen ? this.focusIndex : focusIndex));
     this.paintFocus();
   }
 
   hideMenu(): void {
+    this.closeFeedback();
+    this.feedbackButton.hidden = true;
     this.screen?.remove();
     this.screen = null;
     this.screenId = null;
@@ -215,6 +231,10 @@ export class Ui {
   menuKey(code: string): boolean {
     const id = this.screenId;
     if (!id) return false;
+    if (this.feedbackForm) {
+      if (code === 'Escape') this.closeFeedback();
+      return true;
+    }
     const up = code === 'KeyW' || code === 'ArrowUp';
     const down = code === 'KeyS' || code === 'ArrowDown';
     const left = code === 'KeyA' || code === 'ArrowLeft';
@@ -275,6 +295,105 @@ export class Ui {
       return true;
     }
     return false;
+  }
+
+  // ------------------------------------------------------------------------------------------- Feedback
+
+  /** The Feedback form: a note (and an optional name) posted to the server. */
+  openFeedback(): void {
+    if (this.feedbackForm) return;
+    const overlay = el('div', 'screen modal feedback-overlay');
+    const panel = el('form', 'panel feedback-panel');
+    panel.append(el('h2', '', 'Feedback'), el('div', 'feedback-sub', 'Bugs, ideas, what felt off. It goes straight to the developer.'));
+    const text = el('textarea', 'feedback-text');
+    text.maxLength = FEEDBACK_MAX_TEXT;
+    text.rows = 6;
+    text.placeholder = 'What happened, or what would make it more fun?';
+    text.ariaLabel = 'Feedback';
+    const name = el('input', 'feedback-name');
+    name.maxLength = 40;
+    name.placeholder = 'Your name (optional)';
+    name.ariaLabel = 'Your name';
+    try {
+      name.value = localStorage.getItem(FEEDBACK_NAME_KEY) ?? '';
+    } catch {
+      // Private mode: no remembered name.
+    }
+    const status = el('div', 'feedback-status');
+    const send = el('button', 'fight', 'Send');
+    send.type = 'submit';
+    const cancel = el('button', 'back', 'Cancel');
+    cancel.type = 'button';
+    cancel.onclick = () => {
+      this.handlers.onClick();
+      this.closeFeedback();
+    };
+    const row = el('div', 'feedback-actions');
+    row.append(cancel, send);
+    panel.append(text, name, status, row);
+    const screen = this.screenId ?? '';
+    panel.onsubmit = (e) => {
+      e.preventDefault();
+      const note = text.value.trim();
+      if (!note) {
+        status.textContent = 'Write something first.';
+        text.focus();
+        return;
+      }
+      this.handlers.onClick();
+      try {
+        localStorage.setItem(FEEDBACK_NAME_KEY, name.value.trim());
+      } catch {
+        // Private mode.
+      }
+      send.disabled = true;
+      status.textContent = 'Sending…';
+      void fetch(FEEDBACK_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: note, name: name.value.trim(), screen }),
+      })
+        .then((r) => {
+          if (r.ok) {
+            panel.replaceChildren(el('h2', '', 'Thanks!'), el('div', 'feedback-sub', 'Your feedback was sent.'));
+            const done = this.button('fight', 'Done', () => this.closeFeedback());
+            panel.appendChild(done);
+            done.focus();
+          } else {
+            send.disabled = false;
+            status.textContent = r.status === 429 ? 'That was a lot of feedback. Try again in a minute.' : 'Could not send it. Try again?';
+          }
+        })
+        .catch(() => {
+          send.disabled = false;
+          status.textContent = 'Could not reach the server. Try again?';
+        });
+    };
+    // Esc closes the form even while typing (the menus skip keys while a text box has focus).
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        // Stop it here, so the menu behind doesn't also take the Esc and go back.
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeFeedback();
+      }
+    });
+    overlay.onclick = (e) => {
+      if (e.target === overlay) this.closeFeedback();
+    };
+    overlay.appendChild(panel);
+    this.root.appendChild(overlay);
+    this.feedbackForm = overlay;
+    this.feedbackButton.hidden = true;
+    text.focus();
+  }
+
+  closeFeedback(): void {
+    if (!this.feedbackForm) return;
+    this.feedbackForm.remove();
+    this.feedbackForm = null;
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    this.feedbackButton.hidden = !this.screen;
   }
 
   // ------------------------------------------------------------------------------------------- Title, main

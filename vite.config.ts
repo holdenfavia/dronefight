@@ -6,7 +6,7 @@ const ROOM_SERVER_PORT = 8787;
 
 /**
  * `npm run dev` also starts the room server (ADR-0075), so the Online lobby works with one command.
- * The page reaches it through the `/ws` proxy below; production serves both on one port (ADR-0021).
+ * The page reaches it through the `/ws` and `/api` proxies below; production serves both on one port (ADR-0021).
  */
 function roomServer(): Plugin {
   return {
@@ -34,6 +34,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/ws': { target: `ws://localhost:${ROOM_SERVER_PORT}`, ws: true },
+      '/api': { target: `http://localhost:${ROOM_SERVER_PORT}` },
     },
   },
   test: {
