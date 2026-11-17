@@ -29,6 +29,8 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Specials on Space instead of Q (ADR-0074)
 - [ ] Rebindable keys, in case two players' keys clash on some keyboards
 - [x] Cheat codes (three quick Space taps) and the secret fighter River (ADR-0077); River reworked as a glass cannon (ADR-0078)
+- [x] A signature mechanic and HUD meter per fighter; more varied forward smashes and tilts (ADR-0079)
+- [ ] Teach CPUs to play around the signature mechanics (cash in marks, cook on purpose, attack on the beat)
 
 ## Phase 2 — Online with friends
 

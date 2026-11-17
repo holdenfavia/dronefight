@@ -337,6 +337,23 @@ kbd {
 .stocks { display: flex; gap: 4px; margin-top: 4px; height: 10px; }
 .stock { width: 10px; height: 10px; border-radius: 50%; background: var(--slot); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5); }
 
+/* Signature meter under the stocks (ADR-0079). */
+.sig { display: flex; align-items: center; gap: 5px; margin-top: 5px; height: 14px; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; white-space: nowrap; }
+.sig:empty { display: none; }
+.sig-label { color: rgba(255, 255, 255, 0.6); }
+.sig-bar { position: relative; width: 56px; height: 7px; background: rgba(0, 0, 0, 0.55); border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15); }
+.sig-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--slot); }
+.sig-pips { display: flex; gap: 3px; }
+.sig-pip { width: 9px; height: 9px; transform: rotate(45deg); background: rgba(0, 0, 0, 0.55); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2); }
+.sig-pip.lit { background: var(--slot); }
+.sig-items { display: flex; gap: 3px; }
+.sig-item { width: 16px; height: 14px; line-height: 14px; text-align: center; font-size: 11px; background: rgba(0, 0, 0, 0.45); border-radius: 3px; }
+.sig-beat { width: 9px; height: 9px; border-radius: 50%; background: #fff; }
+.sig-text { color: #fff; }
+.sig.ready .sig-text { color: #ffe27a; animation: sig-pulse 0.6s ease-in-out infinite alternate; }
+.sig.ready .sig-fill, .sig.ready .sig-pip.lit { background: #ffe27a; box-shadow: 0 0 6px #ffb020; }
+@keyframes sig-pulse { from { opacity: 0.55; } to { opacity: 1; } }
+
 .banner {
   position: absolute;
   top: 34%;

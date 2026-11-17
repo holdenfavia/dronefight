@@ -93,6 +93,15 @@ export const ATTACK_COLORS = {
   tip: '#ffffff',
 } as const;
 
+/** Signature hits (ADR-0079): the popup and burst color when one lands. */
+export const SIGNATURE_LOOKS: Record<string, { text: string; color: string }> = {
+  kopunch: { text: 'KNOCKOUT!', color: '#ff3b3b' },
+  flashcut: { text: 'FLASH CUT!', color: '#bfe9ff' },
+  payback: { text: 'PAYBACK!', color: '#ffb36b' },
+  assassinate: { text: 'ASSASSINATE!', color: '#6f7bff' },
+  golden: { text: 'GOLDEN!', color: '#ffd23f' },
+};
+
 /** Online fights (ADR-0076): how many server frames to keep in hand against network jitter. */
 export const ONLINE = {
   /** Frames to wait for before stepping (and again after the frames stop for a moment). */
