@@ -7,6 +7,7 @@ import { parseClientMessage, type ServerMessage } from '../../shared/protocol.js
 import { DT } from '../../shared/fighter/config.js';
 import { RoomManager } from './rooms.js';
 import { serveStatic } from './static.js';
+import { FEEDBACK_PATH, FeedbackSink } from './feedback.js';
 
 const HEARTBEAT_MS = 10_000;
 const MAX_MESSAGE_BYTES = 4096;
@@ -20,9 +21,14 @@ const CLIENT_DIR = fileURLToPath(new URL('../../dist/client/', import.meta.url))
 
 export function startServer(port: number, staticDir: string | null = null): { wss: WebSocketServer; rooms: RoomManager } {
   const rooms = new RoomManager();
+  const feedback = new FeedbackSink();
   const http = createServer((req, res) => {
     if (req.url === '/healthz') {
       res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
+      return;
+    }
+    if (req.url === FEEDBACK_PATH) {
+      feedback.handle(req, res);
       return;
     }
     if (staticDir) serveStatic(staticDir, req, res);
