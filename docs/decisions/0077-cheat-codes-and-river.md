@@ -1,6 +1,6 @@
 # ADR-0077: Cheat codes and a secret fighter, River
 
-- **Status:** Accepted
+- **Status:** Accepted (River's moveset and knockback superseded by ADR-0078, 2026-11-17)
 - **Date:** 2026-11-17
 
 ## Context

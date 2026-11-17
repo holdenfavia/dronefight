@@ -28,7 +28,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [ ] Real character art to replace the stick figures
 - [x] Specials on Space instead of Q (ADR-0074)
 - [ ] Rebindable keys, in case two players' keys clash on some keyboards
-- [x] Cheat codes (three quick Space taps) and the secret fighter River (ADR-0077)
+- [x] Cheat codes (three quick Space taps) and the secret fighter River (ADR-0077); River reworked as a glass cannon (ADR-0078)
 
 ## Phase 2 — Online with friends
 

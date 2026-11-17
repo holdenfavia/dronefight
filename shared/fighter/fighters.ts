@@ -27,7 +27,7 @@ export type CoreMoveId =
 export type ExtraMoveId =
   | 'jab2' | 'jab3'
   | 'nspecialAir' | 'sspecialAir' | 'dspecialAir'
-  | 'counterhit' | 'riposte' | 'carry' | 'carryslam' | 'quake' | 'reload' | 'quickdraw';
+  | 'counterhit' | 'riposte' | 'carry' | 'carryslam' | 'quake' | 'reload' | 'quickdraw' | 'bellyflop';
 
 export type MoveId = CoreMoveId | ExtraMoveId;
 
@@ -893,67 +893,79 @@ function bard(): FighterDef {
 }
 
 // ---------------------------------------------------------------------------------------------
-// River (secret, ADR-0077): a joke fighter for a friend, unlocked with the code RIVER. Really, really bad:
-// slow, low jumps, slow tiny slaps that barely hurt, a recovery that barely recovers, and a nap for a
-// down special, and a big round belly that is easy to hit. One thing going for him: he takes very little knockback, so he is very hard to launch.
+// River (secret, ADR-0077, reworked by ADR-0078): unlocked with the code RIVER, made for a friend. A big, round
+// glass cannon: the fastest fighter on the ground, hits hard, the strongest grabs and throws in the cast and a
+// huge Belly Flop down special. But he's light for his size and takes extra knockback, so he flies early.
 
-/** River takes this share of normal knockback: KOs only at very high percent (about 350% from a big smash). */
-const RIVER_KB_TAKEN = 0.4;
+/** River takes this much more knockback than normal: the glass in the glass cannon. */
+const RIVER_KB_TAKEN = 1.25;
 
 function river(): FighterDef {
   return {
     id: 'river',
     name: 'River',
-    blurb: 'Secret. Big, round, slow, weak and clumsy, but almost impossible to launch.',
-    specials: { neutral: 'Pocket Lint', side: 'Trip', up: 'Little Hop', down: 'Nap' },
+    blurb: 'Secret. A fast, round glass cannon: huge throws and a Belly Flop, but he flies early.',
+    specials: { neutral: 'Snack Toss', side: 'Belly Bump', up: 'Bounce', down: 'Belly Flop' },
     // Wide and round: a big target.
     halfW: 34, height: 34, hurtR: 32,
-    weight: 130,
-    walkSpeed: 200, airSpeed: 190, airAccel: 1300,
-    gravity: 2300, maxFall: 900, fastFall: 1300,
-    jumpSpeed: 640, airJumpSpeed: 520, airJumps: 1,
+    weight: 80,
+    walkSpeed: 500, airSpeed: 370, airAccel: 3000,
+    gravity: 2350, maxFall: 980, fastFall: 1550,
+    jumpSpeed: 850, airJumpSpeed: 760, airJumps: 1,
     upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
     kbTaken: RIVER_KB_TAKEN,
     moves: {
-      // A slow slap and a slower second slap.
-      jab: { frames: 24, hitboxes: [hb(8, 9, 22, 4, 12, 1, 70, 8, 5)], next: { move: 'jab2', from: 14 } },
-      jab2: { frames: 30, hitboxes: [hb(10, 11, 24, 4, 12, 2, 50, 14, 20)] },
-      ftilt: { frames: 34, hitboxes: [hb(14, 15, 26, -4, 12, 3, 40, 14, 40)] },
-      utilt: { frames: 34, hitboxes: [hb(13, 15, 8, 24, 12, 3, 90, 16, 40)] },
-      dtilt: { frames: 30, hitboxes: [hb(12, 13, 24, -14, 11, 2, 60, 12, 30)] },
-      // Smashes: big wind-ups, small results.
-      fsmash: { frames: 64, charge: { frame: 22, max: 60, dmg: 0.2 }, hitboxes: [hb(30, 31, 28, 4, 14, 6, 40, 20, 60)] },
-      usmash: { frames: 62, charge: { frame: 20, max: 60, dmg: 0.2 }, hitboxes: [hb(28, 30, 6, 28, 14, 5, 90, 20, 60)] },
+      // Quick slaps, then a two-handed shove.
+      jab: { frames: 14, hitboxes: [hb(3, 4, 30, 4, 18, 3, 70, 22, 15)], next: { move: 'jab2', from: 6 } },
+      jab2: { frames: 26, hitboxes: [hb(4, 6, 34, 4, 22, 7, 40, 46, 80)] },
+      ftilt: { frames: 24, hitboxes: [hb(6, 8, 40, -4, 22, 11, 38, 34, 100)] },
+      utilt: { frames: 24, hitboxes: [hb(5, 9, 6, 30, 26, 10, 90, 38, 98)] },
+      dtilt: { frames: 20, hitboxes: [hb(5, 7, 38, -14, 20, 7, 75, 36, 60)] },
+      // Smashes: everything he's got behind them.
+      fsmash: { frames: 48, charge: { frame: 12, max: 60, dmg: 0.4 }, lunge: { frame: 14, vx: 420, vy: 0 }, hitboxes: [hb(15, 18, 44, 4, 30, 20, 38, 40, 108)] },
+      usmash: { frames: 46, charge: { frame: 10, max: 60, dmg: 0.4 }, hitboxes: [hb(13, 17, 0, 40, 32, 18, 90, 38, 106)] },
       dsmash: {
-        frames: 62, charge: { frame: 20, max: 60, dmg: 0.2 },
-        hitboxes: [hb(28, 29, 26, -14, 13, 5, 70, 20, 55), hb(28, 29, -26, -14, 13, 5, 110, 20, 55)],
+        frames: 48, charge: { frame: 9, max: 60, dmg: 0.4 },
+        hitboxes: [hb(15, 18, 42, -14, 30, 17, 30, 42, 100), hb(15, 18, -42, -14, 30, 17, 150, 42, 100)],
       },
-      nair: { frames: 36, landLag: 16, hitboxes: [hb(10, 13, 0, 0, 20, 3, 50, 14, 40)] },
-      fair: { frames: 40, landLag: 18, hitboxes: [hb(14, 15, 24, 0, 12, 4, 40, 14, 45)] },
-      bair: { frames: 40, landLag: 18, hitboxes: [hb(14, 15, -24, 2, 12, 4, 145, 14, 45)] },
-      uair: { frames: 38, landLag: 16, hitboxes: [hb(12, 14, 4, 24, 13, 3, 88, 14, 40)] },
-      dair: { frames: 46, landLag: 22, hitboxes: [hb(18, 19, 0, -24, 12, 4, -70, 12, 40)] },
-      // Throws a bit of pocket lint. It drifts and falls.
+      nair: { frames: 28, landLag: 8, hitboxes: [hb(5, 10, 0, 0, 40, 11, 50, 30, 92)] },
+      fair: { frames: 30, landLag: 10, hitboxes: [hb(7, 10, 36, 0, 26, 14, 40, 32, 102)] },
+      bair: { frames: 30, landLag: 10, hitboxes: [hb(6, 9, -36, 2, 26, 15, 145, 32, 104)] },
+      uair: { frames: 26, landLag: 8, hitboxes: [hb(5, 9, 4, 34, 28, 12, 88, 32, 98)] },
+      dair: { frames: 36, landLag: 14, hitboxes: [hb(10, 14, 0, -32, 28, 14, -75, 26, 90)] },
+      // Throws a snack.
       nspecial: {
-        frames: 44,
-        projectile: { frame: 18, def: { kind: 'shot', look: 'lint', speed: 220, angle: 10, r: 8, lifeFrames: 40, gravity: 500, limit: 1, hit: { dmg: 1, angle: 40, bkb: 8, kbg: 10 } } },
+        frames: 32,
+        projectile: { frame: 10, def: { kind: 'shot', look: 'snack', speed: 520, angle: 8, r: 12, lifeFrames: 50, gravity: 400, limit: 2, hit: { dmg: 8, angle: 40, bkb: 34, kbg: 60 } } },
       },
-      // Runs forward and trips: a short stumble, then a long time getting back up.
+      // Charges forward belly first.
       sspecial: {
-        frames: 52, recovery: true, gravity: { from: 1, to: 14, scale: 0.4 }, lunge: { frame: 8, vx: 460, vy: 80 },
-        hitboxes: [hb(10, 14, 18, -10, 14, 2, 30, 16, 20)],
+        frames: 40, recovery: true, gravity: { from: 1, to: 16, scale: 0.3 }, lunge: { frame: 8, vx: 980, vy: 90 },
+        hitboxes: [hb(8, 18, 26, 0, 30, 13, 40, 44, 92)],
       },
-      // Barely leaves the ground.
-      uspecial: { frames: 30, recovery: true, helpless: true, boost: { frame: 8, speed: 760, steer: 24 } },
-      // Lies down for a nap. Does nothing.
-      dspecial: { frames: 90 },
-      grab: grab(20, 12, 10, 40),
-      pummel: pummel(1, 24),
-      fthrow: throwMove(34, 16, 2, 40, 30, 30),
-      bthrow: throwMove(38, 18, 2, 140, 30, 30, true),
-      uthrow: throwMove(34, 16, 2, 90, 34, 30),
-      dthrow: throwMove(34, 18, 1, 75, 26, 20),
-      getupattack: getupAttack(22, 2),
+      uspecial: {
+        frames: 30, recovery: true, helpless: true, boost: { frame: 6, speed: 1050, steer: 28 },
+        hitboxes: [hb(6, 10, 0, 10, 36, 9, 85, 50, 70)],
+      },
+      // Belly Flop: hops up, then comes down belly first; the landing shakes both sides. In the air, straight down.
+      dspecial: {
+        frames: 70, hop: { frame: 4, vx: 120, vy: 760 }, slam: { frame: 20, speed: 1700, landMove: 'bellyflop' },
+        hitboxes: [hb(20, 70, 0, -26, 34, 12, -70, 40, 70)],
+      },
+      dspecialAir: { frames: 60, slam: { frame: 6, speed: 1700, landMove: 'bellyflop' }, hitboxes: [hb(6, 60, 0, -26, 34, 12, -70, 40, 70)] },
+      bellyflop: {
+        frames: 36,
+        hitboxes: [hb(2, 5, 0, -14, 44, 18, 80, 58, 100), hb(2, 5, 70, -16, 36, 15, 40, 52, 96), hb(2, 5, -70, -16, 36, 15, 140, 52, 96)],
+      },
+      // The strongest grab and throws in the cast: long arms for a round guy.
+      grab: grab(40, 24, 6, 30),
+      pummel: pummel(4, 16),
+      fthrow: throwMove(32, 14, 14, 38, 62, 100),
+      bthrow: throwMove(36, 16, 16, 140, 60, 108, true),
+      uthrow: throwMove(32, 14, 13, 90, 66, 100),
+      // Sits on them.
+      dthrow: throwMove(34, 16, 12, 70, 56, 70),
+      getupattack: getupAttack(34, 8),
     },
   };
 }

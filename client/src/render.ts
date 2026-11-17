@@ -869,6 +869,12 @@ export class Renderer {
       case 'meatball':
         ball('#7a4a2a');
         return true;
+      case 'snack':
+        // River's cookie.
+        ball('#c98a4b');
+        ctx.fillStyle = '#4a2a14';
+        for (const [dx, dy] of [[-0.35, -0.2], [0.3, -0.3], [0.05, 0.35]] as const) ctx.fillRect(px + dx * r - 1.5, py + dy * r - 1.5, 3, 3);
+        return true;
       case 'pot': {
         // A pot on the boil: steam and bubbles.
         ctx.fillStyle = '#3a3e44';
