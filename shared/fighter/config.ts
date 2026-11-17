@@ -184,3 +184,12 @@ export const STATUS = {
   slowMult: 0.6,
   hasteMult: 1.35,
 } as const;
+
+/** Rule cheats typed on the menus (ADR-0077). */
+export const CHEAT_RULES = {
+  /** MOONJUMP: gravity and fall speeds scale by this. */
+  moonGravity: 0.4,
+  moonFall: 0.55,
+  /** ONEHIT: every hit launches at least this hard (enough to fly off from anywhere). */
+  oneHitKb: 340,
+} as const;

@@ -3,8 +3,9 @@
 
 import { BOT_LEVEL_NAMES, type BotLevel } from '../../shared/fighter/bot';
 import { MATCH } from '../../shared/fighter/config';
-import { FIGHTER_IDS, FIGHTERS, type FighterId } from '../../shared/fighter/fighters';
-import type { World } from '../../shared/fighter/sim';
+import { ALL_FIGHTER_IDS, FIGHTER_IDS, FIGHTERS, type FighterId } from '../../shared/fighter/fighters';
+import type { MatchRules, World } from '../../shared/fighter/sim';
+import { activeCheats, cheatRules, CHEATS, enterCode, onCheatsChange, rosterIds } from './cheats';
 import { STAGE_IDS, STAGES, type StageId } from '../../shared/fighter/stages';
 import { MENU, SLOT_COLORS } from './config';
 import { drawFighterFigure } from './figures';
@@ -57,7 +58,7 @@ export function loadSetup(): MatchSetup {
     const d = defaultSetup();
     if (!Array.isArray(s.slots) || s.slots.length !== 4 || !STAGE_IDS.includes(s.stage)) return d;
     for (const slot of s.slots) {
-      if (!FIGHTER_IDS.includes(slot.fighter) || !['p1', 'bot', 'off'].includes(slot.kind) || ![1, 2, 3].includes(slot.level)) return d;
+      if (!ALL_FIGHTER_IDS.includes(slot.fighter) || !['p1', 'bot', 'off'].includes(slot.kind) || ![1, 2, 3].includes(slot.level)) return d;
       slot.random = slot.random === true;
     }
     s.stocks = Math.max(1, Math.min(5, Math.round(s.stocks) || d.stocks));
@@ -137,8 +138,20 @@ export interface MenuHandlers {
 
 type ScreenId = 'title' | 'main' | 'select' | 'online' | 'controls' | 'pause' | 'results';
 
-/** Roster tiles: every fighter, then Random. */
-const TILES: (FighterId | 'random')[] = [...FIGHTER_IDS, 'random'];
+/** Roster tiles: every fighter (and any unlocked secret ones), then Random. */
+function rosterTiles(): (FighterId | 'random')[] {
+  return [...rosterIds(), 'random'];
+}
+
+/** Two sets of rule cheats are the same (unset counts as off). */
+function sameRules(a: MatchRules | undefined, b: MatchRules | undefined): boolean {
+  return !!a?.moonJump === !!b?.moonJump && !!a?.oneHit === !!b?.oneHit;
+}
+
+/** "Moon jump · One hit", or '' for none. */
+function rulesText(rules: MatchRules | undefined): string {
+  return CHEATS.filter((c) => c.rule && rules?.[c.rule]).map((c) => c.name).join(' · ');
+}
 
 export class Ui {
   readonly root: HTMLElement;
@@ -162,6 +175,8 @@ export class Ui {
   private feedbackButton: HTMLButtonElement;
   /** The open feedback form, if any. */
   private feedbackForm: HTMLElement | null = null;
+  /** The open cheat code box, if any (ADR-0077). */
+  private cheatBox: HTMLElement | null = null;
 
   constructor(menuRoot: HTMLElement, hudRoot: HTMLElement, private handlers: MenuHandlers, private net: NetClient) {
     this.root = menuRoot;
@@ -178,6 +193,7 @@ export class Ui {
     this.net.onChange = () => {
       if (this.screenId === 'online') this.showOnline();
     };
+    onCheatsChange(() => this.cheatsChanged());
   }
 
   get currentSetup(): MatchSetup {
@@ -233,6 +249,10 @@ export class Ui {
     if (!id) return false;
     if (this.feedbackForm) {
       if (code === 'Escape') this.closeFeedback();
+      return true;
+    }
+    if (this.cheatBox) {
+      if (code === 'Escape') this.closeCheats();
       return true;
     }
     const up = code === 'KeyW' || code === 'ArrowUp';
@@ -396,6 +416,84 @@ export class Ui {
     this.feedbackButton.hidden = !this.screen;
   }
 
+  // ------------------------------------------------------------------------------------------- Cheat codes
+
+  /** The cheat code box (ADR-0077): opened by three quick Space taps on any menu. Type a code, Enter. */
+  openCheats(): void {
+    if (this.cheatBox || this.feedbackForm) return;
+    const overlay = el('div', 'screen modal cheat-overlay');
+    const panel = el('form', 'panel cheat-panel');
+    const input = el('input', 'cheat-input');
+    input.maxLength = 16;
+    input.placeholder = 'Enter a code';
+    input.ariaLabel = 'Cheat code';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.oninput = () => { input.value = input.value.toUpperCase().replace(/[^A-Z]/g, ''); };
+    const status = el('div', 'cheat-status');
+    const list = el('div', 'cheat-list');
+    const paintList = () => {
+      const on = activeCheats();
+      list.textContent = on.length ? `On: ${on.map((c) => c.name).join(' · ')}` : 'No cheats on.';
+    };
+    paintList();
+    const close = el('button', 'back', 'Close');
+    close.type = 'button';
+    close.onclick = () => {
+      this.handlers.onClick();
+      this.closeCheats();
+    };
+    const enter = el('button', 'fight', 'Enter');
+    enter.type = 'submit';
+    const row = el('div', 'feedback-actions');
+    row.append(close, enter);
+    panel.append(el('h2', '', 'Cheat codes'), el('div', 'feedback-sub', 'Type a code and press Enter. Type it again to turn it off.'), input, status, list, row);
+    panel.onsubmit = (e) => {
+      e.preventDefault();
+      const result = enterCode(input.value);
+      this.handlers.onClick();
+      status.classList.toggle('bad', !result);
+      status.classList.toggle('on', !!result?.on);
+      status.textContent = result ? (result.on ? result.cheat.on : result.cheat.off) : 'Nothing happens.';
+      input.value = '';
+      paintList();
+      input.focus();
+    };
+    // Esc closes the box even while typing (the menus skip keys while a text box has focus).
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeCheats();
+      }
+    });
+    overlay.onclick = (e) => {
+      if (e.target === overlay) this.closeCheats();
+    };
+    overlay.appendChild(panel);
+    this.root.appendChild(overlay);
+    this.cheatBox = overlay;
+    this.feedbackButton.hidden = true;
+    input.focus();
+  }
+
+  closeCheats(): void {
+    if (!this.cheatBox) return;
+    this.cheatBox.remove();
+    this.cheatBox = null;
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    this.feedbackButton.hidden = !this.screen;
+  }
+
+  /** A cheat turned on or off: redraw the roster, and as host, share rule cheats with the room. */
+  private cheatsChanged(): void {
+    const roster = rosterIds();
+    for (const slot of this.setup.slots) if (!roster.includes(slot.fighter)) slot.fighter = 'brawler';
+    saveSetup(this.setup);
+    if (this.screenId === 'select') this.showSelect();
+    if (this.screenId === 'online') this.showOnline();
+  }
+
   // ------------------------------------------------------------------------------------------- Title, main
 
   /** The first thing you see: the logo over CPUs fighting. */
@@ -527,7 +625,7 @@ export class Ui {
   private rosterGrid(slotAt: (i: number) => SlotSetup | null, pick: (tile: FighterId | 'random') => void, cursorSlot: number, online = false): HTMLElement {
     const grid = el('div', 'roster');
     const cursor = slotAt(cursorSlot);
-    TILES.forEach((tile) => {
+    rosterTiles().forEach((tile) => {
       const t = this.button('tile', '', () => pick(tile));
       t.title = tile === 'random' ? 'Random fighter' : FIGHTERS[tile].blurb;
       t.append(tile === 'random' ? randomArt('tile-art') : previewCanvas(tile, '#eeeeea', MENU.tileSize), el('span', 'tile-name', tile === 'random' ? 'Random' : FIGHTERS[tile].name));
@@ -564,15 +662,16 @@ export class Ui {
     const slot = this.setup.slots[this.editSlot];
     if (!slot || slot.kind === 'off') return;
     const cols = this.gridColumns();
-    const at = slot.random ? TILES.length - 1 : TILES.indexOf(slot.fighter);
+    const tiles = rosterTiles();
+    const at = slot.random ? tiles.length - 1 : tiles.indexOf(slot.fighter);
     let next = at;
-    if (dx) next = (at + dx + TILES.length) % TILES.length;
+    if (dx) next = (at + dx + tiles.length) % tiles.length;
     else {
       next = at + dy * cols;
-      if (next < 0 || next >= TILES.length) return;
+      if (next < 0 || next >= tiles.length) return;
     }
     this.handlers.onClick();
-    this.assign(this.editSlot, TILES[next]!);
+    this.assign(this.editSlot, tiles[next]!);
   }
 
   private gridColumns(): number {
@@ -585,9 +684,10 @@ export class Ui {
   cycleFighter(slotIndex: number, dir: number): void {
     const slot = this.setup.slots[slotIndex]!;
     if (slot.kind === 'off') return;
-    const i = FIGHTER_IDS.indexOf(slot.fighter);
+    const roster = rosterIds();
+    const i = roster.indexOf(slot.fighter);
     slot.random = false;
-    slot.fighter = FIGHTER_IDS[(i + dir + FIGHTER_IDS.length) % FIGHTER_IDS.length]!;
+    slot.fighter = roster[(i + dir + roster.length) % roster.length]!;
     this.commit();
   }
 
@@ -680,6 +780,8 @@ export class Ui {
       true,
     ));
 
+    // The host's rule cheats (MOONJUMP, ONEHIT) are the room's rules (ADR-0077).
+    if (isHost && !room.playing && !sameRules(settings.rules, cheatRules())) net.setSettings({ ...settings, rules: cheatRules() });
     const setCpus = (cpus: BotLevel[]) => net.setSettings({ ...settings, cpus });
     const panels = el('div', 'slots');
     for (let i = 0; i < MATCH.maxFighters; i++) {
@@ -737,6 +839,8 @@ export class Ui {
     start.title = canStart ? 'Start the fight' : fighters < 2 ? 'Add a CPU or wait for a friend' : 'Waiting for everyone to be ready';
     options.append(stage, stocks, ready, isHost ? start : el('span', ''), leave);
     page.appendChild(options);
+    const rules = rulesText(settings.rules);
+    if (rules) page.appendChild(el('div', 'cheat-rules', `Cheats on (host's): ${rules}`));
     page.appendChild(el('div', 'net-status', room.playing
       ? 'A fight is on. You\'re watching; you\'ll be in the next one.'
       : isHost

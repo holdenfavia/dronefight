@@ -72,6 +72,7 @@ export const ATTACK_COLORS = {
   special: {
     brawler: '#ff3b3b', blade: '#bfe9ff', spark: '#3fd0ff', titan: '#c9934f',
     ninja: '#6f7bff', gunslinger: '#ffd23f', chef: '#ff7b54', ghost: '#c8fff0', yoyo: '#ff4fd8', bard: '#4dd4a8',
+    river: '#b8e0ff',
   },
   /** Status effects shown over a fighter. */
   curse: '#b06bff',
@@ -91,4 +92,14 @@ export const ONLINE = {
   catchUpFrames: 6,
   /** More than this waiting (a hidden tab, a long stall): jump straight to the newest frames. */
   jumpFrames: 45,
+} as const;
+
+/** Client-side cheats typed in the code box (ADR-0077). Rule cheats' numbers live in shared/fighter/config.ts. */
+export const CHEAT_LOOKS = {
+  /** BIGHEAD: head size multiplier. */
+  bigHead: 1.9,
+  /** TURBO: game speed in offline fights (online fights run on the server's clock). */
+  turbo: 1.5,
+  /** Space presses this close together (ms), three in a row, open the code box. */
+  tapWindowMs: 450,
 } as const;

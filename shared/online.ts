@@ -4,8 +4,8 @@
 
 import type { BotLevel } from './fighter/bot.js';
 import { MATCH } from './fighter/config.js';
-import { FIGHTER_IDS, type FighterId } from './fighter/fighters.js';
-import { NO_INPUT, type Input, type World } from './fighter/sim.js';
+import { ALL_FIGHTER_IDS, type FighterId } from './fighter/fighters.js';
+import { NO_INPUT, type Input, type MatchRules, type World } from './fighter/sim.js';
 import { STAGE_IDS, STAGES, type StageId } from './fighter/stages.js';
 
 /** Input keys in bit order: bit 0 is `left`. */
@@ -43,14 +43,16 @@ export interface RoomSettings {
   stage: StageId;
   stocks: number;
   cpus: BotLevel[];
+  /** The host's rule cheats (ADR-0077), used by the whole room. Unset = none. */
+  rules?: MatchRules;
 }
 
 export function defaultRoomSettings(): RoomSettings {
-  return { stage: 'rooftop', stocks: MATCH.defaultStocks, cpus: [] };
+  return { stage: 'rooftop', stocks: MATCH.defaultStocks, cpus: [], rules: {} };
 }
 
 export function isFighterId(v: unknown): v is FighterId {
-  return typeof v === 'string' && (FIGHTER_IDS as readonly string[]).includes(v);
+  return typeof v === 'string' && (ALL_FIGHTER_IDS as readonly string[]).includes(v);
 }
 
 export function isStageId(v: unknown): v is StageId {
@@ -73,6 +75,8 @@ export interface MatchStart {
   stocks: number;
   seed: number;
   fighters: MatchFighter[];
+  /** Rule cheats for this fight (ADR-0077). */
+  rules: MatchRules;
 }
 
 /** A world as JSON (the stage by id; events of the last step dropped, they were already played). */

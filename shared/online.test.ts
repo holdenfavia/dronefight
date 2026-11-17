@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { botInput, createBot } from './fighter/bot.js';
 import { FIGHTER_IDS } from './fighter/fighters.js';
 import { createWorld, NO_INPUT, step, type Input } from './fighter/sim.js';
+import { parseClientMessage } from './protocol.js';
 import { decodeInput, deserializeWorld, encodeInput, serializeWorld } from './online.js';
 
 describe('online fights', () => {
@@ -29,5 +30,13 @@ describe('online fights', () => {
       for (let i = 1200; i < 2400; i++) step(restored, inputs[i]!.map(decodeInput));
       expect(serializeWorld(restored)).toBe(serializeWorld(world));
     }
+  });
+
+  it('accepts the secret fighter as a pick and the host\'s rule cheats in settings (ADR-0077)', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'pick', fighter: 'river', ready: true }))).toEqual({ t: 'pick', fighter: 'river', ready: true });
+    const msg = parseClientMessage(JSON.stringify({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [], rules: { oneHit: true, nonsense: 1 } } }));
+    expect(msg).toEqual({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [], rules: { moonJump: false, oneHit: true } } });
+    const old = parseClientMessage(JSON.stringify({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [] } }));
+    expect(old).toEqual({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [], rules: { moonJump: false, oneHit: false } } });
   });
 });
