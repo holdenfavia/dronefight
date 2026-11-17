@@ -4,7 +4,7 @@
 
 import type { BotLevel } from './fighter/bot.js';
 import type { FighterId } from './fighter/fighters.js';
-import { isBotLevel, isFighterId, isInputBits, isStageId, type MatchStart, type RoomSettings } from './online.js';
+import { isBotLevel, isFighterId, isInputBits, isStageId, isTeam, type MatchStart, type RoomSettings } from './online.js';
 import { MATCH } from './fighter/config.js';
 
 export type ClientMessage =
@@ -12,8 +12,8 @@ export type ClientMessage =
   | { t: 'join'; code: string }
   | { t: 'leave' }
   | { t: 'relay'; data: unknown }
-  /** Your fighter and Ready in the lobby. */
-  | { t: 'pick'; fighter: FighterId; ready: boolean }
+  /** Your fighter, Ready and team (ADR-0081) in the lobby. */
+  | { t: 'pick'; fighter: FighterId; ready: boolean; team?: number }
   /** Host only: stage, stocks and CPUs. */
   | { t: 'settings'; settings: RoomSettings }
   /** Host only: start the fight (everyone ready). */
@@ -25,6 +25,7 @@ export interface RoomMember {
   id: number;
   fighter: FighterId;
   ready: boolean;
+  team: number;
 }
 
 export type ServerMessage =
@@ -53,7 +54,18 @@ function parseSettings(v: unknown): RoomSettings | null {
   if (typeof s.stocks !== 'number' || !Number.isInteger(s.stocks) || s.stocks < 1 || s.stocks > 5) return null;
   if (!Array.isArray(s.cpus) || s.cpus.length > MATCH.maxFighters - 1 || !s.cpus.every(isBotLevel)) return null;
   const r = s.rules && typeof s.rules === 'object' ? (s.rules as Record<string, unknown>) : {};
-  return { stage: s.stage, stocks: s.stocks, cpus: [...s.cpus], rules: { moonJump: r.moonJump === true, oneHit: r.oneHit === true } };
+  const cpuTeams = Array.isArray(s.cpuTeams) ? s.cpuTeams : [];
+  if (!cpuTeams.every(isTeam)) return null;
+  return {
+    stage: s.stage,
+    stocks: s.stocks,
+    cpus: [...s.cpus],
+    rules: { moonJump: r.moonJump === true, oneHit: r.oneHit === true },
+    teams: s.teams === true,
+    friendlyFire: s.friendlyFire === true,
+    // One team per CPU; a missing one starts on the first team.
+    cpuTeams: s.cpus.map((_c, i) => (cpuTeams[i] as number | undefined) ?? 0),
+  };
 }
 
 export function parseClientMessage(raw: string): ClientMessage | null {
@@ -75,7 +87,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case 'relay':
       return 'data' in msg ? { t: 'relay', data: msg.data } : null;
     case 'pick':
-      return isFighterId(msg.fighter) && typeof msg.ready === 'boolean' ? { t: 'pick', fighter: msg.fighter, ready: msg.ready } : null;
+      if (!isFighterId(msg.fighter) || typeof msg.ready !== 'boolean') return null;
+      return isTeam(msg.team) ? { t: 'pick', fighter: msg.fighter, ready: msg.ready, team: msg.team } : { t: 'pick', fighter: msg.fighter, ready: msg.ready };
     case 'settings': {
       const settings = parseSettings(msg.settings);
       return settings ? { t: 'settings', settings } : null;

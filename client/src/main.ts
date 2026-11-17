@@ -104,7 +104,9 @@ function startMatch(setup: MatchSetup): void {
     .filter((s) => s.kind !== 'off')
     .map((s) => ({ ...s, fighter: s.random ? FIGHTER_IDS[Math.floor(Math.random() * FIGHTER_IDS.length)]! : s.fighter }));
   const seed = (Math.random() * 1e9) | 0;
-  world = createWorld(setup.stage, active.map((s) => ({ id: s.fighter })), setup.stocks, seed, cheatRules());
+  // Team battles (ADR-0081): each fighter brings its team; friendly fire is a rule of the fight.
+  const rules = { ...cheatRules(), friendlyFire: setup.teams && setup.friendlyFire };
+  world = createWorld(setup.stage, active.map((s) => ({ id: s.fighter, team: setup.teams ? s.team : -1 })), setup.stocks, seed, rules);
   bots = active.map((s, i) => (s.kind === 'bot' ? createBot(i, s.level, seed) : null));
   human = active.map((s) => s.kind === 'p1');
   names = active.map((s) => `${slotTag(s)} ${FIGHTERS[s.fighter].name}`);
@@ -124,7 +126,7 @@ function startMatch(setup: MatchSetup): void {
 
 /** An online fight starts (or, joining mid-fight, is going on and we watch). */
 function startOnline(start: MatchStart, you: number): void {
-  world = createWorld(start.stage, start.fighters.map((f) => ({ id: f.fighter })), start.stocks, start.seed, start.rules);
+  world = createWorld(start.stage, start.fighters.map((f) => ({ id: f.fighter, team: f.team })), start.stocks, start.seed, start.rules);
   bots = [];
   human = [];
   onlineYou = you;

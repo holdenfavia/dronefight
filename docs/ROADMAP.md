@@ -44,4 +44,4 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 - [ ] More fighters, more stages, items
 - [ ] Gamepad support
-- [ ] Team battles
+- [x] Team battles: Free-for-all or Teams, friendly fire toggle, last team standing (ADR-0081)

@@ -1,7 +1,7 @@
 // Computer-controlled fighters (ADR-0070, ADR-0071). A bot reads the world and produces the same Input a player would.
 
 import { KNOCKBACK } from './config.js';
-import { centerY, fighterDef, isAlive, knockback, NO_INPUT, type Fighter, type Input, type World } from './sim.js';
+import { centerY, fighterDef, isAlive, knockback, NO_INPUT, sameTeam, type Fighter, type Input, type World } from './sim.js';
 import { nextRandom } from './rng.js';
 import { mainPlatform } from './stages.js';
 
@@ -267,7 +267,7 @@ function nearestOpponent(world: World, me: Fighter): Fighter | null {
   let best: Fighter | null = null;
   let bestD = Infinity;
   for (const f of world.fighters) {
-    if (f === me || !isAlive(f) || f.action === 'respawn') continue;
+    if (f === me || !isAlive(f) || f.action === 'respawn' || sameTeam(f, me)) continue;
     const d = Math.hypot(f.x - me.x, f.y - me.y);
     if (d < bestD) { bestD = d; best = f; }
   }

@@ -21,7 +21,7 @@ export class OnlineMatch {
   private overFrames = 0;
 
   constructor(readonly start: MatchStart) {
-    this.world = createWorld(start.stage, start.fighters.map((f) => ({ id: f.fighter })), start.stocks, start.seed, start.rules);
+    this.world = createWorld(start.stage, start.fighters.map((f) => ({ id: f.fighter, team: f.team })), start.stocks, start.seed, start.rules);
     this.slots = start.fighters.map((f, i) => ({
       member: f.member,
       bot: f.member < 0 ? createBot(i, (f.level || 2) as BotLevel, start.seed) : null,

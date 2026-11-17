@@ -55,6 +55,8 @@ export type Pressed = Record<keyof Input, boolean>;
 
 export interface Fighter {
   slot: number;
+  /** Team in a team battle (ADR-0081), or -1 in a free-for-all. */
+  team: number;
   id: FighterId;
   x: number;
   /** Feet. */
@@ -195,6 +197,8 @@ export type GameEvent =
 
 export interface FighterSetup {
   id: FighterId;
+  /** Team in a team battle (ADR-0081); leave unset (or -1) for a free-for-all. */
+  team?: number;
 }
 
 /** Rule cheats for one match (ADR-0077). Every machine in an online fight uses the same ones. */
@@ -203,6 +207,8 @@ export interface MatchRules {
   moonJump?: boolean;
   /** Any hit is a knockout. */
   oneHit?: boolean;
+  /** Team battles (ADR-0081): teammates' hits land too. Off by default. */
+  friendlyFire?: boolean;
 }
 
 export interface World {
@@ -214,8 +220,10 @@ export interface World {
   nextProjectileId: number;
   rng: { seed: number };
   over: boolean;
-  /** Slot of the winner, or -1 for none (yet). */
+  /** Slot of the winner (in a team battle, a fighter of the winning team), or -1 for none (yet). */
   winner: number;
+  /** The winning team in a team battle (ADR-0081), or -1. */
+  winnerTeam: number;
   /** Events from the last step, for sound and effects. */
   events: GameEvent[];
   rules: MatchRules;
@@ -228,6 +236,7 @@ export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: nu
     const def = FIGHTERS[setup.id];
     return {
       slot,
+      team: setup.team !== undefined && setup.team >= 0 ? setup.team : -1,
       id: setup.id,
       x: spawn.x,
       y: spawn.y,
@@ -295,8 +304,9 @@ export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: nu
     rng: { seed },
     over: false,
     winner: -1,
+    winnerTeam: -1,
     events: [],
-    rules: { moonJump: !!rules.moonJump, oneHit: !!rules.oneHit },
+    rules: { moonJump: !!rules.moonJump, oneHit: !!rules.oneHit, friendlyFire: !!rules.friendlyFire },
   };
 }
 
@@ -312,6 +322,16 @@ export function moveOf(f: Fighter): MoveDef {
 /** Centre of the hurtbox. */
 export function centerY(f: Fighter): number {
   return f.y + fighterDef(f).height / 2;
+}
+
+/** Both on the same team in a team battle (ADR-0081). */
+export function sameTeam(a: Fighter, b: Fighter): boolean {
+  return a.team >= 0 && a.team === b.team;
+}
+
+/** `a`'s hits, shots and grabs can land on `t`: anyone else, except teammates unless friendly fire is on. */
+export function canHurt(world: World, a: Fighter, t: Fighter): boolean {
+  return a !== t && (!sameTeam(a, t) || !!world.rules.friendlyFire);
 }
 
 export function isAlive(f: Fighter): boolean {
@@ -1067,7 +1087,7 @@ function shadowStep(world: World, f: Fighter, range: number): void {
   let best: Fighter | null = null;
   let bestD = range;
   for (const o of world.fighters) {
-    if (o === f || !hittable(o)) continue;
+    if (o === f || !hittable(o) || sameTeam(o, f)) continue;
     const d = Math.hypot(o.x - f.x, o.y - f.y);
     if (d <= bestD) { bestD = d; best = o; }
   }
@@ -1364,7 +1384,9 @@ function checkBlastZone(world: World, f: Fighter): void {
   const cy = centerY(f);
   if (f.x > b.left && f.x < b.right && cy > b.bottom && cy < b.top) return;
   if (f.grabbing >= 0) breakGrab(world, f);
-  const by = f.lastHitBy >= 0 && world.frame - f.lastHitFrame < 60 * 8 ? f.lastHitBy : -1;
+  const last = f.lastHitBy >= 0 && world.frame - f.lastHitFrame < 60 * 8 ? f.lastHitBy : -1;
+  // Knocked out by a teammate (friendly fire): no KO credit.
+  const by = last >= 0 && !sameTeam(world.fighters[last]!, f) ? last : -1;
   world.events.push({ type: 'ko', slot: f.slot, x: Math.max(b.left, Math.min(b.right, f.x)), y: Math.max(b.bottom, Math.min(b.top, cy)), by });
   f.stats.falls++;
   if (by >= 0) world.fighters[by]!.stats.kos++;
@@ -1378,7 +1400,7 @@ function checkBlastZone(world: World, f: Fighter): void {
 
 function respawn(world: World, f: Fighter): void {
   const main = world.stage.platforms[0]!;
-  const living = world.fighters.filter((o) => o !== f && isAlive(o));
+  const living = world.fighters.filter((o) => o !== f && isAlive(o) && !sameTeam(o, f));
   // Respawn on the side away from the nearest opponent, above the stage.
   const avgX = living.length ? living.reduce((s, o) => s + o.x, 0) / living.length : 0;
   const x = Math.max(main.x1 + 60, Math.min(main.x2 - 60, avgX > 0 ? -120 : 120));
@@ -1526,7 +1548,7 @@ function updateProjectiles(world: World): void {
     // Fighter contact.
     if (!gone) {
       for (const f of world.fighters) {
-        if (f.slot === p.owner || !isAlive(f) || f.action === 'respawn' || f.grabbedBy >= 0) continue;
+        if (f.slot === p.owner || !isAlive(f) || f.action === 'respawn' || f.grabbedBy >= 0 || !canHurt(world, owner, f)) continue;
         const dx = f.x - p.x;
         const dy = centerY(f) - p.y;
         const reach = fighterDef(f).hurtR + (p.kind === 'mine' ? p.blastR * 0.7 : p.r);
@@ -1602,7 +1624,7 @@ function steerProjectile(world: World, p: Projectile): void {
   let best: Fighter | null = null;
   let bestD = Infinity;
   for (const f of world.fighters) {
-    if (f.slot === p.owner || !hittable(f)) continue;
+    if (f.slot === p.owner || !hittable(f) || sameTeam(f, world.fighters[p.owner]!)) continue;
     const d = Math.hypot(f.x - p.x, centerY(f) - p.y);
     if (d < bestD) { bestD = d; best = f; }
   }
@@ -1623,7 +1645,7 @@ function explode(world: World, p: Projectile): void {
   world.events.push({ type: 'explode', x: p.x, y: p.y, r: p.blastR, look: p.look });
   const owner = world.fighters[p.owner]!;
   for (const f of world.fighters) {
-    if (f.slot === p.owner || !hittable(f) || f.grabbedBy >= 0) continue;
+    if (f.slot === p.owner || !hittable(f) || f.grabbedBy >= 0 || !canHurt(world, owner, f)) continue;
     const dx = f.x - p.x;
     const dy = centerY(f) - p.y;
     const reach = fighterDef(f).hurtR + p.blastR;
@@ -1647,7 +1669,7 @@ function resolveHits(world: World): void {
     const mine = boxes[i]!;
     if (!mine.length) return;
     for (const t of world.fighters) {
-      if (t === a || !hittable(t) || a.moveHits.includes(t.slot) || t.grabbedBy === a.slot) continue;
+      if (!canHurt(world, a, t) || !hittable(t) || a.moveHits.includes(t.slot) || t.grabbedBy === a.slot) continue;
       for (const box of mine) {
         const dx = t.x - box.x;
         const dy = centerY(t) - box.y;
@@ -1807,9 +1829,13 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
 function checkGameOver(world: World): void {
   if (world.over) return;
   const left = world.fighters.filter((f) => f.stocks > 0);
-  if (world.fighters.length > 1 && left.length <= 1) {
+  // Each team counts once (ADR-0081); a fighter with no team is a side of its own.
+  const sides = new Set(left.map((f) => (f.team >= 0 ? `t${f.team}` : `s${f.slot}`)));
+  const allSides = new Set(world.fighters.map((f) => (f.team >= 0 ? `t${f.team}` : `s${f.slot}`)));
+  if (world.fighters.length > 1 && sides.size <= 1 && (allSides.size > 1 || !left.length)) {
     world.over = true;
     world.winner = left[0]?.slot ?? -1;
+    world.winnerTeam = left[0]?.team ?? -1;
     world.events.push({ type: 'gameover', winner: world.winner });
   }
 }

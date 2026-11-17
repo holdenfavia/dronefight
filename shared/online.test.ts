@@ -35,8 +35,8 @@ describe('online fights', () => {
   it('accepts the secret fighter as a pick and the host\'s rule cheats in settings (ADR-0077)', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'pick', fighter: 'river', ready: true }))).toEqual({ t: 'pick', fighter: 'river', ready: true });
     const msg = parseClientMessage(JSON.stringify({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [], rules: { oneHit: true, nonsense: 1 } } }));
-    expect(msg).toEqual({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [], rules: { moonJump: false, oneHit: true } } });
+    expect(msg).toEqual({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [], rules: { moonJump: false, oneHit: true }, teams: false, friendlyFire: false, cpuTeams: [] } });
     const old = parseClientMessage(JSON.stringify({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [] } }));
-    expect(old).toEqual({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [], rules: { moonJump: false, oneHit: false } } });
+    expect(old).toEqual({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [], rules: { moonJump: false, oneHit: false }, teams: false, friendlyFire: false, cpuTeams: [] } });
   });
 });

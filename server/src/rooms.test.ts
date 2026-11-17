@@ -32,7 +32,7 @@ describe('rooms', () => {
     expect(room.code).toBe('42');
     expect(room.you).toBe(1);
     expect(room.host).toBe(0);
-    expect(room.members).toEqual([{ id: 0, fighter: 'ninja', ready: true }, { id: 1, fighter: 'titan', ready: true }]);
+    expect(room.members).toEqual([{ id: 0, fighter: 'ninja', ready: true, team: 0 }, { id: 1, fighter: 'titan', ready: true, team: 1 }]);
     rooms.leave(a);
     rooms.leave(b);
     expect(rooms.stats()).toEqual({ rooms: 0, players: 0, fights: 0 });
@@ -71,12 +71,36 @@ describe('rooms', () => {
     expect(last(a, 'room')?.playing).toBe(true);
   });
 
+  it('team battles: players pick their team, the host sets the CPUs\' teams and friendly fire (ADR-0081)', () => {
+    const { rooms, a, b } = readyRoom();
+    // Newcomers are spread over the first two teams; everyone on one team can't start.
+    rooms.handle(b, { t: 'pick', fighter: 'titan', ready: true, team: 0 });
+    rooms.handle(a, { t: 'settings', settings: { stage: 'rooftop', stocks: 2, cpus: [2], teams: true, cpuTeams: [0] } });
+    rooms.handle(a, { t: 'start' });
+    expect(last(a, 'error')?.code).toBe('not-ready');
+    expect(last(a, 'match')).toBeUndefined();
+    rooms.handle(a, { t: 'settings', settings: { stage: 'rooftop', stocks: 2, cpus: [2], teams: true, friendlyFire: true, cpuTeams: [1] } });
+    rooms.handle(a, { t: 'start' });
+    const m = last(b, 'match')!;
+    expect(m.start.fighters.map((f) => f.team)).toEqual([0, 0, 1]);
+    expect(m.start.rules.friendlyFire).toBe(true);
+  });
+
+  it('a free-for-all room sends no teams', () => {
+    const { rooms, a } = readyRoom();
+    rooms.handle(a, { t: 'settings', settings: { stage: 'rooftop', stocks: 2, cpus: [2], teams: false, friendlyFire: true, cpuTeams: [0] } });
+    rooms.handle(a, { t: 'start' });
+    const m = last(a, 'match')!;
+    expect(m.start.fighters.map((f) => f.team)).toEqual([-1, -1, -1]);
+    expect(m.start.rules.friendlyFire).toBe(false);
+  });
+
   it('runs the fight: every client stepping the sent frames ends up with the server world', () => {
     const { rooms, a, b } = readyRoom();
     rooms.handle(a, { t: 'settings', settings: { stage: 'rooftop', stocks: 1, cpus: [3] } });
     rooms.handle(a, { t: 'start' });
     const start: MatchStart = last(a, 'match')!.start;
-    const client = createWorld(start.stage, start.fighters.map((f) => ({ id: f.fighter })), start.stocks, start.seed);
+    const client = createWorld(start.stage, start.fighters.map((f) => ({ id: f.fighter, team: f.team })), start.stocks, start.seed, start.rules);
     let snaps = 0;
     for (let i = 0; i < 1200; i++) {
       // Both players mash something that changes over time.
