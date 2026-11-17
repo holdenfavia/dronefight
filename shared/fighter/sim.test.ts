@@ -326,7 +326,7 @@ describe('fighter sim', () => {
     expect(hitAt(100)).toBeGreaterThan(hitAt(40) * 1.4);
   });
 
-  it("the Brawler's full KO meter turns Haymaker into a Knockout Punch (ADR-0078)", () => {
+  it("the Brawler's full KO meter turns Haymaker into a Knockout Punch (ADR-0079)", () => {
     const punch = (meter: number) => {
       const w = createWorld('helipad', [{ id: 'brawler' }, { id: 'titan' }]);
       skipCountdown(w);
@@ -503,29 +503,46 @@ describe('fighter sim', () => {
     expect(FIGHTERS.river.name).toBe('River');
   });
 
-  it('River is really bad: slower, weaker and a bigger target than anyone', () => {
+  it('River is a fast glass cannon: fastest on the ground, strongest throws, and he flies early', () => {
     const others = FIGHTER_IDS.map((id) => FIGHTERS[id]);
     const r = FIGHTERS.river;
-    expect(r.walkSpeed).toBeLessThan(Math.min(...others.map((d) => d.walkSpeed)));
-    expect(r.jumpSpeed).toBeLessThan(Math.min(...others.map((d) => d.jumpSpeed)));
-    const smash = (d: typeof r) => Math.max(...d.moves.fsmash.hitboxes!.map((h) => h.dmg));
-    expect(smash(r)).toBeLessThan(Math.min(...others.map(smash)));
-    // Only the Titan is a bigger target.
-    expect(r.hurtR).toBeGreaterThan(Math.max(...others.filter((d) => d.id !== 'titan').map((d) => d.hurtR)));
+    expect(r.walkSpeed).toBeGreaterThan(Math.max(...others.map((d) => d.walkSpeed)));
+    const throwPower = (d: typeof r) => Math.max(...(['fthrow', 'bthrow', 'uthrow'] as const).map((t) => d.moves[t].throwHit!.hit.dmg));
+    expect(throwPower(r)).toBeGreaterThan(Math.max(...others.map(throwPower)));
+    expect(r.kbTaken).toBeGreaterThan(1);
   });
 
-  it('River takes very little knockback: a smash that KOs the Brawler leaves River on the stage', () => {
-    for (const [id, falls] of [['brawler', true], ['river', false]] as const) {
+  it('River flies off from a smash at a percent that leaves the Brawler on the stage', () => {
+    for (const [id, falls] of [['brawler', false], ['river', true]] as const) {
       const w = createWorld('helipad', [{ id: 'brawler' }, { id }]);
       skipCountdown(w);
       const [a, b] = w.fighters;
       a!.x = -100; a!.facing = 1;
-      b!.x = -55; b!.percent = 110;
+      b!.x = -55; b!.percent = 20;
       run(w, 20, () => [{ ...NO_INPUT, right: true, aimRight: true, attack: true }]);
       run(w, 240);
       expect(b!.stocks < MATCH.defaultStocks, id).toBe(falls);
-      if (!falls) expect(b!.grounded && b!.x < 420, 'River lands back on the pad').toBe(true);
     }
+  });
+
+  it("River's Belly Flop hops, comes down and shakes both sides", () => {
+    const w = createWorld('helipad', [{ id: 'river' }, { id: 'brawler' }, { id: 'brawler' }]);
+    skipCountdown(w);
+    const [r, a, b] = w.fighters;
+    r!.x = 0; r!.facing = 1;
+    a!.x = 70; b!.x = -70;
+    step(w, [{ ...NO_INPUT, aimDown: true, special: true }]);
+    let peak = 0;
+    let flopped = false;
+    for (let i = 0; i < 90; i++) {
+      step(w, []);
+      peak = Math.max(peak, r!.y);
+      if (r!.move === 'bellyflop') flopped = true;
+    }
+    expect(peak).toBeGreaterThan(40);
+    expect(flopped).toBe(true);
+    expect(a!.percent).toBeGreaterThan(10);
+    expect(b!.percent).toBeGreaterThan(10);
   });
 
   it('MOONJUMP: jumps go much higher', () => {

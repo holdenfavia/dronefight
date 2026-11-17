@@ -27,7 +27,7 @@ const NEUTRAL_SPECIAL = { aimRight: true, special: true };
 const SIDE_SPECIAL = { right: true, aimRight: true, special: true };
 const DOWN_SPECIAL = { aimDown: true, special: true };
 
-describe('signature mechanics (ADR-0078)', () => {
+describe('signature mechanics (ADR-0079)', () => {
   it('every cast fighter has a HUD meter; River has none', () => {
     for (const id of ['brawler', 'blade', 'spark', 'titan', 'ninja', 'gunslinger', 'chef', 'ghost', 'yoyo', 'bard'] as const) {
       const w = createWorld('rooftop', [{ id }, { id: 'river' }]);

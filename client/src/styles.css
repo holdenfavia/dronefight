@@ -337,7 +337,7 @@ kbd {
 .stocks { display: flex; gap: 4px; margin-top: 4px; height: 10px; }
 .stock { width: 10px; height: 10px; border-radius: 50%; background: var(--slot); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5); }
 
-/* Signature meter under the stocks (ADR-0078). */
+/* Signature meter under the stocks (ADR-0079). */
 .sig { display: flex; align-items: center; gap: 5px; margin-top: 5px; height: 14px; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; white-space: nowrap; }
 .sig:empty { display: none; }
 .sig-label { color: rgba(255, 255, 255, 0.6); }

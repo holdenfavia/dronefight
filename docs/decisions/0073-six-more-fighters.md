@@ -1,6 +1,6 @@
 # ADR-0073: Six more fighters: Ninja, Gunslinger, Chef, Ghost, Yo-yo Kid, Bard
 
-- **Status:** Accepted (each fighter's signature mechanic deepened by ADR-0078, 2026-11-17)
+- **Status:** Accepted (each fighter's signature mechanic deepened by ADR-0079, 2026-11-17)
 - **Date:** 2026-11-10
 - **Amends:** ADR-0072 (the roster grows from four to ten)
 

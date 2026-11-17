@@ -999,7 +999,7 @@ export class Ui {
         c.stocks.replaceChildren(...Array.from({ length: Math.max(0, f.stocks) }, () => el('span', 'stock')));
         c.card.classList.toggle('out', f.stocks <= 0);
       }
-      // The fighter's signature meter (ADR-0078), redrawn only when it changes.
+      // The fighter's signature meter (ADR-0079), redrawn only when it changes.
       const g = signatureGauge(world, f);
       const key = g ? JSON.stringify(g) : '';
       if (key !== c.lastSig) {

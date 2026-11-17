@@ -132,7 +132,7 @@ export class Renderer {
             this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 12, max: 12, size: 8, color: ATTACK_COLORS.tip, kind: 'ring', grow: 5 });
           }
           if (e.sig) {
-            // A signature hit (ADR-0078): the Knockout Punch, Flash Cut, Payback, Assassinate.
+            // A signature hit (ADR-0079): the Knockout Punch, Flash Cut, Payback, Assassinate.
             const sc = SIGNATURE_LOOKS[e.sig] ?? { text: e.sig.toUpperCase(), color: ATTACK_COLORS.rage };
             for (let i = 0; i < 30; i++) this.ember(e.x, e.y, i % 3 ? sc.color : ATTACK_COLORS.smashCore, 600);
             this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 26, max: 26, size: 24, color: sc.color, kind: 'ring', grow: 10 });
@@ -205,7 +205,7 @@ export class Renderer {
           this.popup(world.fighters[e.slot]!, 'REFLECT!', '#ffffff');
           break;
         case 'signature': {
-          // Meters filling, recipes served, possessions (ADR-0078).
+          // Meters filling, recipes served, possessions (ADR-0079).
           const f = world.fighters[e.slot]!;
           const on = e.target >= 0 ? world.fighters[e.target]! : f;
           let text: string;
@@ -919,6 +919,12 @@ export class Renderer {
       case 'meatball':
         ball('#7a4a2a');
         return true;
+      case 'snack':
+        // River's cookie.
+        ball('#c98a4b');
+        ctx.fillStyle = '#4a2a14';
+        for (const [dx, dy] of [[-0.35, -0.2], [0.3, -0.3], [0.05, 0.35]] as const) ctx.fillRect(px + dx * r - 1.5, py + dy * r - 1.5, 3, 3);
+        return true;
       case 'pot': {
         // A pot on the boil: steam and bubbles.
         ctx.fillStyle = '#3a3e44';
@@ -1171,7 +1177,7 @@ export class Renderer {
         ctx.stroke();
       }
     }
-    // Marks (Ninja) and haunting (Ghost) on this fighter: little pips over the head, in the marker's color (ADR-0078).
+    // Marks (Ninja) and haunting (Ghost) on this fighter: little pips over the head, in the marker's color (ADR-0079).
     let pipRow = 0;
     for (let slot = 0; slot < f.tags.length; slot++) {
       const n = f.tags[slot] ?? 0;

@@ -35,7 +35,7 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 
 ## Moves (ADR-0071)
 
-- **Every fighter has its own moveset and gimmick** (ADR-0072, ADR-0073): jab (combos), tilts, charged smashes, five aerials, four specials, grab, pummel and four throws, get-up attack. Each also has a **signature mechanic** with a meter on its damage card (ADR-0078).
+- **Every fighter has its own moveset and gimmick** (ADR-0072, ADR-0073): jab (combos), tilts, charged smashes, five aerials, four specials, grab, pummel and four throws, get-up attack. Each also has a **signature mechanic** with a meter on its damage card (ADR-0079).
 - **Defense:** shield (drains, breaks into a dizzy stun), **parry** by shielding just as a hit lands, rolls and spot dodge, one air dodge per jump (dashes if a direction is held).
 - **Launched:** press E just before hitting the floor to **tech**, or get knocked down (get up, roll or attack). Mash to escape grabs.
 - Super armor (Titan), counters (Brawler, Blade, Gunslinger), reflects (Chef), status effects (daze, swapped controls, slow, haste), stale moves (repeats get weaker), trades, a short input buffer.
@@ -43,7 +43,7 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 
 ## Fighters (ADR-0072, ADR-0073; numbers in `shared/fighter/fighters.ts`)
 
-| Fighter | Weight | Air jumps | Style and signature mechanic (ADR-0078) |
+| Fighter | Weight | Air jumps | Style and signature mechanic (ADR-0079) |
 |---|---|---|---|
 | Brawler | 105 | 1 | fast fists, short reach; **KO meter** fills from combos, full = Haymaker becomes a Knockout Punch |
 | Blade | 95 | 1 | long sword reach; tip hits sharpen the **edge**, full = Flash Cut through shields; parry stance |
@@ -56,7 +56,7 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 | Yo-yo Kid | 88 | 2 | juggles; a live **trick combo** makes each chained hit stronger; returning yo-yo, tether |
 | Bard | 92 | 2 | guitar; attacks **on the beat** build groove, full = **encore** songs (long tempo, sleeping lullaby) |
 
-**Secret:** River, unlocked by the code RIVER (ADR-0077): big, round and really bad, but takes 0.4× knockback. Never drawn by Random or CPUs.
+**Secret:** River, unlocked by the code RIVER (ADR-0077): a big, round **glass cannon** (ADR-0078): fastest walk, hard hits, the strongest grabs and throws, a Belly Flop down special, but light and takes 1.25× knockback. Never drawn by Random or CPUs.
 
 ## Cheat codes (ADR-0077)
 

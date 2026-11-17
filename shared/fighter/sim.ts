@@ -140,7 +140,7 @@ export interface Fighter {
   ammo: number;
   /** Which of a cycling throw comes next (the Chef's food). */
   cycle: number;
-  // Signature mechanics (ADR-0078, signature.ts).
+  // Signature mechanics (ADR-0079, signature.ts).
   /** The fighter's signature meter: KO meter, edge, mana, payback, hot streak or groove. */
   meter: number;
   /** The Chef's ingredients (0 tomato, 1 pepper, 2 meat). */
@@ -393,7 +393,7 @@ export function step(world: World, inputs: readonly Input[]): void {
     return;
   }
   for (const f of world.fighters) {
-    // A possessed fighter moves the way its Ghost does (ADR-0078).
+    // A possessed fighter moves the way its Ghost does (ADR-0079).
     const input = puppetInput(f, inputs[f.slot] ?? NO_INPUT, inputs);
     updateFighter(world, f, input);
     f.prev = { ...input };
@@ -509,7 +509,7 @@ function setAction(f: Fighter, action: Action, duration = 0): void {
 }
 
 function startMove(world: World, f: Fighter, wanted: MoveId, button: 'attack' | 'special' | null): void {
-  // A full signature meter can turn the move into its signature version (ADR-0078).
+  // A full signature meter can turn the move into its signature version (ADR-0079).
   const move = beginMove(world, f, wanted);
   setAction(f, 'attack');
   f.move = move;
@@ -1085,7 +1085,7 @@ function rewind(world: World, f: Fighter, back: number): void {
   const fromY = f.y;
   f.x = to.x;
   f.y = to.y;
-  // Spark's rewind takes back the damage too, when there was mana for it (ADR-0078).
+  // Spark's rewind takes back the damage too, when there was mana for it (ADR-0079).
   if (rewindHeals(f) && to.p < f.percent) {
     f.percent = to.p;
     world.events.push({ type: 'signature', slot: f.slot, kind: 'undo', target: -1 });
@@ -1773,7 +1773,7 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
     pushStale(attacker, opts.move);
     if (opts.melee) attacker.staleCounted = true;
   }
-  // Signature mechanics (ADR-0078): edge, combos, marks, payback, recipes...
+  // Signature mechanics (ADR-0079): edge, combos, marks, payback, recipes...
   const sig = strikeMods(world, attacker, target, opts);
   const dmg = (hit.dmg * sig.dmg + (hit.dmg > 0 ? sig.bonus : 0)) * stale * (opts.melee && !opts.isThrow ? attacker.chargeMult : 1);
   const lag = Math.min(HITLAG.max, Math.floor(HITLAG.base + dmg * HITLAG.perDamage));

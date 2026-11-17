@@ -1,4 +1,4 @@
-# ADR-0078: A signature mechanic and HUD meter for every fighter
+# ADR-0079: A signature mechanic and HUD meter for every fighter
 
 - **Status:** Accepted
 - **Date:** 2026-11-17
@@ -36,4 +36,4 @@ All state lives on the fighters in the world, so online snapshots carry it and t
 - New fighter fields (`meter`, `pantry`, `buff`, `chain`, `tags`, `puppet`...) and new moves (`kopunch`, `flashcut`, `cook`, `tempoEncore`, `lullabyEncore`).
 - The `hit` event's `rage` flag is replaced by `sig`; a new `signature` event drives popups.
 - CPUs don't play around the mechanics deliberately yet; they trigger them by chance.
-- River has no mechanic (owned by the RIVER work, ADR-0077).
+- River has no mechanic (it is its own glass cannon, ADR-0077 and ADR-0078).

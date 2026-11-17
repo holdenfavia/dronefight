@@ -195,7 +195,7 @@ export const CHEAT_RULES = {
 } as const;
 
 /**
- * Signature mechanics (ADR-0078): one deeper system per fighter, each with its own HUD meter.
+ * Signature mechanics (ADR-0079): one deeper system per fighter, each with its own HUD meter.
  * The logic lives in signature.ts; every number is here.
  */
 export const SIGNATURE = {

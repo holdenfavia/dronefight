@@ -1,4 +1,4 @@
-// Signature mechanics (ADR-0078): one deeper system per fighter, each with a HUD meter.
+// Signature mechanics (ADR-0079): one deeper system per fighter, each with a HUD meter.
 // Brawler's KO meter, Blade's edge, Spark's mana, Titan's payback, Ninja's marks, Gunslinger's hot streak,
 // Chef's pantry and recipes, Ghost's haunting and possession, Yo-yo Kid's trick combos, Bard's groove.
 // Deterministic like the rest of the sim: the state lives on the fighters, so online snapshots carry it.
