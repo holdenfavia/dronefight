@@ -534,7 +534,7 @@ describe('fighter sim', () => {
       skipCountdown(w);
       const [a, b] = w.fighters;
       a!.x = -100; a!.facing = 1;
-      b!.x = -55; b!.percent = 20;
+      b!.x = -55; b!.percent = 40;
       run(w, 20, () => [{ ...NO_INPUT, smash: true, aimRight: true, attack: true }]);
       run(w, 240);
       expect(b!.stocks < MATCH.defaultStocks, id).toBe(falls);
