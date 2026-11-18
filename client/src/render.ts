@@ -11,6 +11,7 @@ import { moveLook, type MoveLook } from './moveLooks';
 import { drawFighterFigure } from './figures';
 import { cheatOn } from './cheats';
 import { isPurpleSkyTime } from './purpleSky';
+import * as detail from './stageDetail';
 
 interface Particle {
   x: number;
@@ -450,6 +451,14 @@ export class Renderer {
     return this.h / 2 - (y - this.cam.y) * this.scale;
   }
 
+  /** What the stage scenery (stageDetail.ts) needs, for this frame. */
+  private view(): detail.View {
+    return {
+      ctx: this.ctx, sx: (x) => this.sx(x), sy: (y) => this.sy(y), s: this.scale, time: this.time,
+      purple: this.purple, w: this.w, h: this.h, camX: this.cam.x,
+    };
+  }
+
   /** Advance effects by one sim frame. */
   tick(world: World): void {
     this.time++;
@@ -519,6 +528,7 @@ export class Renderer {
     ctx.save();
     if (sh > 0) ctx.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
     this.drawBackdrop();
+    this.drawSkyBirds();
     this.drawStage(world);
     this.drawParticles(false);
     this.lastWorld = world;
@@ -627,6 +637,7 @@ export class Renderer {
       }
     };
     city(this.far, 0.15, 0.55, 0.92, this.purple ? '#6c4aa8' : look.far, '');
+    if (this.stageId !== 'rooftop') detail.drawBeacons(this.view(), layer(0.15, 0.55, 0.92), this.far, 400);
     if (this.stageId === 'cranes') { this.drawHarbor(layer); return; }
     if (this.stageId === 'helipad') this.drawHelicopterFlyby(layer(0.12, 0.55, 0.9));
     city(this.near, 0.3, 0.7, 1.02, this.purple ? '#3e2a66' : look.near, this.purple ? 'rgba(255,214,255,0.25)' : look.windows);
@@ -653,6 +664,7 @@ export class Renderer {
       const half = (60 - i * 3 + Math.sin(this.time * 0.05 + i) * 10) * sea.s;
       ctx.fillRect(sunX - half, y, half * 2, 2 * sea.s);
     }
+    detail.drawHarborExtras(this.view(), sea, shore);
     // Two container ships crossing the bay, very slowly.
     const ships = layer(0.22, 0.6, 0.89);
     for (const [base, dir] of [[-500, 1], [900, -1]] as const) {
@@ -691,6 +703,7 @@ export class Renderer {
     const k = quay.s;
     ctx.fillStyle = purple ? '#3e2a66' : this.look.near;
     ctx.fillRect(0, qy, this.w, this.h - qy + 2);
+    detail.drawQuayLights(this.view(), quay, qy);
     for (let i = -16; i <= 16; i++) {
       const wx = i * 260 + ((i * 37) & 63);
       const x = quay.x(wx);
@@ -777,6 +790,12 @@ export class Renderer {
     hillsAt(far, this.purple ? '#8a63c9' : FALL.hillFar, 140, 70, 0.004, 1, 0.08);
     const mid = layer(0.15, 0.6, 0.7);
     hillsAt(mid, this.purple ? '#6c4aa8' : FALL.hillMid, 90, 40, 0.006, 3, 0.2);
+    // The hills' screen height at a layer x (hillsAt drifts at its own parallax, not the layer's).
+    const hillAt = (L: ReturnType<typeof layer>, layerParallax: number, base: number, amp: number, freq: number, shift: number, parallax: number) => (x: number) => {
+      const wx = x + this.cam.x * (parallax - layerParallax);
+      return L.y(base + Math.sin(wx * freq + shift) * amp + Math.sin(wx * freq * 2.7 + shift * 2) * amp * 0.35);
+    };
+    detail.drawWindpump(this.view(), mid, hillAt(mid, 0.15, 90, 40, 0.006, 3, 0.2));
     // A red barn and a silo on the middle hills.
     const bx = mid.x(520);
     const by = mid.y(110);
@@ -805,6 +824,7 @@ export class Renderer {
     // Rows of fall trees on the near hills.
     const near = layer(0.3, 0.7, 0.78);
     hillsAt(near, this.purple ? '#3e2a66' : FALL.hillNear, 40, 18, 0.008, 5, 0.35);
+    detail.drawCornShocks(this.view(), near, hillAt(near, 0.3, 40, 18, 0.008, 5, 0.35));
     for (let i = -14; i <= 14; i++) {
       const tx = i * 150 + ((i * 53) % 40);
       const x = near.x(tx);
@@ -858,6 +878,7 @@ export class Renderer {
       for (let wy = top + step * 0.5; wy < this.h + 40; wy += step) {
         for (let wx = x + step * 0.3; wx < x + w - step * 0.5; wx += step) ctx.fillRect(wx, wy, step * 0.5, step * 0.55);
       }
+      detail.drawRooftopDetail(this.view(), main.y, main.x1 + 20, main.x2 - 20, main.y - main.depth);
       // Rooftop clutter, set back behind the edge and faded so it reads as scenery, not something to stand on.
       ctx.globalAlpha = 0.5;
       this.box(-300, main.y, 70, 30, '#6a737d');
@@ -884,11 +905,13 @@ export class Renderer {
       const top = this.sy(main.y - main.depth);
       ctx.fillStyle = '#4a3020';
       ctx.fillRect(0, top, this.w, this.h - top + 40);
+      detail.drawFarmDetail(this.view(), main.y, main.depth);
       this.drawScarecrow(-420, main.y);
       for (const [px, pr] of [[-360, 16], [-330, 11], [380, 18], [410, 12], [600, 15]] as const) this.drawPumpkin(px, main.y, pr);
       this.drawOak(main.y);
     } else if (id === 'helipad') {
       this.drawSkyscraper(main.y - main.depth - HELIPAD_TOWER);
+      detail.drawSkyscraperDetail(this.view(), main.y - main.depth - HELIPAD_TOWER, -270, 270);
       // A truss tower holding the pad above the skyscraper's roof.
       ctx.strokeStyle = this.purple ? '#8a63c9' : '#6b6880';
       ctx.lineWidth = Math.max(1, 6 * s);
@@ -929,12 +952,33 @@ export class Renderer {
             ctx.lineTo(this.sx(rx), this.sy(y - 46));
           }
           ctx.stroke();
+          detail.drawContainerDoors(this.view(), x + 2, y - 50, 96, 50, row * 5 + col);
         }
       }
       for (const side of [-1, 1]) this.drawTowerCrane(side);
     }
 
     for (const p of world.stage.platforms) this.drawPlatform(p, id);
+    // Scenery in front of the platforms' faces.
+    const v = this.view();
+    if (id === 'rooftop') {
+      const soft = world.stage.platforms.filter((p) => !p.solid);
+      detail.drawPigeons(v, soft.flatMap((p, i) => (i === 2 ? [{ x: p.x2 - 20, y: p.y }] : [{ x: p.x1 + 18, y: p.y }, { x: p.x1 + 40, y: p.y }])));
+    } else if (id === 'helipad') detail.drawHelipadDetail(v, main.x1, main.x2, main.y);
+    else if (id === 'cranes') detail.drawDeckDetail(v, main.x1, main.x2, main.y, main.depth);
+    else if (id === 'harvest') {
+      const wagon = world.stage.platforms.find((p) => !p.solid && p.x1 > 0 && p.y < 200);
+      if (wagon) detail.drawLantern(v, wagon.x1 + 10, wagon.y);
+    }
+  }
+
+  /** Birds crossing the sky, a kind for each stage. */
+  private drawSkyBirds(): void {
+    const v = this.view();
+    if (this.fall) detail.drawBirds(v, 5, '#3a2614', 0.7, 0.18, 3);
+    else if (this.stageId === 'cranes') detail.drawBirds(v, 6, 'rgba(255,255,255,0.8)', 0.5, 0.22, 1);
+    else if (this.stageId === 'helipad') detail.drawBirds(v, 4, 'rgba(30,24,40,0.7)', 0.6, 0.3, 2);
+    else detail.drawBirds(v, 3, 'rgba(60,64,70,0.6)', 0.8, 0.25, 4);
   }
 
   /** The Helipad's skyscraper: glass with lit windows at sunset, warning lights on its roof corners. */
