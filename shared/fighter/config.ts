@@ -199,8 +199,8 @@ export const SIGNATURE = {
   ko: { max: 100, perDealt: 1.8, chainBonus: 0.25, chainMaxMult: 2, perTaken: 0.6, launchLoss: 20 },
   /** Blade's edge: each sword-tip hit sharpens it a level (every level adds damage); getting hit dulls it to nothing. Full: Lunge becomes Flash Cut. */
   edge: { max: 3, dmgPerLevel: 0.1 },
-  /** Spark's mana: specials cost it, it refills over time and from landing hits. Too little: the spell fizzles (weaker). */
-  mana: { max: 100, regen: 0.12, perMeleeHit: 6, cost: { nspecial: 12, sspecial: 25, uspecial: 10, dspecial: 40 } as Record<string, number>, fizzleDmg: 0.5, fizzleBlink: 0.55 },
+  /** Spark's mana: specials cost it, it refills over time and from landing hits. Too little: the spell fizzles (1 to 2 damage, no knockback, short blink). */
+  mana: { max: 100, regen: 0.12, perMeleeHit: 6, cost: { nspecial: 12, sspecial: 25, uspecial: 10, dspecial: 40 } as Record<string, number>, fizzleDmg: { min: 1, max: 2 }, fizzleBlink: 0.55 },
   /** Titan's payback: damage soaked by armor is stored and added to the next smash or Earthquake. */
   payback: { max: 40, dmgShare: 0.6, kbPerStored: 1 / 70 },
   /** Ninja's marks on a foe: each Ninja hit adds one; Shadow Step cashes them in as Assassinate. */

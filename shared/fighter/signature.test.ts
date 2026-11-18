@@ -69,6 +69,25 @@ describe('signature mechanics (ADR-0079)', () => {
     expect(s.percent).toBe(0);
   });
 
+  it('Spark: a fizzled fireball stings for 1 to 2 damage and no knockback', () => {
+    const w = duel('spark', 'titan', 200);
+    const [s, t] = w.fighters;
+    s!.meter = 0;
+    const x0 = t!.x;
+    let hit: { dmg: number; kb: number } | undefined;
+    for (let i = 0; i < 60 && !hit; i++) {
+      step(w, [i === 0 ? { ...NO_INPUT, ...NEUTRAL_SPECIAL } : NO_INPUT]);
+      const e = w.events.find((ev) => ev.type === 'hit');
+      if (e && e.type === 'hit') hit = { dmg: e.dmg, kb: e.kb };
+    }
+    expect(hit).toBeDefined();
+    expect(hit!.dmg).toBeGreaterThanOrEqual(1);
+    expect(hit!.dmg).toBeLessThanOrEqual(2);
+    expect(hit!.kb).toBe(0);
+    run(w, 30);
+    expect(Math.abs(t!.x - x0)).toBeLessThan(1);
+  });
+
   it('Titan: damage soaked by armor comes back on the next smash', () => {
     const smash = (stored: number) => {
       const w = duel('titan', 'brawler', 70);

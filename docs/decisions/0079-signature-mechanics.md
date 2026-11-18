@@ -14,7 +14,7 @@ Every cast fighter (not River) has one signature mechanic, shown as a small mete
 |---|---|---|---|
 | Brawler | **KO Meter** (replaces rage) | Damage dealt, more in a combo; a little from damage taken; getting launched knocks 20 off | Full: Haymaker becomes the **Knockout Punch** (chargeable, unflinchable, huge launch) |
 | Blade | **Edge** (3 levels) | Each sword-tip hit; any hit taken dulls it to 0 | +10% sword damage per level; full: Lunge becomes **Flash Cut** (dash through, pierces shields) |
-| Spark | **Mana** (100) | Refills over time and from melee hits | Specials cost mana; too little and the spell fizzles (half power, short blink). **Rewind undoes the damage** taken since the point it rewinds to |
+| Spark | **Mana** (100) | Refills over time and from melee hits | Specials cost mana; too little and the spell fizzles (only 1 to 2 damage and no knockback, short blink; changed 2026-11-18 at the owner's request). **Rewind undoes the damage** taken since the point it rewinds to |
 | Titan | **Payback** | Damage its armor soaks | Added (60%) to the next smash or Earthquake, with extra knockback |
 | Ninja | **Marks** on foes (3) | Each Ninja hit marks the foe (fade after 6 s) | Shadow Step goes for the most-marked foe and cashes the marks in as **Assassinate** |
 | Gunslinger | **Hot Streak** (5) | Each bullet that hits; a miss resets it | The last bullet in the cylinder is **golden**: stronger with the streak |

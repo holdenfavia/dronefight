@@ -8,7 +8,7 @@ import {
 import { FIGHTERS, type FighterDef, type FighterId, type Hitbox, type HitStats, type MoveDef, type MoveId, type ProjectileDef } from './fighters.js';
 import { nextRandom } from './rng.js';
 import {
-  afterStrike, beginMove, blinkScale, feastArmor, newSignatureState, onArmor, onProjectileMiss, projectileHit, puppetInput,
+  afterStrike, beginMove, blinkScale, feastArmor, fizzleDamage, newSignatureState, onArmor, onProjectileMiss, projectileHit, puppetInput,
   resetSignature, rewindHeals, shadowStepPriority, signatureAction, strikeMods, tickSignature, type SignatureKind,
 } from './signature.js';
 import { STAGES, type Platform, type StageDef, type StageId } from './stages.js';
@@ -1787,7 +1787,9 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
   }
   // Signature mechanics (ADR-0079): edge, combos, marks, payback, recipes...
   const sig = strikeMods(world, attacker, target, opts);
-  const dmg = (hit.dmg * sig.dmg + (hit.dmg > 0 ? sig.bonus : 0)) * stale * (opts.melee && !opts.isThrow ? attacker.chargeMult : 1);
+  const raw = (hit.dmg * sig.dmg + (hit.dmg > 0 ? sig.bonus : 0)) * stale * (opts.melee && !opts.isThrow ? attacker.chargeMult : 1);
+  // A fizzled spell (Spark out of mana) only stings; projectiles already carry theirs.
+  const dmg = opts.melee && !opts.isThrow && attacker.moveSig === 'fizzle' ? fizzleDamage(raw) : raw;
   const lag = Math.min(HITLAG.max, Math.floor(HITLAG.base + dmg * HITLAG.perDamage));
   target.percent = Math.min(999, target.percent + dmg);
   attacker.stats.damageDealt += dmg;

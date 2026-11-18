@@ -156,7 +156,7 @@ export function beginMove(world: World, f: Fighter, move: MoveId): MoveId {
         if (f.meter >= cost) f.meter -= cost;
         else {
           f.meter = 0;
-          f.moveMod = S.mana.fizzleDmg;
+          f.moveKb = 0;
           f.moveSig = 'fizzle';
           sig(world, f, 'fizzle');
         }
@@ -221,10 +221,17 @@ export function beatPhase(frame: number): number {
 export function projectileHit(f: Fighter, hit: HitStats): { hit: HitStats; look?: string } {
   let out: HitStats = hit;
   if (f.moveMod !== 1 || f.moveKb !== 1) out = { ...out, dmg: out.dmg * f.moveMod, bkb: out.bkb * f.moveKb, kbg: out.kbg * f.moveKb };
+  if (f.moveSig === 'fizzle') out = { ...out, dmg: fizzleDamage(out.dmg) };
   if (f.id === 'chef' && f.buffKind === 'soup' && f.move === 'nspecial') {
     out = { ...out, dmg: out.dmg + SIGNATURE.pantry.soupDmg, stun: Math.max(out.stun ?? 0, SIGNATURE.pantry.soupStun) };
   }
   return { hit: out, look: f.moveSig === 'golden' ? 'goldbullet' : undefined };
+}
+
+/** A fizzled spell only stings: 1 to 2 damage (its knockback is already zero). */
+export function fizzleDamage(dmg: number): number {
+  const d = SIGNATURE.mana.fizzleDmg;
+  return dmg <= 0 ? 0 : Math.min(d.max, Math.max(d.min, dmg * 0.2));
 }
 
 /** Spark's blink goes a shorter way when it fizzles. */
