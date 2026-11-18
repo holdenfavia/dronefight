@@ -1,0 +1,282 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#111;font-family:Oswald,Impact,sans-serif}
+.card{width:1200px;height:800px;position:relative;overflow:hidden;margin-bottom:20px}
+svg{display:block}
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute">
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#8fb0cf"/><stop offset="0.7" stop-color="#f0d3a8"/><stop offset="1" stop-color="#f5c690"/>
+  </linearGradient>
+  <radialGradient id="glowO"><stop offset="0" stop-color="#ffb347" stop-opacity=".9"/><stop offset="1" stop-color="#ff6a00" stop-opacity="0"/></radialGradient>
+  <radialGradient id="glowR"><stop offset="0" stop-color="#ff5a3c" stop-opacity=".85"/><stop offset="1" stop-color="#ff2000" stop-opacity="0"/></radialGradient>
+  <radialGradient id="glowG"><stop offset="0" stop-color="#ffe680" stop-opacity=".95"/><stop offset="1" stop-color="#ffb000" stop-opacity="0"/></radialGradient>
+  <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe58a"/><stop offset=".5" stop-color="#e0a420"/><stop offset="1" stop-color="#9c6a00"/></linearGradient>
+  <linearGradient id="leather" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a3a3a"/><stop offset="1" stop-color="#121212"/></linearGradient>
+  <filter id="soft"><feGaussianBlur stdDeviation="6"/></filter>
+</defs>
+</svg>
+
+<div id="cards"></div>
+
+<script>
+const ORANGE='#ff7a1a', INK='#151515', SKIN='#f2c9a0', SKIN_D='#d9a77a';
+
+function bg(){
+  let s=`<rect width="1200" height="800" fill="url(#sky)"/>`;
+  // skyline
+  const b=[[0,560,90],[70,520,110],[200,580,80],[300,500,120],[440,545,90],[560,590,70],[660,510,130],[820,560,90],[930,495,120],[1070,540,130]];
+  for(const [x,y,w] of b){s+=`<rect x="${x}" y="${y}" width="${w}" height="${800-y}" fill="#6f8aa6" opacity=".55"/>`;
+    for(let wy=y+18;wy<700;wy+=34)for(let wx=x+12;wx<x+w-14;wx+=26)s+=`<rect x="${wx}" y="${wy}" width="12" height="14" fill="#a9bfd4" opacity=".5"/>`;}
+  // rooftop floor
+  s+=`<rect x="0" y="690" width="1200" height="110" fill="#2b2f36"/><rect x="0" y="690" width="1200" height="8" fill="${ORANGE}"/>`;
+  return s;
+}
+
+function header(num,title,tag){
+  return `<rect x="0" y="0" width="1200" height="96" fill="#0c0c0e" opacity=".88"/>
+  <rect x="0" y="96" width="1200" height="5" fill="${ORANGE}"/>
+  <text x="36" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="${ORANGE}">${num}</text>
+  <text x="92" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="#fff" letter-spacing="1">BRAWLER · ${title}</text>
+  <text x="1164" y="62" text-anchor="end" font-family="Oswald" font-weight="500" font-size="22" fill="#cfcfcf">${tag}</text>`;
+}
+
+function meter(x,label,pct,full,color){
+  const w=300;
+  return `<g transform="translate(${x},722)">
+   <rect x="0" y="0" width="${w+120}" height="56" rx="6" fill="#0c0c0e" opacity=".85"/>
+   <text x="14" y="36" font-family="Oswald" font-weight="700" font-size="22" fill="#fff">${label}</text>
+   <rect x="100" y="18" width="${w}" height="20" rx="4" fill="#333"/>
+   <rect x="100" y="18" width="${w*pct}" height="20" rx="4" fill="${color}"/>
+   ${full?`<rect x="98" y="16" width="${w+4}" height="24" rx="5" fill="none" stroke="#fff" stroke-width="2"/>`:''}
+  </g>`;
+}
+function caption(x,t){return `<text x="${x}" y="150" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="28" fill="${INK}" letter-spacing="2">${t}</text>`}
+function shadow(cx){return `<ellipse cx="${cx}" cy="692" rx="110" ry="14" fill="#000" opacity=".25"/>`}
+function limb(pts,w,c){return `<polyline points="${pts}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`}
+function sparks(cx,cy,n,r,col){let s='';for(let i=0;i<n;i++){const a=i/n*Math.PI*2+0.3*i;const r1=r*(0.7+0.3*((i*37)%10)/10),r2=r1+26+((i*13)%14);
+ s+=`<line x1="${cx+Math.cos(a)*r1}" y1="${cy+Math.sin(a)*r1}" x2="${cx+Math.cos(a)*r2}" y2="${cy+Math.sin(a)*r2}" stroke="${col}" stroke-width="5" stroke-linecap="round"/>`;}return s;}
+
+function header2(fighter,title,tag){
+  return `<rect x="0" y="0" width="1200" height="96" fill="#0c0c0e" opacity=".88"/>
+  <rect x="0" y="96" width="1200" height="5" fill="${ORANGE}"/>
+  <text x="36" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="${ORANGE}">${fighter}</text>
+  <text x="${36+fighter.length*24+14}" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="#fff" letter-spacing="1">· ${title}</text>
+  <text x="1164" y="62" text-anchor="end" font-family="Oswald" font-weight="500" font-size="22" fill="#cfcfcf">${tag}</text>`;
+}
+const STEEL='#9aa3ad', STEEL_D='#5d656e';
+function boot(x,y,c){return `<rect x="${x-22}" y="${y-4}" width="44" height="18" rx="6" fill="${c}" stroke="${INK}" stroke-width="3"/>`}
+function face(cx,hy,mood){ // simple eyes + mouth
+  let s=`<circle cx="${cx-12}" cy="${hy+2}" r="4" fill="${INK}"/><circle cx="${cx+12}" cy="${hy+2}" r="4" fill="${INK}"/>`;
+  s+= mood==='grin'?`<path d="M${cx-13},${hy+16} Q${cx},${hy+27} ${cx+13},${hy+16}" fill="#fff" stroke="${INK}" stroke-width="3.5"/>`
+     :mood==='smirk'?`<path d="M${cx-10},${hy+18} Q${cx+4},${hy+22} ${cx+14},${hy+13}" fill="none" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>`
+     :`<path d="M${cx-10},${hy+18} L${cx+10},${hy+18}" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>`;
+  return s;
+}
+function glint(x,y,r,c){return `<path d="M${x},${y-r} L${x+r*.22},${y-r*.22} L${x+r},${y} L${x+r*.22},${y+r*.22} L${x},${y+r} L${x-r*.22},${y+r*.22} L${x-r},${y} L${x-r*.22},${y-r*.22} Z" fill="${c}"/>`}
+function shout(cx,y,t,c){return `<text x="${cx}" y="${y}" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="44" fill="${c}" stroke="${INK}" stroke-width="6" paint-order="stroke">${t}</text>`}
+
+function robe(cx,sh,hip,col,trim){
+  return `<path d="M${cx-30},${sh} L${cx+30},${sh} L${cx+64},${hip+112} L${cx-64},${hip+112} Z" fill="${col}" stroke="${INK}" stroke-width="5"/>`+
+   (trim?`<path d="M${cx-60},${hip+98} L${cx+60},${hip+98}" stroke="${trim}" stroke-width="6"/>`:'');
+}
+function hand(x,y,c){return `<circle cx="${x}" cy="${y}" r="10" fill="${c||SKIN}" stroke="${INK}" stroke-width="3"/>`}
+
+/* 1. Hourglass sage */
+function sage(cx,full){
+  const lift=full?-24:0, hip=560+lift, sh=432+lift, hy=380+lift; let s=shadow(cx);
+  s+=robe(cx,sh,hip,'#4b3a8a','#e0a420');
+  for(let i=0;i<3;i++) s+=`<circle cx="${cx-30+i*30}" cy="${hip+60}" r="5" fill="url(#gold)"/>`;
+  s+=boot(cx-26,hip+120,'#2a1f4a')+boot(cx+26,hip+120,'#2a1f4a');
+  // staff
+  const sx=cx+92;
+  s+=`<line x1="${sx}" y1="${hip+120}" x2="${sx}" y2="${sh-90}" stroke="#6b4226" stroke-width="9" stroke-linecap="round"/>`;
+  s+=limb(`${cx-30},${sh+10} ${cx-64},${sh+60} ${cx-40},${sh+90}`,16,'#4b3a8a')+hand(cx-40,sh+92);
+  s+=limb(`${cx+30},${sh+10} ${cx+70},${sh+30} ${sx},${sh+10}`,16,'#4b3a8a')+hand(sx,sh+10);
+  // hourglass on top
+  const gy=sh-140;
+  if(full) s+=`<circle cx="${sx}" cy="${gy}" r="80" fill="url(#glowG)"/>`;
+  s+=`<rect x="${sx-30}" y="${gy-54}" width="60" height="10" rx="3" fill="url(#gold)" stroke="${INK}" stroke-width="3"/><rect x="${sx-30}" y="${gy+44}" width="60" height="10" rx="3" fill="url(#gold)" stroke="${INK}" stroke-width="3"/>`;
+  s+=`<path d="M${sx-22},${gy-44} L${sx+22},${gy-44} L${sx+4},${gy} L${sx+22},${gy+44} L${sx-22},${gy+44} L${sx-4},${gy} Z" fill="#e8f4ff" opacity=".8" stroke="${INK}" stroke-width="3"/>`;
+  const sand='#f0c050';
+  if(full){ s+=`<path d="M${sx-20},${gy-40} L${sx+20},${gy-40} L${sx+4},${gy-4} L${sx-4},${gy-4} Z" fill="${sand}"/>`;
+    s+=`<path d="M${sx+44},${gy-30} A50 50 0 1 1 ${sx-44},${gy+30}" fill="none" stroke="#fff" stroke-width="5" stroke-dasharray="10 8"/><path d="M${sx-44},${gy+30} l-4,-20 l18,8 Z" fill="#fff"/>`; }
+  else s+=`<path d="M${sx-20},${gy+42} L${sx+20},${gy+42} L${sx+10},${gy+24} L${sx-10},${gy+24} Z" fill="${sand}"/><line x1="${sx}" y1="${gy}" x2="${sx}" y2="${gy+24}" stroke="${sand}" stroke-width="2"/>`;
+  // head, beard, hat
+  s+=`<circle cx="${cx}" cy="${hy}" r="32" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-28},${hy+8} Q${cx-30},${hy+90} ${cx},${hy+110} Q${cx+30},${hy+90} ${cx+28},${hy+8} Q${cx},${hy+24} ${cx-28},${hy+8}" fill="#f4f4f4" stroke="${INK}" stroke-width="3"/>`;
+  s+=`<circle cx="${cx-11}" cy="${hy}" r="4" fill="${INK}"/><circle cx="${cx+11}" cy="${hy}" r="4" fill="${INK}"/>`;
+  s+=`<path d="M${cx-22},${hy-10} L${cx-4},${hy-8} M${cx+22},${hy-10} L${cx+4},${hy-8}" stroke="#fff" stroke-width="6" stroke-linecap="round"/>`;
+  s+=`<ellipse cx="${cx}" cy="${hy-24}" rx="56" ry="11" fill="#3a2c6e" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<path d="M${cx-30},${hy-26} L${cx-6},${hy-136} L${cx+30},${hy-26} Z" fill="#3a2c6e" stroke="${INK}" stroke-width="4"/>`;
+  for(const [dx,dy] of [[-8,-60],[6,-90],[-2,-112]]) s+=glint(cx+dx,hy+dy,7,'#e0a420');
+  if(full) s+=shout(cx-130,hy-120,'TIME IS MINE!','#ffe680');
+  return s;
+}
+
+/* 2. Candle wizard */
+function candle(cx,full){
+  const hip=560, sh=432, hy=380; let s=shadow(cx);
+  s+=robe(cx,sh,hip,'#a8331e','#ffd23a');
+  s+=boot(cx-26,hip+120,INK)+boot(cx+26,hip+120,INK);
+  s+=limb(`${cx-30},${sh+10} ${cx-70},${sh+50} ${cx-90},${sh+24}`,16,'#a8331e')+hand(cx-92,sh+20);
+  s+=limb(`${cx+30},${sh+10} ${cx+70},${sh+50} ${cx+90},${sh+24}`,16,'#a8331e')+hand(cx+92,sh+20);
+  if(full){ for(const x of [cx-92,cx+92]) s+=`<path d="M${x},${sh+8} q-12,-20 0,-40 q12,20 0,40" fill="#ffb000" stroke="${INK}" stroke-width="2"/>`; }
+  // head
+  s+=`<circle cx="${cx}" cy="${hy}" r="34" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  s+=face(cx,hy+2,full?'grin':'flat');
+  // hat = candle holder brim, candle on top
+  s+=`<ellipse cx="${cx}" cy="${hy-26}" rx="54" ry="11" fill="url(#gold)" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<path d="M${cx+46},${hy-26} q22,0 22,16 q0,14 -16,12" fill="none" stroke="url(#gold)" stroke-width="7"/>`;
+  const h=full?100:34, top=hy-30-h;
+  s+=`<rect x="${cx-22}" y="${top}" width="44" height="${h}" fill="#fff3d6" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<path d="M${cx-22},${top+6} q8,16 14,0 q6,24 14,2 q6,10 16,-2" fill="#fff3d6" stroke="${INK}" stroke-width="3"/>`;
+  if(full){
+    s+=`<circle cx="${cx}" cy="${top-30}" r="70" fill="url(#glowG)"/>`;
+    s+=`<path d="M${cx},${top-80} Q${cx+30},${top-30} ${cx},${top-4} Q${cx-30},${top-30} ${cx},${top-80}" fill="#ff9a1a" stroke="${INK}" stroke-width="3"/>`;
+    s+=`<path d="M${cx},${top-50} Q${cx+12},${top-24} ${cx},${top-8} Q${cx-12},${top-24} ${cx},${top-50}" fill="#fff27a"/>`;
+    // drips going up (rewind)
+    for(const [dx,dy] of [[-34,60],[32,90]]) s+=`<path d="M${cx+dx},${top+dy} q-6,10 0,16 q6,-6 0,-16" fill="#fff3d6" stroke="${INK}" stroke-width="2"/><path d="M${cx+dx},${top+dy-8} l0,-18 m-6,6 l6,-6 l6,6" stroke="#fff" stroke-width="3" fill="none"/>`;
+  } else {
+    s+=`<path d="M${cx},${top-22} Q${cx+8},${top-12} ${cx},${top-2} Q${cx-8},${top-12} ${cx},${top-22}" fill="#ff9a1a" stroke="${INK}" stroke-width="2"/>`;
+    for(const [dx,dy,r] of [[4,-40,7],[-4,-58,9],[6,-80,11]]) s+=`<circle cx="${cx+dx}" cy="${top+dy}" r="${r}" fill="#999" opacity=".5"/>`;
+    s+=`<path d="M${cx-22},${top+h} q-10,12 -4,22" stroke="#fff3d6" stroke-width="6" fill="none"/>`;
+  }
+  if(full) s+=shout(cx-160,hy-110,'BURN BRIGHT!','#ffd23a');
+  return s;
+}
+
+/* 3. Bubble alchemist */
+function alchemist(cx,full){
+  const hip=560, sh=432, hy=380; let s=shadow(cx);
+  s+=limb(`${cx-14},${hip+20} ${cx-30},${hip+70} ${cx-34},${hip+124}`,18,'#3b3b46')+limb(`${cx+14},${hip+20} ${cx+30},${hip+70} ${cx+34},${hip+124}`,18,'#3b3b46');
+  s+=boot(cx-38,hip+128,'#5a3418')+boot(cx+38,hip+128,'#5a3418');
+  s+=`<path d="M${cx-40},${sh} L${cx+40},${sh} L${cx+46},${hip+50} L${cx-46},${hip+50} Z" fill="#4f7a5a" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-30},${sh+20} L${cx+30},${sh+20} L${cx+36},${hip+60} L${cx-36},${hip+60} Z" fill="#e9e1cf" stroke="${INK}" stroke-width="4"/>`;
+  // stains on apron
+  s+=`<circle cx="${cx-10}" cy="${sh+60}" r="6" fill="#b04ad0" opacity=".6"/><circle cx="${cx+14}" cy="${sh+86}" r="5" fill="#4ad0a0" opacity=".6"/>`;
+  // flask belt
+  s+=`<rect x="${cx-50}" y="${hip-10}" width="100" height="12" fill="#5a3418" stroke="${INK}" stroke-width="3"/>`;
+  const cols=['#ff4a6a','#4ad0ff','#7dff6a','#c86bff'];
+  cols.forEach((c,i)=>{ const x=cx-36+i*24, y=hip+8;
+    s+=`<path d="M${x-4},${y} L${x+4},${y} L${x+4},${y+8} L${x+10},${y+26} Q${x},${y+34} ${x-10},${y+26} L${x-4},${y+8} Z" fill="#eaf6ff" stroke="${INK}" stroke-width="2.5"/>`;
+    if(full){ s+=`<path d="M${x-9},${y+16} L${x+9},${y+16} L${x+10},${y+26} Q${x},${y+34} ${x-10},${y+26} Z" fill="${c}"/>`;
+      for(let k=0;k<3;k++) s+=`<circle cx="${x+((k*7)%9)-4}" cy="${y-8-k*14}" r="${4+k}" fill="${c}" opacity=".75" stroke="${INK}" stroke-width="1.5"/>`; }
+    else s+=`<path d="M${x-9},${y+26} Q${x},${y+34} ${x+9},${y+26} Z" fill="${c}" opacity=".7"/>`;
+  });
+  // arms: holding a big flask
+  const fx=cx+92, fy=sh+30;
+  s+=limb(`${cx-40},${sh+10} ${cx-72},${sh+56} ${cx-54},${sh+90}`,16,'#4f7a5a')+hand(cx-54,sh+92);
+  s+=limb(`${cx+40},${sh+10} ${cx+70},${sh+44} ${fx-12},${fy+12}`,16,'#4f7a5a');
+  s+=`<path d="M${fx-6},${fy-40} L${fx+6},${fy-40} L${fx+6},${fy-20} L${fx+28},${fy+20} Q${fx},${fy+38} ${fx-28},${fy+20} L${fx-6},${fy-20} Z" fill="#eaf6ff" stroke="${INK}" stroke-width="3"/>`;
+  if(full){ s+=`<circle cx="${fx}" cy="${fy}" r="60" fill="url(#glowG)"/><path d="M${fx-24},${fy+6} L${fx+24},${fy+6} L${fx+28},${fy+20} Q${fx},${fy+38} ${fx-28},${fy+20} Z" fill="#c86bff"/>`;
+    for(let k=0;k<5;k++) s+=`<circle cx="${fx+Math.sin(k*2)*14}" cy="${fy-54-k*18}" r="${6+k*2}" fill="#c86bff" opacity=".7" stroke="${INK}" stroke-width="2"/>`; }
+  s+=hand(fx-14,fy+12);
+  // head, wild hair, goggles
+  s+=`<path d="M${cx-34},${hy-10} l-20,-20 l18,0 l-8,-24 l20,14 l6,-26 l12,22 l14,-24 l6,26 l22,-14 l-8,24 l18,2 l-18,18 Z" fill="#f4f4f4" stroke="${INK}" stroke-width="3"/>`;
+  s+=`<circle cx="${cx}" cy="${hy}" r="34" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<rect x="${cx-36}" y="${hy-18}" width="72" height="8" fill="#5a3418"/>`;
+  for(const d of [-1,1]) s+=`<circle cx="${cx+d*15}" cy="${hy-14}" r="13" fill="${full?'#7dff6a':'#9fd1ff'}" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<circle cx="${cx-12}" cy="${hy+6}" r="4" fill="${INK}"/><circle cx="${cx+12}" cy="${hy+6}" r="4" fill="${INK}"/>`;
+  s+= full?`<path d="M${cx-14},${hy+18} Q${cx},${hy+30} ${cx+14},${hy+18}" fill="#fff" stroke="${INK}" stroke-width="3.5"/>`:`<ellipse cx="${cx}" cy="${hy+21}" rx="6" ry="4" fill="${INK}"/>`;
+  if(full) s+=shout(cx,hy-110,'IT’S BUBBLING!','#c86bff');
+  return s;
+}
+
+/* 4. Space cadet */
+function cadet(cx,full){
+  const lift=full?-60:0, hip=560+lift, sh=432+lift, hy=376+lift; let s=shadow(cx);
+  // jetpack
+  s+=`<rect x="${cx-44}" y="${sh+6}" width="88" height="80" rx="14" fill="#9aa3ad" stroke="${INK}" stroke-width="5"/>`;
+  for(const d of [-1,1]){ s+=`<rect x="${cx+d*40-12}" y="${sh+70}" width="24" height="20" fill="#5d656e" stroke="${INK}" stroke-width="3"/>`;
+    if(full){ s+=`<path d="M${cx+d*40-12},${sh+90} Q${cx+d*40},${sh+190} ${cx+d*40+12},${sh+90} Z" fill="#ff9a1a" stroke="${INK}" stroke-width="3"/><path d="M${cx+d*40-6},${sh+90} Q${cx+d*40},${sh+150} ${cx+d*40+6},${sh+90} Z" fill="#fff27a"/>`; } }
+  // suit
+  s+=limb(`${cx-14},${hip} ${cx-30},${hip+64} ${cx-34},${hip+120}`,22,'#f4f4f4')+limb(`${cx+14},${hip} ${cx+30},${hip+64} ${cx+34},${hip+120}`,22,'#f4f4f4');
+  s+=boot(cx-36,hip+124,ORANGE)+boot(cx+36,hip+124,ORANGE);
+  s+=`<path d="M${cx-38},${sh} L${cx+38},${sh} L${cx+34},${hip+8} L${cx-34},${hip+8} Z" fill="#f4f4f4" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<rect x="${cx-34}" y="${hip-6}" width="68" height="10" fill="${ORANGE}"/>`;
+  // chest battery
+  s+=`<rect x="${cx-22}" y="${sh+20}" width="44" height="64" rx="5" fill="#222" stroke="${INK}" stroke-width="3"/><rect x="${cx-8}" y="${sh+14}" width="16" height="7" fill="#222"/>`;
+  const bars=full?4:1; for(let i=0;i<4;i++){ const on=i<bars; s+=`<rect x="${cx-16}" y="${sh+70-i*15}" width="32" height="11" rx="2" fill="${on?(full?'#7dff6a':'#ff3b1f'):'#444'}"/>`; }
+  // arms + ray gun
+  s+=limb(`${cx-38},${sh+10} ${cx-70},${sh+60} ${cx-58},${sh+94}`,18,'#f4f4f4')+`<circle cx="${cx-58}" cy="${sh+98}" r="11" fill="${ORANGE}" stroke="${INK}" stroke-width="3"/>`;
+  const gx=cx+92, gy=sh+20;
+  s+=limb(`${cx+38},${sh+10} ${cx+70},${sh+24} ${gx},${gy}`,18,'#f4f4f4');
+  s+=`<path d="M${gx-6},${gy-14} L${gx+40},${gy-14} L${gx+52},${gy-6} L${gx+40},${gy+2} L${gx+10},${gy+2} L${gx+4},${gy+20} L${gx-8},${gy+20} Z" fill="#c86bff" stroke="${INK}" stroke-width="3"/>`;
+  for(let i=0;i<3;i++) s+=`<rect x="${gx+16+i*8}" y="${gy-18}" width="4" height="22" fill="#5d656e"/>`;
+  s+=`<circle cx="${gx}" cy="${gy}" r="11" fill="${ORANGE}" stroke="${INK}" stroke-width="3"/>`;
+  if(full) s+=`<circle cx="${gx+60}" cy="${gy-6}" r="26" fill="url(#glowG)"/>`+glint(gx+60,gy-6,14,'#fff');
+  // helmet bubble
+  s+=`<circle cx="${cx}" cy="${hy}" r="34" fill="${SKIN}" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<path d="M${cx-34},${hy-8} Q${cx},${hy-44} ${cx+34},${hy-8} Q${cx},${hy-20} ${cx-34},${hy-8}" fill="#6b4226"/>`;
+  s+=face(cx,hy+2,full?'grin':'flat');
+  s+=`<circle cx="${cx}" cy="${hy}" r="50" fill="#cfefff" opacity=".35" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-34},${hy-24} Q${cx-26},${hy-38} ${cx-10},${hy-42}" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round"/>`;
+  s+=`<rect x="${cx-40}" y="${hy+40}" width="80" height="12" rx="5" fill="#9aa3ad" stroke="${INK}" stroke-width="3"/>`;
+  s+=`<line x1="${cx+30}" y1="${hy-40}" x2="${cx+40}" y2="${hy-72}" stroke="${INK}" stroke-width="3"/><circle cx="${cx+40}" cy="${hy-74}" r="6" fill="${full?'#7dff6a':'#ff3b1f'}" stroke="${INK}" stroke-width="2"/>`;
+  // VHS rewind lines at full
+  if(full){ s+=`<g opacity=".7">`; for(const y of [hy-20,sh+40,hip+20]) s+=`<rect x="${cx-140}" y="${y}" width="280" height="4" fill="#fff"/>`;
+    s+=`</g><text x="${cx-150}" y="${hy-60}" font-family="Oswald" font-weight="700" font-size="30" fill="#fff" stroke="${INK}" stroke-width="5" paint-order="stroke">◀◀ REW</text>`; }
+  else s+=`<text x="${cx+40}" y="${sh+130}" font-family="Oswald" font-weight="700" font-size="22" fill="#ff3b1f" stroke="${INK}" stroke-width="4" paint-order="stroke">LOW BATT</text>`;
+  if(full) s+=shout(cx+30,hy-110,'FULLY CHARGED!','#7dff6a');
+  return s;
+}
+
+/* 5. Paper mage */
+function papermage(cx,full){
+  const lift=full?-20:0, hip=560+lift, sh=432+lift, hy=380+lift; let s=shadow(cx);
+  // robe made of pages
+  s+=robe(cx,sh,hip,'#f3ead2');
+  for(let i=0;i<6;i++){ const y=sh+20+i*22; s+=`<line x1="${cx-26-i*5}" y1="${y}" x2="${cx+26+i*5}" y2="${y}" stroke="#b9ae92" stroke-width="2"/>`; }
+  s+=`<path d="M${cx-64},${hip+112} l14,-16 l12,16 l14,-14 l12,14 l14,-16 l12,16 l14,-14 l12,14 l14,-16 l12,16" fill="none" stroke="${INK}" stroke-width="3"/>`;
+  // glowing runes on robe
+  const rc=full?'#ff9a1a':'#c9b98e';
+  for(const [dx,dy] of [[-18,50],[14,80],[-8,120],[24,140]]) s+=`<path d="M${cx+dx-6},${sh+dy} l6,-10 l6,10 m-12,-4 h12" stroke="${rc}" stroke-width="3" fill="none"/>`;
+  s+=boot(cx-26,hip+120,'#6b4226')+boot(cx+26,hip+120,'#6b4226');
+  // arms, open book in hand
+  s+=limb(`${cx-30},${sh+10} ${cx-66},${sh+50} ${cx-80},${sh+20}`,16,'#f3ead2')+hand(cx-82,sh+16);
+  const bx=cx+90, by=sh+30;
+  s+=limb(`${cx+30},${sh+10} ${cx+66},${sh+40} ${bx-10},${by+6}`,16,'#f3ead2');
+  s+=`<path d="M${bx-36},${by-10} L${bx},${by} L${bx+36},${by-10} L${bx+36},${by+20} L${bx},${by+30} L${bx-36},${by+20} Z" fill="#7a2a1a" stroke="${INK}" stroke-width="3"/>`;
+  s+=`<path d="M${bx-32},${by-12} Q${bx-16},${by-18} ${bx},${by-4} Q${bx+16},${by-18} ${bx+32},${by-12} L${bx+32},${by+14} Q${bx+16},${by+6} ${bx},${by+22} Q${bx-16},${by+6} ${bx-32},${by+14} Z" fill="#fff8e6" stroke="${INK}" stroke-width="2"/>`;
+  s+=hand(bx-10,by+10);
+  if(full) s+=`<circle cx="${bx}" cy="${by}" r="56" fill="url(#glowO)"/>`;
+  // orbiting / falling pages
+  const page=(x,y,r,glow)=>`<g transform="rotate(${r} ${x} ${y})"><rect x="${x-14}" y="${y-18}" width="28" height="36" fill="#fff8e6" stroke="${INK}" stroke-width="2.5"/><line x1="${x-8}" y1="${y-8}" x2="${x+8}" y2="${y-8}" stroke="${glow?'#ff9a1a':'#b9ae92'}" stroke-width="2"/><line x1="${x-8}" y1="${y}" x2="${x+8}" y2="${y}" stroke="${glow?'#ff9a1a':'#b9ae92'}" stroke-width="2"/><line x1="${x-8}" y1="${y+8}" x2="${x+4}" y2="${y+8}" stroke="${glow?'#ff9a1a':'#b9ae92'}" stroke-width="2"/></g>`;
+  if(full){ const N=8; s+=`<ellipse cx="${cx}" cy="${sh+30}" rx="150" ry="60" fill="none" stroke="#ff9a1a" stroke-width="2" stroke-dasharray="6 10" opacity=".7"/>`;
+    for(let i=0;i<N;i++){const a=i/N*Math.PI*2; s+=page(cx+Math.cos(a)*150, sh+30+Math.sin(a)*60, i*35, true);} }
+  else { s+=page(cx-110,hip+110,70,false)+page(cx+120,hip+118,-40,false)+page(cx-60,hip+126,10,false); }
+  // head + hood folded from paper, quill behind ear
+  s+=`<circle cx="${cx}" cy="${hy}" r="32" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  s+=face(cx,hy+2,full?'grin':'flat');
+  s+=`<circle cx="${cx-12}" cy="${hy+2}" r="9" fill="none" stroke="${INK}" stroke-width="2.5"/><circle cx="${cx+12}" cy="${hy+2}" r="9" fill="none" stroke="${INK}" stroke-width="2.5"/><line x1="${cx-3}" y1="${hy+2}" x2="${cx+3}" y2="${hy+2}" stroke="${INK}" stroke-width="2.5"/>`;
+  s+=`<path d="M${cx-40},${hy-4} L${cx},${hy-90} L${cx+40},${hy-4} L${cx+24},${hy-22} L${cx},${hy-34} L${cx-24},${hy-22} Z" fill="#fff8e6" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<path d="M${cx},${hy-90} L${cx},${hy-34}" stroke="#b9ae92" stroke-width="2"/>`;
+  s+=`<path d="M${cx+30},${hy-10} Q${cx+60},${hy-60} ${cx+54},${hy-80} Q${cx+40},${hy-50} ${cx+30},${hy-10}" fill="#fff" stroke="${INK}" stroke-width="2.5"/>`;
+  if(full) s+=shout(cx,hy-140,'CHAPTER TWO!','#ff9a1a');
+  return s;
+}
+
+const items=[
+ ['spark-hourglass-sage','SPARK','HOURGLASS SAGE','sand is his mana; rewind flips the hourglass',sage,'MANA','#f0c050'],
+ ['spark-candle-wizard','SPARK','CANDLE WIZARD','the candle on his hat burns down as he casts',candle,'MANA','#ff9a1a'],
+ ['spark-bubble-alchemist','SPARK','BUBBLE ALCHEMIST','a belt of potions that bubble over at full mana',alchemist,'MANA','#c86bff'],
+ ['spark-space-cadet','SPARK','SPACE CADET','chest battery is mana; rewind plays like a VHS tape',cadet,'MANA','#7dff6a'],
+ ['spark-paper-mage','SPARK','PAPER MAGE','pages fly off as he casts; full mana = pages orbit him',papermage,'MANA','#ff9a1a'],
+];
+const wrap=document.getElementById('cards');
+for(const [id,f,t,tag,fn,lab,col] of items){
+  const svg=`<svg width="1200" height="800" viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+   ${bg()}${header2(f,t,tag)}
+   ${caption(320,lab+': EMPTY')}${caption(880,lab+': FULL')}
+   <line x1="600" y1="130" x2="600" y2="680" stroke="${INK}" stroke-width="2" stroke-dasharray="8 10" opacity=".35"/>
+   ${fn(320,false)}${fn(880,true)}
+   ${meter(110,lab,0.08,false,col)}${meter(670,lab,1,true,col)}
+  </svg>`;
+  const d=document.createElement('div');d.className='card';d.id=id;d.innerHTML=svg;wrap.appendChild(d);
+}
+</script></body></html>
