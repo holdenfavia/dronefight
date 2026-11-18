@@ -5,8 +5,10 @@
 import type { FighterId } from '../../shared/fighter/fighters';
 import { FIGHTER_IDS, SECRET_FIGHTER_IDS } from '../../shared/fighter/fighters';
 import type { MatchRules } from '../../shared/fighter/sim';
+import type { StageId } from '../../shared/fighter/stages';
+import { activeSeasons, availableStages, randomPool, seasonalFighters, type SeasonDef } from '../../shared/seasons';
 
-export type CheatKey = 'river' | 'bigHead' | 'moonJump' | 'turbo' | 'oneHit' | 'purple' | 'mirror';
+export type CheatKey = 'river' | 'bigHead' | 'moonJump' | 'turbo' | 'oneHit' | 'purple' | 'mirror' | 'seasons';
 
 export interface Cheat {
   key: CheatKey;
@@ -30,6 +32,7 @@ export const CHEATS: readonly Cheat[] = [
   { key: 'oneHit', code: 'ONEHIT', name: 'One hit', rule: 'oneHit', on: 'One hit: every hit is a KO.', off: 'Hits are normal again.' },
   { key: 'purple', code: 'PURPLE', name: 'Purple sky', on: 'Purple sky, all day.', off: 'The sky is back to normal.' },
   { key: 'mirror', code: 'MIRROR', name: 'Mirror', on: 'Mirror world: everything is flipped.', off: 'The world is back the right way.' },
+  { key: 'seasons', code: 'SEASONS', name: 'Every season', on: 'Every seasonal event is on, all year.', off: 'Seasonal events follow the calendar again.' },
 ];
 
 const STORAGE_KEY = 'dronefight.cheats.v1';
@@ -88,9 +91,28 @@ export function cheatRules(): MatchRules {
   return rules;
 }
 
-/** The roster on this computer: everyone, plus the secret fighters it has unlocked. */
+/** Seasonal events on right now (ADR-0082): by the calendar, or all of them with the SEASONS code. */
+export function seasonsNow(): SeasonDef[] {
+  return activeSeasons(new Date(), active.has('seasons'));
+}
+
+/** The roster on this computer: everyone, the fighters of the events on now, and the secret fighters it has unlocked. */
 export function rosterIds(): FighterId[] {
-  return [...FIGHTER_IDS, ...SECRET_FIGHTER_IDS.filter((id) => CHEATS.some((c) => c.fighter === id && active.has(c.key)))];
+  return [
+    ...FIGHTER_IDS,
+    ...seasonalFighters(seasonsNow()),
+    ...SECRET_FIGHTER_IDS.filter((id) => CHEATS.some((c) => c.fighter === id && active.has(c.key))),
+  ];
+}
+
+/** Stages to pick from on this computer: the everyday ones, then the events' on now. */
+export function stageIds(): StageId[] {
+  return availableStages(seasonsNow());
+}
+
+/** Who Random draws from here: the everyday cast plus the events' fighters on now. */
+export function randomFighters(): FighterId[] {
+  return randomPool(seasonsNow());
 }
 
 /** Three quick taps of Space open the code box. Returns true on the third. */

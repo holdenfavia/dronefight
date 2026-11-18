@@ -7,6 +7,7 @@ import { FIGHTER_IDS, type FighterId } from '../../shared/fighter/fighters.js';
 import { defaultRoomSettings, serializeWorld, sideCount, SNAPSHOT_EVERY_FRAMES, startingTeam, type MatchFighter, type RoomSettings } from '../../shared/online.js';
 import { MAX_ROOM_MEMBERS, type ClientMessage, type RoomMember, type ServerMessage } from '../../shared/protocol.js';
 import { OnlineMatch } from './match.js';
+import { activeSeasons, randomPool } from '../../shared/seasons.js';
 
 export interface Peer {
   send(data: string): void;
@@ -38,7 +39,8 @@ export class RoomManager {
   private rooms = new Map<string, Room>();
   private peerRoom = new Map<Peer, { room: Room; id: number }>();
 
-  constructor(private random: () => number = Math.random) {}
+  /** `now` decides which seasonal fighters CPUs may be (ADR-0082). */
+  constructor(private random: () => number = Math.random, private now: () => Date = () => new Date()) {}
 
   handle(peer: Peer, msg: ClientMessage): void {
     switch (msg.t) {
@@ -165,9 +167,11 @@ export class RoomManager {
     const s = room.settings;
     const teams = !!s.teams;
     const fighters: MatchFighter[] = [...room.members.entries()].map(([id, m]) => ({ fighter: m.fighter, member: id, level: 0, team: teams ? m.team : -1 }));
+    // CPUs are drawn from the everyday cast plus the fighters of the seasonal events on today (ADR-0082).
+    const pool = randomPool(activeSeasons(this.now()));
     s.cpus.forEach((level, i) => {
       if (fighters.length >= MATCH.maxFighters) return;
-      fighters.push({ fighter: FIGHTER_IDS[Math.floor(this.random() * FIGHTER_IDS.length)]!, member: -1, level, team: teams ? (s.cpuTeams?.[i] ?? 0) : -1 });
+      fighters.push({ fighter: pool[Math.floor(this.random() * pool.length)]!, member: -1, level, team: teams ? (s.cpuTeams?.[i] ?? 0) : -1 });
     });
     const rules = { ...s.rules, friendlyFire: teams && !!s.friendlyFire };
     const start = { stage: s.stage, stocks: s.stocks, seed: Math.floor(this.random() * 1e9), fighters, rules };

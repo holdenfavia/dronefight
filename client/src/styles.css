@@ -553,3 +553,33 @@ kbd {
 .team-pill.static { cursor: default; }
 .card .team-name { font-size: 0.7rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; color: var(--slot); }
 .team-winners { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; }
+
+/* Seasonal events (ADR-0082): the Seasonal tag, the tile ribbon and the main-menu banner. */
+.season-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--season, var(--orange));
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  vertical-align: middle;
+}
+.season-tag.corner { position: absolute; top: 3px; right: 3px; margin: 0; font-size: 10px; padding: 0 4px; }
+.tile.seasonal { border-color: color-mix(in srgb, var(--season) 55%, transparent); }
+.tile.seasonal.cursor { border-color: var(--slot); }
+.season-line { color: var(--season, var(--orange)); font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+.season-banner {
+  width: min(560px, 100%);
+  padding: 8px 12px;
+  border: 2px solid var(--season);
+  border-radius: 6px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--season) 35%, rgba(16, 17, 19, 0.85)), rgba(16, 17, 19, 0.85));
+  font-size: 15px;
+  color: var(--paper);
+  text-align: center;
+}
+.season-banner strong { color: var(--season-accent); text-transform: uppercase; letter-spacing: 0.08em; }

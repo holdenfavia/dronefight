@@ -6,7 +6,7 @@ import { INGREDIENTS, koFraction } from '../../shared/fighter/signature';
 import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
 import { SHIELD } from '../../shared/fighter/config';
 import type { Platform } from '../../shared/fighter/stages';
-import { ATTACK_COLORS, CAMERA, CPU_TAG, FEEL, PALETTE, SIGNATURE_LOOKS, fighterColor } from './config';
+import { ATTACK_COLORS, CAMERA, CPU_TAG, FALL, FEEL, PALETTE, SIGNATURE_LOOKS, fighterColor } from './config';
 import { moveLook, type MoveLook } from './moveLooks';
 import { drawFighterFigure } from './figures';
 import { cheatOn } from './cheats';
@@ -58,6 +58,8 @@ export class Renderer {
   private near: Building[] = [];
   private time = 0;
   private purple = false;
+  /** The Harvest Farm (seasonal, ADR-0082): an autumn sky and countryside instead of the city. */
+  private fall = false;
   private mirrored = false;
   private purpleCheck = 0;
   private platforms: Platform[] = [];
@@ -400,8 +402,9 @@ export class Renderer {
 
   private cameraTarget(world: World): { x: number; y: number; zoom: number } {
     const main = world.stage.platforms[0]!;
-    let x1 = main.x1 + 100;
-    let x2 = main.x2 - 100;
+    const home = world.stage.view ?? main;
+    let x1 = home.x1 + 100;
+    let x2 = home.x2 - 100;
     let y1 = main.y - 40;
     let y2 = main.y + 200;
     for (const f of world.fighters) {
@@ -496,6 +499,7 @@ export class Renderer {
     const ctx = this.ctx;
     if (++this.purpleCheck % 60 === 1) this.purple = isPurpleSkyTime() || cheatOn('purple');
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.fall = world.stage.id === 'harvest';
     this.drawSky();
     const sh = this.shake;
     ctx.save();
@@ -513,6 +517,7 @@ export class Renderer {
       this.drawFighter(world, f, x, y);
     }
     this.drawParticles(true);
+    if (this.fall) this.drawFallingLeaves();
     this.drawKoBeams();
     for (const p of this.popups) {
       ctx.globalAlpha = Math.min(1, p.life / 12);
@@ -526,9 +531,10 @@ export class Renderer {
   private drawSky(): void {
     const ctx = this.ctx;
     const g = ctx.createLinearGradient(0, 0, 0, this.h);
-    g.addColorStop(0, this.purple ? PALETTE.purpleTop : PALETTE.skyTop);
-    g.addColorStop(0.75, this.purple ? PALETTE.purpleHorizon : PALETTE.skyHorizon);
-    g.addColorStop(1, this.purple ? '#f0dcff' : '#ffe9c9');
+    const fall = this.fall && !this.purple;
+    g.addColorStop(0, this.purple ? PALETTE.purpleTop : fall ? FALL.skyTop : PALETTE.skyTop);
+    g.addColorStop(0.75, this.purple ? PALETTE.purpleHorizon : fall ? FALL.skyHorizon : PALETTE.skyHorizon);
+    g.addColorStop(1, this.purple ? '#f0dcff' : fall ? FALL.skyBottom : '#ffe9c9');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, this.w, this.h);
     // Sun glow, barely moving with the camera.
@@ -568,6 +574,7 @@ export class Renderer {
         s,
       };
     };
+    if (this.fall) { this.drawCountryside(layer); return; }
     // Hills.
     const hills = layer(0.05, 0.5, 0.78);
     ctx.fillStyle = this.purple ? '#8a63c9' : '#9fb6c9';
@@ -607,6 +614,87 @@ export class Renderer {
     city(this.near, 0.3, 0.7, 1.02, this.purple ? '#3e2a66' : '#51667a', this.purple ? 'rgba(255,214,255,0.25)' : 'rgba(255,236,200,0.22)');
   }
 
+  /** The Harvest Farm's backdrop: autumn hills, a barn and a silo, rows of fall trees. */
+  private drawCountryside(layer: (parallax: number, zoomK: number, horizon: number) => { x: (x: number) => number; y: (y: number) => number; s: number }): void {
+    const ctx = this.ctx;
+    const hillsAt = (L: ReturnType<typeof layer>, color: string, base: number, amp: number, freq: number, shift: number, parallax: number) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(0, this.h);
+      for (let px = 0; px <= this.w + 20; px += 20) {
+        const wx = (px - this.w / 2) / L.s + this.cam.x * parallax;
+        ctx.lineTo(px, L.y(base + Math.sin(wx * freq + shift) * amp + Math.sin(wx * freq * 2.7 + shift * 2) * amp * 0.35));
+      }
+      ctx.lineTo(this.w, this.h);
+      ctx.fill();
+    };
+    const far = layer(0.05, 0.5, 0.62);
+    hillsAt(far, this.purple ? '#8a63c9' : FALL.hillFar, 140, 70, 0.004, 1, 0.08);
+    const mid = layer(0.15, 0.6, 0.7);
+    hillsAt(mid, this.purple ? '#6c4aa8' : FALL.hillMid, 90, 40, 0.006, 3, 0.2);
+    // A red barn and a silo on the middle hills.
+    const bx = mid.x(520);
+    const by = mid.y(110);
+    const bs = mid.s;
+    ctx.fillStyle = this.purple ? '#4a2f7a' : FALL.barn;
+    ctx.fillRect(bx, by - 90 * bs, 130 * bs, 90 * bs + 2);
+    ctx.beginPath();
+    ctx.moveTo(bx - 10 * bs, by - 90 * bs);
+    ctx.lineTo(bx + 65 * bs, by - 140 * bs);
+    ctx.lineTo(bx + 140 * bs, by - 90 * bs);
+    ctx.fill();
+    ctx.strokeStyle = '#f4efe6';
+    ctx.lineWidth = Math.max(1, 3 * bs);
+    ctx.strokeRect(bx + 40 * bs, by - 60 * bs, 50 * bs, 60 * bs);
+    ctx.beginPath();
+    ctx.moveTo(bx + 40 * bs, by - 60 * bs);
+    ctx.lineTo(bx + 90 * bs, by);
+    ctx.moveTo(bx + 90 * bs, by - 60 * bs);
+    ctx.lineTo(bx + 40 * bs, by);
+    ctx.stroke();
+    ctx.fillStyle = this.purple ? '#5a4a8a' : '#b9b2a6';
+    ctx.fillRect(bx + 150 * bs, by - 160 * bs, 44 * bs, 160 * bs + 2);
+    ctx.beginPath();
+    ctx.arc(bx + 172 * bs, by - 160 * bs, 22 * bs, Math.PI, 0);
+    ctx.fill();
+    // Rows of fall trees on the near hills.
+    const near = layer(0.3, 0.7, 0.78);
+    hillsAt(near, this.purple ? '#3e2a66' : FALL.hillNear, 40, 18, 0.008, 5, 0.35);
+    for (let i = -14; i <= 14; i++) {
+      const tx = i * 150 + ((i * 53) % 40);
+      const x = near.x(tx);
+      if (x < -80 || x > this.w + 80) continue;
+      const ty = near.y(40 + Math.sin(tx * 0.008 + 5) * 18);
+      const r = (34 + ((i * 17) & 15)) * near.s;
+      ctx.fillStyle = '#4a3020';
+      ctx.fillRect(x - 4 * near.s, ty - r * 1.4, 8 * near.s, r * 1.4 + 4);
+      ctx.fillStyle = this.purple ? '#7a4ab0' : FALL.leaves[(i + 20) % FALL.leaves.length]!;
+      ctx.beginPath();
+      ctx.arc(x, ty - r * 1.6, r, 0, Math.PI * 2);
+      ctx.arc(x - r * 0.6, ty - r * 1.2, r * 0.7, 0, Math.PI * 2);
+      ctx.arc(x + r * 0.6, ty - r * 1.25, r * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /** Leaves drifting down across the Harvest Farm (only the look: nothing in the fight). */
+  private drawFallingLeaves(): void {
+    const ctx = this.ctx;
+    for (let i = 0; i < FALL.leafCount; i++) {
+      const speed = 0.4 + (i % 5) * 0.12;
+      const x = ((i * 211 + this.time * 0.6 + Math.sin(this.time * 0.02 + i) * 30) % (this.w + 60) + this.w + 60) % (this.w + 60) - 30;
+      const y = ((i * 137 + this.time * speed) % (this.h + 40)) - 20;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(this.time * 0.03 + i);
+      ctx.fillStyle = FALL.leaves[i % FALL.leaves.length]!;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 5, 2.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   private drawStage(world: World): void {
     const ctx = this.ctx;
     const s = this.scale;
@@ -639,6 +727,15 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(this.sx(330), this.sy(main.y + 152), Math.max(2, 5 * s), 0, Math.PI * 2);
       ctx.fill();
+    } else if (id === 'harvest') {
+      // Solid ground: the field runs off both sides of the screen. A scarecrow and pumpkins on it.
+      const top = this.sy(main.y - main.depth);
+      ctx.fillStyle = '#4a3020';
+      ctx.fillRect(0, top, this.w, this.h - top + 40);
+      this.drawScarecrow(-420, main.y);
+      for (const [px, pr] of [[-360, 16], [-330, 11], [380, 18], [410, 12], [600, 15]] as const) this.drawPumpkin(px, main.y, pr);
+      // Under the oak bough: its trunk.
+      this.box(-20, main.y, 40, 235, '#5a3a24');
     } else if (id === 'helipad') {
       // A truss tower under the pad.
       ctx.strokeStyle = '#3a3e44';
@@ -695,7 +792,118 @@ export class Renderer {
     ctx.fillRect(this.sx(x), this.sy(y + h), w * this.scale, h * this.scale);
   }
 
+  private drawScarecrow(x: number, y: number): void {
+    const ctx = this.ctx;
+    const s = this.scale;
+    ctx.strokeStyle = '#6b4a2a';
+    ctx.lineWidth = Math.max(1, 5 * s);
+    ctx.beginPath();
+    ctx.moveTo(this.sx(x), this.sy(y));
+    ctx.lineTo(this.sx(x), this.sy(y + 110));
+    ctx.moveTo(this.sx(x - 36), this.sy(y + 80));
+    ctx.lineTo(this.sx(x + 36), this.sy(y + 80));
+    ctx.stroke();
+    ctx.fillStyle = '#5c7fa3';
+    ctx.fillRect(this.sx(x - 18), this.sy(y + 88), 36 * s, 40 * s);
+    ctx.fillStyle = '#e8c07a';
+    ctx.beginPath();
+    ctx.arc(this.sx(x), this.sy(y + 100), 11 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#7a4a22';
+    ctx.fillRect(this.sx(x - 18), this.sy(y + 110), 36 * s, 4 * s);
+    ctx.fillRect(this.sx(x - 9), this.sy(y + 120), 18 * s, 10 * s);
+  }
+
+  private drawPumpkin(x: number, y: number, r: number): void {
+    const ctx = this.ctx;
+    const s = this.scale;
+    ctx.fillStyle = '#e8731f';
+    ctx.strokeStyle = '#8a3f12';
+    ctx.lineWidth = Math.max(1, 1.5 * s);
+    ctx.beginPath();
+    ctx.ellipse(this.sx(x), this.sy(y + r * 0.8), r * 1.2 * s, r * 0.85 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#3f7a2a';
+    ctx.fillRect(this.sx(x) - 1.5 * s, this.sy(y + r * 1.75), 3 * s, 5 * s);
+  }
+
+  /** The Harvest Farm's platforms: a grassy field, hay bales, a hay wagon, an oak bough. */
+  private drawFarmPlatform(p: Platform): void {
+    const ctx = this.ctx;
+    const s = this.scale;
+    const x = this.sx(p.x1);
+    const w = (p.x2 - p.x1) * s;
+    const top = this.sy(p.y);
+    if (p.solid) {
+      ctx.fillStyle = '#6b4426';
+      ctx.fillRect(x, top, w, p.depth * s);
+      ctx.fillStyle = '#5a3a20';
+      for (let gx = p.x1 + 30; gx < p.x2; gx += 90) ctx.fillRect(this.sx(gx), top + 26 * s, 30 * s, 6 * s);
+      ctx.fillStyle = '#8f9a3a';
+      ctx.fillRect(x, top - 2, w, 10 * s + 2);
+      ctx.fillStyle = '#c8a24a';
+      for (let gx = p.x1; gx < p.x2; gx += 14) ctx.fillRect(this.sx(gx), top - 4 * s, 2 * s, 5 * s);
+      return;
+    }
+    const h = 12 * s;
+    if (p.y > 200) {
+      // An oak bough.
+      ctx.fillStyle = '#5a3a24';
+      ctx.fillRect(x, top, w, h * 0.8);
+      ctx.fillStyle = '#c8642b';
+      for (let lx = p.x1 - 20; lx < p.x2 + 20; lx += 36) {
+        ctx.beginPath();
+        ctx.arc(this.sx(lx), top - 8 * s, 22 * s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return;
+    }
+    if (p.x1 < 0) {
+      // Hay bales stacked from the ground up to the top.
+      const bale = 34;
+      for (let row = 0; row * bale < p.y; row++) {
+        const y0 = p.y - row * bale;
+        const off = row % 2 ? 20 : 0;
+        for (let bx = p.x1 + off; bx < p.x2 - 10; bx += 40) {
+          const bw = Math.min(40, p.x2 - bx);
+          ctx.fillStyle = row % 2 ? '#d6ae4c' : '#e2bd5a';
+          ctx.fillRect(this.sx(bx) + 1, this.sy(y0), bw * s - 2, Math.min(bale, y0) * s);
+          ctx.strokeStyle = '#a7832e';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(this.sx(bx) + 1, this.sy(y0), bw * s - 2, Math.min(bale, y0) * s);
+        }
+      }
+      return;
+    }
+    // A hay wagon: boards, wheels and a heap of hay.
+    ctx.fillStyle = '#8a5a2b';
+    ctx.fillRect(x, top, w, h);
+    ctx.fillStyle = '#e2bd5a';
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2, top, w * 0.45, 10 * s, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.strokeStyle = '#3a2614';
+    ctx.lineWidth = Math.max(1, 3 * s);
+    // Stakes down to the axles, and wheels on the ground.
+    const wr = 30;
+    ctx.fillStyle = '#6b4426';
+    for (const wx of [p.x1 + 40, p.x2 - 40]) ctx.fillRect(this.sx(wx) - 4 * s, top, 8 * s, (p.y - wr) * s);
+    ctx.fillRect(this.sx(p.x1 + 40), this.sy(wr) - 3 * s, (p.x2 - p.x1 - 80) * s, 6 * s);
+    for (const wx of [p.x1 + 40, p.x2 - 40]) {
+      ctx.beginPath();
+      ctx.arc(this.sx(wx), this.sy(wr), wr * s, 0, Math.PI * 2);
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI;
+        ctx.moveTo(this.sx(wx) - Math.cos(a) * wr * s, this.sy(wr) - Math.sin(a) * wr * s);
+        ctx.lineTo(this.sx(wx) + Math.cos(a) * wr * s, this.sy(wr) + Math.sin(a) * wr * s);
+      }
+      ctx.stroke();
+    }
+  }
+
   private drawPlatform(p: Platform, stage: string): void {
+    if (stage === 'harvest') { this.drawFarmPlatform(p); return; }
     const ctx = this.ctx;
     const s = this.scale;
     const x = this.sx(p.x1);
@@ -925,6 +1133,76 @@ export class Renderer {
         ctx.fillStyle = '#4a2a14';
         for (const [dx, dy] of [[-0.35, -0.2], [0.3, -0.3], [0.05, 0.35]] as const) ctx.fillRect(px + dx * r - 1.5, py + dy * r - 1.5, 3, 3);
         return true;
+      // Seasonal (ADR-0082).
+      case 'egg':
+        ctx.fillStyle = '#f6efe1';
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(px, py, r * 0.8, r, p.age * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        return true;
+      case 'musketball':
+      case 'cannonball': {
+        const big = p.look === 'cannonball';
+        const d = Math.sign(p.vx) || 1;
+        ctx.strokeStyle = big ? '#e0b04aaa' : '#ffffff77';
+        ctx.lineWidth = r * (big ? 1.8 : 0.9);
+        ctx.beginPath();
+        ctx.moveTo(px - d * r * (big ? 8 : 5), py);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+        ball(big ? '#2b2d30' : '#5a5e63', r * (big ? 1.8 : 0.8));
+        return true;
+      }
+      case 'pumpkin':
+        ctx.fillStyle = '#e8731f';
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(px, py, r * 1.1, r * 0.85, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = '#b4531a';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(px, py, r * 0.45, r * 0.85, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#3f7a2a';
+        ctx.fillRect(px - 1.5, py - r * 0.85 - 4, 3, 5);
+        return true;
+      case 'spear': {
+        // A fishing spear along its flight.
+        const a = Math.atan2(-p.vy, p.vx);
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(a);
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(-r * 4, 0);
+        ctx.lineTo(r * 1.5, 0);
+        ctx.stroke();
+        ctx.strokeStyle = '#c99a5b';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-r * 4, 0);
+        ctx.lineTo(r * 1.5, 0);
+        ctx.stroke();
+        ctx.fillStyle = '#d8d2c4';
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(r * 1.5, -r * 0.5);
+        ctx.lineTo(r * 2.8, 0);
+        ctx.lineTo(r * 1.5, r * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        return true;
+      }
       case 'pot': {
         // A pot on the boil: steam and bubbles.
         ctx.fillStyle = '#3a3e44';

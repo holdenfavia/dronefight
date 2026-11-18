@@ -222,4 +222,11 @@ export const SIGNATURE = {
   trick: { window: 50, dmgPer: 0.06, maxDmg: 1.45, finisherFrom: 3, kbPer: 0.05 },
   /** Bard's groove: attacks started on the beat build it (and hit harder), off-beat ones lose it. Full: the songs become encores. */
   groove: { beat: 30, window: 4, max: 4, dmgPer: 0.07 },
+  // Seasonal fighters (ADR-0082).
+  /** Turkey's Gobble meter: fills from damage dealt and taken. Full: Gobble becomes Thunder Gobble. */
+  gobble: { max: 100, perDealt: 1.6, perTaken: 1.0 },
+  /** Pilgrim's harvest: each smash or throw that lands gathers a sheaf. Full: the next Blunderbuss shot is the Harvest Cannon. */
+  harvest: { max: 3, cannonDmg: 2.2, cannonKb: 1.6 },
+  /** First Light's Three Sisters: ground hits grow corn, air hits beans, specials and throws squash. All three: the next smash is a Tidal Sweep. */
+  sisters: { tidalDmg: 1.3, tidalKb: 1.35 },
 } as const;
