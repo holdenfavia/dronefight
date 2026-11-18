@@ -115,6 +115,60 @@ export const SIGNATURE_LOOKS: Record<string, { text: string; color: string }> = 
   tidal: { text: 'TIDAL SWEEP!', color: '#6fc3c9' },
 };
 
+/** A city stage's sky and backdrop colors. */
+export interface CityLook {
+  skyTop: string;
+  skyHorizon: string;
+  skyBottom: string;
+  /** Sun position as a fraction of the screen, and its glow color. */
+  sunX: number;
+  sunY: number;
+  sunCore: string;
+  sunGlow: string;
+  /** Glow size as a fraction of the screen height. */
+  sunSize: number;
+  clouds: string;
+  hills: string;
+  far: string;
+  near: string;
+  windows: string;
+  /** Share of windows lit (dusk lights up more of the city). */
+  litWindows: number;
+}
+
+/** Each city stage has its own time of day, so the three don't look alike. */
+export const CITY_LOOKS: Record<'rooftop' | 'helipad' | 'cranes', CityLook> = {
+  // Sunny midday downtown.
+  rooftop: {
+    skyTop: PALETTE.skyTop, skyHorizon: PALETTE.skyHorizon, skyBottom: '#ffe9c9',
+    sunX: 0.72, sunY: 0.62, sunCore: 'rgba(255,248,226,0.95)', sunGlow: 'rgba(255,236,190,0.75)', sunSize: 0.5,
+    clouds: 'rgba(255,255,255,0.55)', hills: '#9fb6c9', far: '#7f97ad', near: '#51667a',
+    windows: 'rgba(255,236,200,0.22)', litWindows: 0.8,
+  },
+  // Sunset at the top of a skyscraper.
+  helipad: {
+    skyTop: '#1d2f5e', skyHorizon: '#ff8a4c', skyBottom: '#ffc27a',
+    sunX: 0.28, sunY: 0.8, sunCore: 'rgba(255,226,160,1)', sunGlow: 'rgba(255,150,80,0.8)', sunSize: 0.62,
+    clouds: 'rgba(255,170,140,0.5)', hills: '#7a5f7e', far: '#4f4a6b', near: '#2c2b42',
+    windows: 'rgba(255,206,120,0.6)', litWindows: 0.55,
+  },
+  // Dusk over the harbor.
+  cranes: {
+    skyTop: '#22406a', skyHorizon: '#f4a58a', skyBottom: '#f8c9a8',
+    sunX: 0.8, sunY: 0.7, sunCore: 'rgba(255,236,206,0.95)', sunGlow: 'rgba(255,170,140,0.7)', sunSize: 0.5,
+    clouds: 'rgba(255,214,206,0.5)', hills: '#8a7f9c', far: '#6a6f8c', near: '#3a4058',
+    windows: 'rgba(255,220,170,0.45)', litWindows: 0.4,
+  },
+};
+
+/** The harbor behind the Crane Yard. */
+export const HARBOR = {
+  waterTop: '#4a6a90',
+  waterBottom: '#22344f',
+  /** Shipping container colors. */
+  containers: ['#c9452b', '#2f6fa8', '#e8a21a', '#3f8a55', '#7a4ab0', '#d9d4c8'],
+} as const;
+
 /** The Harvest Farm's autumn look (seasonal stage, ADR-0082). */
 export const FALL = {
   skyTop: '#f2a65a',
