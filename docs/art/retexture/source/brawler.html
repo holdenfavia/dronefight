@@ -1,0 +1,262 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#111;font-family:Oswald,Impact,sans-serif}
+.card{width:1200px;height:800px;position:relative;overflow:hidden;margin-bottom:20px}
+svg{display:block}
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute">
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#8fb0cf"/><stop offset="0.7" stop-color="#f0d3a8"/><stop offset="1" stop-color="#f5c690"/>
+  </linearGradient>
+  <radialGradient id="glowO"><stop offset="0" stop-color="#ffb347" stop-opacity=".9"/><stop offset="1" stop-color="#ff6a00" stop-opacity="0"/></radialGradient>
+  <radialGradient id="glowR"><stop offset="0" stop-color="#ff5a3c" stop-opacity=".85"/><stop offset="1" stop-color="#ff2000" stop-opacity="0"/></radialGradient>
+  <radialGradient id="glowG"><stop offset="0" stop-color="#ffe680" stop-opacity=".95"/><stop offset="1" stop-color="#ffb000" stop-opacity="0"/></radialGradient>
+  <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe58a"/><stop offset=".5" stop-color="#e0a420"/><stop offset="1" stop-color="#9c6a00"/></linearGradient>
+  <linearGradient id="leather" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a3a3a"/><stop offset="1" stop-color="#121212"/></linearGradient>
+  <filter id="soft"><feGaussianBlur stdDeviation="6"/></filter>
+</defs>
+</svg>
+
+<div id="cards"></div>
+
+<script>
+const ORANGE='#ff7a1a', INK='#151515', SKIN='#f2c9a0', SKIN_D='#d9a77a';
+
+function bg(){
+  let s=`<rect width="1200" height="800" fill="url(#sky)"/>`;
+  // skyline
+  const b=[[0,560,90],[70,520,110],[200,580,80],[300,500,120],[440,545,90],[560,590,70],[660,510,130],[820,560,90],[930,495,120],[1070,540,130]];
+  for(const [x,y,w] of b){s+=`<rect x="${x}" y="${y}" width="${w}" height="${800-y}" fill="#6f8aa6" opacity=".55"/>`;
+    for(let wy=y+18;wy<700;wy+=34)for(let wx=x+12;wx<x+w-14;wx+=26)s+=`<rect x="${wx}" y="${wy}" width="12" height="14" fill="#a9bfd4" opacity=".5"/>`;}
+  // rooftop floor
+  s+=`<rect x="0" y="690" width="1200" height="110" fill="#2b2f36"/><rect x="0" y="690" width="1200" height="8" fill="${ORANGE}"/>`;
+  return s;
+}
+
+function header(num,title,tag){
+  return `<rect x="0" y="0" width="1200" height="96" fill="#0c0c0e" opacity=".88"/>
+  <rect x="0" y="96" width="1200" height="5" fill="${ORANGE}"/>
+  <text x="36" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="${ORANGE}">${num}</text>
+  <text x="92" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="#fff" letter-spacing="1">BRAWLER · ${title}</text>
+  <text x="1164" y="62" text-anchor="end" font-family="Oswald" font-weight="500" font-size="22" fill="#cfcfcf">${tag}</text>`;
+}
+
+function meter(x,label,pct,full,color){
+  const w=300;
+  return `<g transform="translate(${x},722)">
+   <rect x="0" y="0" width="${w+120}" height="56" rx="6" fill="#0c0c0e" opacity=".85"/>
+   <text x="14" y="36" font-family="Oswald" font-weight="700" font-size="22" fill="#fff">${label}</text>
+   <rect x="100" y="18" width="${w}" height="20" rx="4" fill="#333"/>
+   <rect x="100" y="18" width="${w*pct}" height="20" rx="4" fill="${color}"/>
+   ${full?`<rect x="98" y="16" width="${w+4}" height="24" rx="5" fill="none" stroke="#fff" stroke-width="2"/>`:''}
+  </g>`;
+}
+function caption(x,t){return `<text x="${x}" y="150" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="28" fill="${INK}" letter-spacing="2">${t}</text>`}
+function shadow(cx){return `<ellipse cx="${cx}" cy="692" rx="110" ry="14" fill="#000" opacity=".25"/>`}
+function limb(pts,w,c){return `<polyline points="${pts}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`}
+function sparks(cx,cy,n,r,col){let s='';for(let i=0;i<n;i++){const a=i/n*Math.PI*2+0.3*i;const r1=r*(0.7+0.3*((i*37)%10)/10),r2=r1+26+((i*13)%14);
+ s+=`<line x1="${cx+Math.cos(a)*r1}" y1="${cy+Math.sin(a)*r1}" x2="${cx+Math.cos(a)*r2}" y2="${cy+Math.sin(a)*r2}" stroke="${col}" stroke-width="5" stroke-linecap="round"/>`;}return s;}
+
+/* ---------- 5. Cartoon heavyweight ---------- */
+function heavy(cx,full){
+  const g = full?78:46;            // glove radius
+  const by=520;                    // body center
+  let s=shadow(cx);
+  // tiny legs
+  s+=limb(`${cx-18},${by+60} ${cx-28},${by+120} ${cx-30},${by+160}`,14,INK);
+  s+=limb(`${cx+18},${by+60} ${cx+26},${by+120} ${cx+30},${by+160}`,14,INK);
+  s+=`<ellipse cx="${cx-36}" cy="${by+164}" rx="20" ry="9" fill="${ORANGE}"/><ellipse cx="${cx+38}" cy="${by+164}" rx="20" ry="9" fill="${ORANGE}"/>`;
+  // shorts + torso
+  s+=`<path d="M${cx-46},${by+10} Q${cx},${by-80} ${cx+46},${by+10} L${cx+42},${by+70} L${cx-42},${by+70} Z" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-46},${by+30} L${cx+46},${by+30} L${cx+44},${by+78} L${cx+4},${by+78} L${cx},${by+60} L${cx-4},${by+78} L${cx-44},${by+78} Z" fill="${ORANGE}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<rect x="${cx-46}" y="${by+26}" width="92" height="10" fill="#fff" stroke="${INK}" stroke-width="3"/>`;
+  // head (small)
+  const hy=by-88;
+  s+=`<circle cx="${cx}" cy="${hy}" r="34" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-30},${hy-10} Q${cx},${hy-52} ${cx+32},${hy-12}" fill="${INK}"/>`;
+  s+=`<circle cx="${cx-11}" cy="${hy+2}" r="4" fill="${INK}"/><circle cx="${cx+13}" cy="${hy+2}" r="4" fill="${INK}"/>`;
+  s+= full ? `<path d="M${cx-14},${hy+16} Q${cx},${hy+26} ${cx+16},${hy+14}" stroke="${INK}" stroke-width="4" fill="#fff"/>
+              <path d="M${cx-20},${hy-8} L${cx-4},${hy-4} M${cx+22},${hy-8} L${cx+6},${hy-4}" stroke="${INK}" stroke-width="4"/>`
+           : `<path d="M${cx-10},${hy+16} Q${cx},${hy+21} ${cx+12},${hy+15}" stroke="${INK}" stroke-width="4" fill="none"/>`;
+  // arms + gloves (guard)
+  const lgx=cx-62-(full?30:0), rgx=cx+66+(full?36:0), gy=by-40-(full?16:0);
+  s+=limb(`${cx-38},${by-10} ${lgx+10},${gy+20}`,12,INK);
+  s+=limb(`${cx+38},${by-10} ${rgx-10},${gy+20}`,12,INK);
+  for(const [x,flip] of [[lgx,-1],[rgx,1]]){
+    if(full) s+=`<circle cx="${x}" cy="${gy}" r="${g+40}" fill="url(#glowO)"/>`;
+    s+=`<ellipse cx="${x}" cy="${gy}" rx="${g}" ry="${g*0.92}" fill="${ORANGE}" stroke="${INK}" stroke-width="6"/>`;
+    s+=`<ellipse cx="${x+flip*g*0.55}" cy="${gy+g*0.15}" rx="${g*0.35}" ry="${g*0.45}" fill="${ORANGE}" stroke="${INK}" stroke-width="5"/>`;
+    s+=`<ellipse cx="${x-flip*g*0.25}" cy="${gy-g*0.4}" rx="${g*0.28}" ry="${g*0.14}" fill="#fff" opacity=".55"/>`;
+    s+=`<rect x="${x-g*0.55}" y="${gy+g*0.7}" width="${g*1.1}" height="${g*0.32}" rx="5" fill="#fff" stroke="${INK}" stroke-width="5"/>`;
+    if(full) s+=`<path d="M${x-g*0.2},${gy-g*1.05} l-8,-18 M${x+g*0.3},${gy-g*1.02} l10,-16" stroke="${INK}" stroke-width="4"/>`;
+  }
+  if(full) s+=`<text x="${cx}" y="${by-210}" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="44" fill="#fff" stroke="${INK}" stroke-width="6" paint-order="stroke">PUMPED!</text>`;
+  return s;
+}
+
+/* ---------- 2. Street brawler ---------- */
+function street(cx,full){
+  const hip=560, sh=430, hy=372;
+  let s=shadow(cx);
+  // legs (jeans)
+  s+=limb(`${cx-14},${hip} ${cx-40},${hip+60} ${cx-50},${hip+120}`,26,'#34507a');
+  s+=limb(`${cx+14},${hip} ${cx+36},${hip+64} ${cx+56},${hip+120}`,26,'#34507a');
+  s+=`<rect x="${cx-78}" y="${hip+116}" width="42" height="18" rx="6" fill="${INK}"/><rect x="${cx+40}" y="${hip+116}" width="42" height="18" rx="6" fill="${INK}"/>`;
+  // white tee under jacket
+  s+=`<path d="M${cx-40},${sh} L${cx+40},${sh} L${cx+34},${hip} L${cx-34},${hip} Z" fill="#f4f4f4" stroke="${INK}" stroke-width="5"/>`;
+  // jacket panels
+  s+=`<path d="M${cx-48},${sh-6} L${cx-12},${sh} L${cx-16},${hip+8} L${cx-50},${hip+4} Z" fill="url(#leather)" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx+48},${sh-6} L${cx+12},${sh} L${cx+16},${hip+8} L${cx+50},${hip+4} Z" fill="url(#leather)" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-46},${sh-6} L${cx-18},${sh+40} L${cx-14},${sh} Z M${cx+46},${sh-6} L${cx+18},${sh+40} L${cx+14},${sh} Z" fill="#2a2a2a" stroke="${ORANGE}" stroke-width="3"/>`;
+  s+=`<circle cx="${cx-32}" cy="${hip-40}" r="3" fill="#bbb"/><circle cx="${cx-32}" cy="${hip-20}" r="3" fill="#bbb"/>`;
+  // arms: left guard high, right cocked back
+  const lf=[cx-70,sh-30], rf=[cx+96,sh+10];
+  s+=limb(`${cx-44},${sh+6} ${cx-86},${sh+60} ${lf[0]},${lf[1]}`,22,'#222');
+  s+=limb(`${cx+44},${sh+6} ${cx+70},${sh+70} ${rf[0]},${rf[1]}`,22,'#222');
+  for(const [x,y] of [lf,rf]){
+    if(full){ s+=`<circle cx="${x}" cy="${y}" r="70" fill="url(#glowG)"/>`+sparks(x,y,11,34,'#ffd23a')+sparks(x,y,7,30,'#fff'); }
+    s+=`<circle cx="${x}" cy="${y}" r="22" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+    // brass rings
+    s+=`<rect x="${x-20}" y="${y-12}" width="40" height="12" rx="5" fill="url(#gold)" stroke="${INK}" stroke-width="3"/>`;
+    for(let i=0;i<4;i++) s+=`<circle cx="${x-14+i*9.5}" cy="${y-6}" r="3" fill="#fff6c8"/>`;
+  }
+  // head
+  s+=`<circle cx="${cx}" cy="${hy}" r="40" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  // bandana
+  s+=`<path d="M${cx-41},${hy-6} Q${cx},${hy-62} ${cx+41},${hy-6} L${cx+40},${hy-16} Q${cx},${hy-30} ${cx-40},${hy-16} Z" fill="${ORANGE}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-40},${hy-14} l-34,-6 l10,16 l-22,10 l40,-6 Z" fill="${ORANGE}" stroke="${INK}" stroke-width="4"/>`;
+  for(const [dx,dy] of [[-18,-30],[0,-38],[18,-30]]) s+=`<circle cx="${cx+dx}" cy="${hy+dy}" r="3.5" fill="#fff"/>`;
+  // face
+  s+=`<path d="M${cx-24},${hy-2} L${cx-6},${hy+4} M${cx+26},${hy-2} L${cx+8},${hy+4}" stroke="${INK}" stroke-width="5" stroke-linecap="round"/>`;
+  s+=`<circle cx="${cx-14}" cy="${hy+8}" r="4" fill="${INK}"/><circle cx="${cx+16}" cy="${hy+8}" r="4" fill="${INK}"/>`;
+  s+=`<path d="M${cx-8},${hy+24} L${cx+16},${hy+20}" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>`;
+  s+=`<path d="M${cx-30},${hy+18} q-4,10 0,14" stroke="#bbb" stroke-width="3" fill="none"/>`; // stubble hint
+  if(full) s+=`<text x="${cx}" y="${hy-90}" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="44" fill="#ffd23a" stroke="${INK}" stroke-width="6" paint-order="stroke">BRASS UP!</text>`;
+  return s;
+}
+
+/* ---------- 1. Underground boxer ---------- */
+function boxer(cx,full){
+  const hip=560, sh=428, hy=368;
+  let s=shadow(cx);
+  // legs + trunks
+  s+=limb(`${cx-16},${hip+20} ${cx-42},${hip+76} ${cx-48},${hip+126}`,20,SKIN_D);
+  s+=limb(`${cx+16},${hip+20} ${cx+40},${hip+72} ${cx+54},${hip+126}`,20,SKIN_D);
+  s+=`<rect x="${cx-76}" y="${hip+118}" width="40" height="16" rx="6" fill="#ddd" stroke="${INK}" stroke-width="3"/><rect x="${cx+40}" y="${hip+118}" width="40" height="16" rx="6" fill="#ddd" stroke="${INK}" stroke-width="3"/>`;
+  s+=`<path d="M${cx-40},${hip} L${cx+40},${hip} L${cx+46},${hip+50} L${cx+6},${hip+54} L${cx},${hip+38} L${cx-6},${hip+54} L${cx-46},${hip+50} Z" fill="#222" stroke="${INK}" stroke-width="5"/>`;
+  // torso skin then ripped tank
+  s+=`<path d="M${cx-46},${sh} L${cx+46},${sh} L${cx+40},${hip+4} L${cx-40},${hip+4} Z" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-30},${sh} L${cx-22},${sh+22} Q${cx},${sh+34} ${cx+22},${sh+22} L${cx+30},${sh} L${cx+42},${sh+10} L${cx+38},${hip-20} L${cx+24},${hip-6} L${cx+14},${hip-24} L${cx},${hip-4} L${cx-12},${hip-26} L${cx-26},${hip-8} L${cx-38},${hip-22} L${cx-42},${sh+10} Z" fill="#f4f4f4" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<path d="M${cx+10},${sh+56} l14,10 l-10,8 M${cx-20},${sh+80} l10,6" stroke="${INK}" stroke-width="3" fill="none"/>`;
+  s+=`<path d="M${cx+20},${sh+50} q10,14 -2,24 q-14,-6 2,-24" fill="${SKIN}" stroke="${INK}" stroke-width="2"/>`; // rip hole
+  // championship belt
+  const bw=full?1:0;
+  if(full) s+=`<ellipse cx="${cx}" cy="${hip-6}" rx="110" ry="50" fill="url(#glowG)"/>`;
+  s+=`<rect x="${cx-48}" y="${hip-20}" width="96" height="24" rx="4" fill="${full?'url(#gold)':'#5a4a2a'}" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<ellipse cx="${cx}" cy="${hip-8}" rx="28" ry="22" fill="${full?'url(#gold)':'#7a6638'}" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<path d="M${cx},${hip-22} l5,9 l10,1 l-7,7 l2,10 l-10,-5 l-10,5 l2,-10 l-7,-7 l10,-1 Z" fill="${full?'#fff6c8':'#988250'}"/>`;
+  if(full) s+=sparks(cx,hip-8,10,52,'#ffe680');
+  // arms, taped fists in high guard
+  const lf=[cx-36,hy+18], rf=[cx+40,hy+30];
+  s+=limb(`${cx-44},${sh+6} ${cx-74},${sh+44} ${lf[0]},${lf[1]}`,20,SKIN);
+  s+=limb(`${cx+44},${sh+6} ${cx+76},${sh+46} ${rf[0]},${rf[1]}`,20,SKIN);
+  s+=limb(`${cx-44},${sh+6} ${cx-74},${sh+44} ${lf[0]},${lf[1]}`,3,INK).replace('stroke-width="3"','stroke-width="3" opacity=".25"');
+  // head first so fists overlap
+  let head=`<circle cx="${cx}" cy="${hy}" r="40" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  head+=`<path d="M${cx-38},${hy-12} Q${cx-30},${hy-46} ${cx},${hy-42} Q${cx+30},${hy-46} ${cx+38},${hy-12} Q${cx+10},${hy-30} ${cx-38},${hy-12}" fill="#3a2a1a"/>`;
+  // swollen eye (viewer's right)
+  head+=`<ellipse cx="${cx+16}" cy="${hy+2}" rx="16" ry="13" fill="#8a5aa8" stroke="${INK}" stroke-width="3"/>`;
+  head+=`<path d="M${cx+6},${hy+4} L${cx+26},${hy+4}" stroke="${INK}" stroke-width="3"/>`;
+  head+=`<circle cx="${cx-14}" cy="${hy+2}" r="4.5" fill="${INK}"/>`;
+  head+=`<path d="M${cx-24},${hy-10} L${cx-4},${hy-6}" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>`;
+  head+=`<rect x="${cx-30}" y="${hy-26}" width="16" height="6" fill="#fff" stroke="#bbb" stroke-width="1" transform="rotate(-20 ${cx-22} ${hy-23})"/>`; // bandage
+  head+= full? `<path d="M${cx-16},${hy+22} Q${cx},${hy+32} ${cx+14},${hy+20}" fill="#fff" stroke="${INK}" stroke-width="4"/>`
+             : `<path d="M${cx-12},${hy+24} L${cx+12},${hy+22}" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>`;
+  s+=head;
+  for(const [x,y] of [lf,rf]){
+    s+=`<rect x="${x-22}" y="${y-22}" width="44" height="44" rx="12" fill="#fafafa" stroke="${INK}" stroke-width="5"/>`;
+    for(let i=0;i<3;i++) s+=`<line x1="${x-20}" y1="${y-10+i*10}" x2="${x+20}" y2="${y-14+i*10}" stroke="#bbb" stroke-width="2.5"/>`;
+    s+=`<circle cx="${x+10}" cy="${y-12}" r="3" fill="#c33"/>`; // a little blood on tape
+  }
+  if(full) s+=`<text x="${cx}" y="${hy-90}" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="44" fill="#ffe680" stroke="${INK}" stroke-width="6" paint-order="stroke">TITLE SHOT!</text>`;
+  return s;
+}
+
+/* ---------- 4. Lucha libre ---------- */
+function lucha(cx,full){
+  const hip=556, sh=426, hy=366;
+  let s=shadow(cx);
+  if(full){ // cape flare behind
+    s+=`<path d="M${cx-46},${sh} Q${cx-170},${sh+80} ${cx-150},${hip+110} L${cx+150},${hip+110} Q${cx+170},${sh+80} ${cx+46},${sh} Z" fill="${ORANGE}" stroke="${INK}" stroke-width="5"/>`;
+    s+=`<path d="M${cx-110},${hip+110} L${cx-80},${sh+60} M${cx+110},${hip+110} L${cx+80},${sh+60}" stroke="#fff" stroke-width="4" opacity=".6"/>`;
+  } else {
+    s+=`<path d="M${cx-46},${sh} Q${cx-70},${sh+90} ${cx-60},${hip+90} L${cx+60},${hip+90} Q${cx+70},${sh+90} ${cx+46},${sh} Z" fill="#c95a10" stroke="${INK}" stroke-width="5"/>`;
+  }
+  // legs with tights + tall boots
+  s+=limb(`${cx-16},${hip+20} ${cx-50},${hip+70} ${cx-58},${hip+120}`,22,'#1b1b1b');
+  s+=limb(`${cx+16},${hip+20} ${cx+48},${hip+70} ${cx+60},${hip+120}`,22,'#1b1b1b');
+  s+=limb(`${cx-52},${hip+82} ${cx-58},${hip+124}`,26,ORANGE);
+  s+=limb(`${cx+50},${hip+82} ${cx+60},${hip+124}`,26,ORANGE);
+  s+=`<path d="M${cx-64},${hip+90} l12,10 l12,-10 M${cx+52},${hip+90} l12,10 l12,-10" stroke="#fff" stroke-width="3" fill="none"/>`;
+  // torso bare, chunky
+  s+=`<path d="M${cx-50},${sh} L${cx+50},${sh} L${cx+40},${hip+6} L${cx-40},${hip+6} Z" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-30},${sh+40} Q${cx-15},${sh+52} ${cx},${sh+40} Q${cx+15},${sh+52} ${cx+30},${sh+40}" stroke="${SKIN_D}" stroke-width="4" fill="none"/>`;
+  // trunks + belt
+  s+=`<path d="M${cx-42},${hip} L${cx+42},${hip} L${cx+46},${hip+44} L${cx+6},${hip+48} L${cx},${hip+34} L${cx-6},${hip+48} L${cx-46},${hip+44} Z" fill="${ORANGE}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<rect x="${cx-42}" y="${hip-6}" width="84" height="12" fill="#fff" stroke="${INK}" stroke-width="3"/>`;
+  // arms: flex at full, open pose normal
+  if(full){
+    s+=limb(`${cx-46},${sh+6} ${cx-104},${sh+10} ${cx-100},${sh-56}`,22,SKIN);
+    s+=limb(`${cx+46},${sh+6} ${cx+104},${sh+10} ${cx+100},${sh-56}`,22,SKIN);
+    s+=`<circle cx="${cx-80}" cy="${sh}" r="16" fill="${SKIN}" stroke="${INK}" stroke-width="3"/><circle cx="${cx+80}" cy="${sh}" r="16" fill="${SKIN}" stroke="${INK}" stroke-width="3"/>`;
+    for(const x of [cx-100,cx+100]) s+=`<circle cx="${x}" cy="${sh-60}" r="16" fill="${INK}"/><rect x="${x-14}" y="${sh-52}" width="28" height="8" fill="${ORANGE}"/>`;
+  } else {
+    s+=limb(`${cx-46},${sh+6} ${cx-90},${sh+56} ${cx-86},${sh+100}`,22,SKIN);
+    s+=limb(`${cx+46},${sh+6} ${cx+90},${sh+56} ${cx+86},${sh+100}`,22,SKIN);
+    for(const x of [cx-86,cx+86]) s+=`<circle cx="${x}" cy="${sh+104}" r="16" fill="${INK}"/><rect x="${x-14}" y="${sh+82}" width="28" height="8" fill="${ORANGE}"/>`;
+  }
+  // masked head
+  if(full) s+=`<circle cx="${cx}" cy="${hy}" r="80" fill="url(#glowR)"/>`;
+  s+=`<circle cx="${cx}" cy="${hy}" r="42" fill="${ORANGE}" stroke="${INK}" stroke-width="5"/>`;
+  // white flame pattern on top + black trim around eyes
+  s+=`<path d="M${cx-30},${hy-24} q10,-26 18,-6 q6,-22 12,-26 q6,4 12,26 q8,-20 18,6 Q${cx},${hy-14} ${cx-30},${hy-24}" fill="#fff" stroke="${INK}" stroke-width="3"/>`;
+  for(const d of [-1,1]){
+    s+=`<path d="M${cx+d*4},${hy-4} Q${cx+d*22},${hy-22} ${cx+d*36},${hy-6} Q${cx+d*30},${hy+18} ${cx+d*6},${hy+10} Z" fill="#fff" stroke="${INK}" stroke-width="4"/>`;
+    s+=`<ellipse cx="${cx+d*19}" cy="${hy+2}" rx="9" ry="7" fill="${full?'#ff3b1f':SKIN}"/>`;
+    s+=`<circle cx="${cx+d*19}" cy="${hy+2}" r="3.5" fill="${full?'#fff':INK}"/>`;
+  }
+  s+=`<ellipse cx="${cx}" cy="${hy+26}" rx="14" ry="${full?9:6}" fill="${SKIN}" stroke="${INK}" stroke-width="3"/>`;
+  s+= full? `<rect x="${cx-9}" y="${hy+22}" width="18" height="6" fill="#fff"/>` : '';
+  s+=`<path d="M${cx-16},${hy+40} l-8,26 M${cx+16},${hy+40} l8,26" stroke="#fff" stroke-width="4" stroke-linecap="round"/>`; // mask laces
+  if(full) s+=`<text x="${cx}" y="${hy-110}" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="44" fill="#fff" stroke="${INK}" stroke-width="6" paint-order="stroke">¡AL MÁXIMO!</text>`;
+  return s;
+}
+
+const concepts=[
+ {id:'5-cartoon-heavyweight',num:'5',title:'CARTOON HEAVYWEIGHT',tag:'gloves inflate as KO builds',fn:heavy,label:'KO',col:ORANGE,
+  note:'Gloves bigger than his head, tiny legs. KO meter = the gloves themselves swelling.'},
+ {id:'2-street-brawler',num:'2',title:'STREET BRAWLER',tag:'sparks fly from the knuckles',fn:street,label:'KO',col:'#ffd23a'},
+ {id:'1-underground-boxer',num:'1',title:'UNDERGROUND BOXER',tag:'KO meter = a glowing title belt',fn:boxer,label:'KO',col:'#e0a420'},
+ {id:'4-lucha-libre',num:'4',title:'LUCHA LIBRE',tag:'mask eyes burn, cape flares at full',fn:lucha,label:'KO',col:'#ff3b1f'},
+];
+
+const wrap=document.getElementById('cards');
+for(const c of concepts){
+  const svg=`<svg width="1200" height="800" viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+   ${bg()}
+   ${header(c.num,c.title,c.tag)}
+   ${caption(320,'KO METER: EMPTY')}${caption(880,'KO METER: FULL')}
+   <line x1="600" y1="130" x2="600" y2="680" stroke="${INK}" stroke-width="2" stroke-dasharray="8 10" opacity=".35"/>
+   ${c.fn(320,false)}
+   ${c.fn(880,true)}
+   ${meter(110,c.label,0.08,false,c.col)}
+   ${meter(670,c.label,1,true,c.col)}
+  </svg>`;
+  const d=document.createElement('div');d.className='card';d.id=c.id;d.innerHTML=svg;wrap.appendChild(d);
+}
+</script>
+</body></html>

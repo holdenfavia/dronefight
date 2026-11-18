@@ -1,0 +1,149 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#111;font-family:Oswald,Impact,sans-serif}
+.card{width:1200px;height:800px;position:relative;overflow:hidden;margin-bottom:20px}
+svg{display:block}
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute">
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#8fb0cf"/><stop offset="0.7" stop-color="#f0d3a8"/><stop offset="1" stop-color="#f5c690"/>
+  </linearGradient>
+  <radialGradient id="glowO"><stop offset="0" stop-color="#ffb347" stop-opacity=".9"/><stop offset="1" stop-color="#ff6a00" stop-opacity="0"/></radialGradient>
+  <radialGradient id="glowR"><stop offset="0" stop-color="#ff5a3c" stop-opacity=".85"/><stop offset="1" stop-color="#ff2000" stop-opacity="0"/></radialGradient>
+  <radialGradient id="glowG"><stop offset="0" stop-color="#ffe680" stop-opacity=".95"/><stop offset="1" stop-color="#ffb000" stop-opacity="0"/></radialGradient>
+  <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe58a"/><stop offset=".5" stop-color="#e0a420"/><stop offset="1" stop-color="#9c6a00"/></linearGradient>
+  <linearGradient id="leather" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a3a3a"/><stop offset="1" stop-color="#121212"/></linearGradient>
+  <filter id="soft"><feGaussianBlur stdDeviation="6"/></filter>
+</defs>
+</svg>
+
+<div id="cards"></div>
+
+<script>
+const ORANGE='#ff7a1a', INK='#151515', SKIN='#f2c9a0', SKIN_D='#d9a77a';
+
+function bg(){
+  let s=`<rect width="1200" height="800" fill="url(#sky)"/>`;
+  // skyline
+  const b=[[0,560,90],[70,520,110],[200,580,80],[300,500,120],[440,545,90],[560,590,70],[660,510,130],[820,560,90],[930,495,120],[1070,540,130]];
+  for(const [x,y,w] of b){s+=`<rect x="${x}" y="${y}" width="${w}" height="${800-y}" fill="#6f8aa6" opacity=".55"/>`;
+    for(let wy=y+18;wy<700;wy+=34)for(let wx=x+12;wx<x+w-14;wx+=26)s+=`<rect x="${wx}" y="${wy}" width="12" height="14" fill="#a9bfd4" opacity=".5"/>`;}
+  // rooftop floor
+  s+=`<rect x="0" y="690" width="1200" height="110" fill="#2b2f36"/><rect x="0" y="690" width="1200" height="8" fill="${ORANGE}"/>`;
+  return s;
+}
+
+function header(num,title,tag){
+  return `<rect x="0" y="0" width="1200" height="96" fill="#0c0c0e" opacity=".88"/>
+  <rect x="0" y="96" width="1200" height="5" fill="${ORANGE}"/>
+  <text x="36" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="${ORANGE}">${num}</text>
+  <text x="92" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="#fff" letter-spacing="1">BRAWLER · ${title}</text>
+  <text x="1164" y="62" text-anchor="end" font-family="Oswald" font-weight="500" font-size="22" fill="#cfcfcf">${tag}</text>`;
+}
+
+function meter(x,label,pct,full,color){
+  const w=300;
+  return `<g transform="translate(${x},722)">
+   <rect x="0" y="0" width="${w+120}" height="56" rx="6" fill="#0c0c0e" opacity=".85"/>
+   <text x="14" y="36" font-family="Oswald" font-weight="700" font-size="22" fill="#fff">${label}</text>
+   <rect x="100" y="18" width="${w}" height="20" rx="4" fill="#333"/>
+   <rect x="100" y="18" width="${w*pct}" height="20" rx="4" fill="${color}"/>
+   ${full?`<rect x="98" y="16" width="${w+4}" height="24" rx="5" fill="none" stroke="#fff" stroke-width="2"/>`:''}
+  </g>`;
+}
+function caption(x,t){return `<text x="${x}" y="150" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="28" fill="${INK}" letter-spacing="2">${t}</text>`}
+function shadow(cx){return `<ellipse cx="${cx}" cy="692" rx="110" ry="14" fill="#000" opacity=".25"/>`}
+function limb(pts,w,c){return `<polyline points="${pts}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`}
+function sparks(cx,cy,n,r,col){let s='';for(let i=0;i<n;i++){const a=i/n*Math.PI*2+0.3*i;const r1=r*(0.7+0.3*((i*37)%10)/10),r2=r1+26+((i*13)%14);
+ s+=`<line x1="${cx+Math.cos(a)*r1}" y1="${cy+Math.sin(a)*r1}" x2="${cx+Math.cos(a)*r2}" y2="${cy+Math.sin(a)*r2}" stroke="${col}" stroke-width="5" stroke-linecap="round"/>`;}return s;}
+
+function header2(fighter,title,tag){
+  return `<rect x="0" y="0" width="1200" height="96" fill="#0c0c0e" opacity=".88"/>
+  <rect x="0" y="96" width="1200" height="5" fill="${ORANGE}"/>
+  <text x="36" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="${ORANGE}">${fighter}</text>
+  <text x="${36+fighter.length*24+14}" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="#fff" letter-spacing="1">· ${title}</text>
+  <text x="1164" y="62" text-anchor="end" font-family="Oswald" font-weight="500" font-size="22" fill="#cfcfcf">${tag}</text>`;
+}
+const STEEL='#9aa3ad', STEEL_D='#5d656e';
+function boot(x,y,c){return `<rect x="${x-22}" y="${y-4}" width="44" height="18" rx="6" fill="${c}" stroke="${INK}" stroke-width="3"/>`}
+function face(cx,hy,mood){ // simple eyes + mouth
+  let s=`<circle cx="${cx-12}" cy="${hy+2}" r="4" fill="${INK}"/><circle cx="${cx+12}" cy="${hy+2}" r="4" fill="${INK}"/>`;
+  s+= mood==='grin'?`<path d="M${cx-13},${hy+16} Q${cx},${hy+27} ${cx+13},${hy+16}" fill="#fff" stroke="${INK}" stroke-width="3.5"/>`
+     :mood==='smirk'?`<path d="M${cx-10},${hy+18} Q${cx+4},${hy+22} ${cx+14},${hy+13}" fill="none" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>`
+     :`<path d="M${cx-10},${hy+18} L${cx+10},${hy+18}" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>`;
+  return s;
+}
+function glint(x,y,r,c){return `<path d="M${x},${y-r} L${x+r*.22},${y-r*.22} L${x+r},${y} L${x+r*.22},${y+r*.22} L${x},${y+r} L${x-r*.22},${y+r*.22} L${x-r},${y} L${x-r*.22},${y-r*.22} Z" fill="${c}"/>`}
+function shout(cx,y,t,c){return `<text x="${cx}" y="${y}" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="44" fill="${c}" stroke="${INK}" stroke-width="6" paint-order="stroke">${t}</text>`}
+
+function robe(cx,sh,hip,col,trim){
+  return `<path d="M${cx-30},${sh} L${cx+30},${sh} L${cx+64},${hip+112} L${cx-64},${hip+112} Z" fill="${col}" stroke="${INK}" stroke-width="5"/>`+
+   (trim?`<path d="M${cx-60},${hip+98} L${cx+60},${hip+98}" stroke="${trim}" stroke-width="6"/>`:'');
+}
+function hand(x,y,c){return `<circle cx="${x}" cy="${y}" r="10" fill="${c||SKIN}" stroke="${INK}" stroke-width="3"/>`}
+
+function body(cx,sh,hip,col,w){w=w||40;return `<path d="M${cx-w},${sh} L${cx+w},${sh} L${cx+w-6},${hip+8} L${cx-w+6},${hip+8} Z" fill="${col}" stroke="${INK}" stroke-width="5"/>`}
+function legs(cx,hip,col,shoe){return limb(`${cx-14},${hip} ${cx-36},${hip+64} ${cx-46},${hip+124}`,20,col)+limb(`${cx+14},${hip} ${cx+36},${hip+64} ${cx+46},${hip+124}`,20,col)+boot(cx-50,hip+128,shoe)+boot(cx+50,hip+128,shoe)}
+function mark(x,y,on){return `<g transform="translate(${x},${y})">${on?'<circle r="22" fill="url(#glowR)"/>':''}<path d="M0,-12 L4,-4 L12,0 L4,4 L0,12 L-4,4 L-12,0 L-4,-4 Z" fill="${on?'#ff3b1f':'#888'}" stroke="${INK}" stroke-width="2"/></g>`}
+
+function classic(o){ return function(cx,full){
+  const hip=560, sh=440, hy=386, G=o.gi, A=o.accent; let s=shadow(cx);
+  if(full && o.fx==='clones') for(const [dx,op] of [[-120,.22],[120,.22],[-64,.35],[64,.35]]) s+=`<g opacity="${op}"><path d="M${cx+dx-34},${sh} L${cx+dx+34},${sh} L${cx+dx+30},${hip+124} L${cx+dx-30},${hip+124} Z" fill="${G}"/><circle cx="${cx+dx}" cy="${hy}" r="34" fill="${G}"/></g>`;
+  if(full && o.fx==='smoke') for(const [dx,dy,r] of [[-120,140,46],[-80,180,38],[110,150,44],[80,190,36],[-140,60,30],[140,70,32],[0,230,40]]) s+=`<circle cx="${cx+dx}" cy="${sh+dy}" r="${r}" fill="#d8d8e0" stroke="${INK}" stroke-width="3" opacity=".9"/>`;
+  if(full && o.fx==='speed') for(const y of [hy, sh+30, sh+80, hip+40, hip+90]) s+=`<line x1="${cx-200}" y1="${y}" x2="${cx-70}" y2="${y}" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".8"/>`;
+  // katana on back
+  if(o.back) s+=`<line x1="${cx-46}" y1="${hip-10}" x2="${cx+40}" y2="${sh-60}" stroke="#2a1a10" stroke-width="10" stroke-linecap="round"/><rect x="${cx+28}" y="${sh-64}" width="22" height="6" fill="url(#gold)" transform="rotate(-50 ${cx+38} ${sh-61})"/>`;
+  s+=legs(cx,hip,G,o.shoe||'#111');
+  // shin wraps
+  for(const d of [-1,1]) for(let i=0;i<3;i++) s+=`<line x1="${cx+d*40-10}" y1="${hip+84+i*10}" x2="${cx+d*40+10}" y2="${hip+80+i*10}" stroke="${o.wrap}" stroke-width="3"/>`;
+  s+=body(cx,sh,hip,G,36);
+  s+=`<path d="M${cx-36},${sh} L${cx+8},${sh+64} M${cx+36},${sh} L${cx-8},${sh+64}" stroke="${o.trim}" stroke-width="4"/>`;
+  s+=`<rect x="${cx-32}" y="${hip-14}" width="64" height="12" fill="${A}" stroke="${INK}" stroke-width="2"/><path d="M${cx-30},${hip-6} l-20,30 l10,0 l14,-24" fill="${A}" stroke="${INK}" stroke-width="2"/>`;
+  // arms + weapon
+  const fx=cx+96, fy=sh+20;
+  s+=limb(`${cx-34},${sh+10} ${cx-70},${sh+50} ${cx-58},${sh+86}`,16,G);
+  for(let i=0;i<3;i++) s+=`<line x1="${cx-68}" y1="${sh+60+i*8}" x2="${cx-56}" y2="${sh+58+i*8}" stroke="${o.wrap}" stroke-width="3"/>`;
+  s+=hand(cx-58,sh+88,G);
+  s+=limb(`${cx+34},${sh+10} ${cx+70},${sh+40} ${fx},${fy}`,16,G);
+  if(o.weapon==='katana'){ s+=`<line x1="${fx}" y1="${fy}" x2="${fx+130}" y2="${fy-120}" stroke="${full?'#fff':'#c7ced6'}" stroke-width="6" stroke-linecap="round"/><line x1="${fx-10}" y1="${fy+10}" x2="${fx+4}" y2="${fy-4}" stroke="#2a1a10" stroke-width="9"/><rect x="${fx-2}" y="${fy-12}" width="8" height="20" fill="url(#gold)" transform="rotate(45 ${fx} ${fy})"/>`; if(full) s+=glint(fx+130,fy-120,18,'#fff'); }
+  if(o.weapon==='shuriken'){ const st=(x,y,r)=>`<path d="M${x},${y-r} L${x+r*.25},${y-r*.25} L${x+r},${y} L${x+r*.25},${y+r*.25} L${x},${y+r} L${x-r*.25},${y+r*.25} L${x-r},${y} L${x-r*.25},${y-r*.25} Z" fill="#c7ced6" stroke="${INK}" stroke-width="2.5"/><circle cx="${x}" cy="${y}" r="3" fill="${INK}"/>`;
+    s+=st(fx+8,fy-14,16); if(full) for(let i=0;i<3;i++) s+=st(fx+70+i*50,fy-60-i*30,14)+`<line x1="${fx+40+i*50}" y1="${fy-46-i*30}" x2="${fx+56+i*50}" y2="${fy-54-i*30}" stroke="#fff" stroke-width="3"/>`; }
+  if(o.weapon==='kusari'){ s+=`<path d="M${fx},${fy} l20,-34 l26,-6 l-20,8 Z" fill="#c7ced6" stroke="${INK}" stroke-width="2.5"/>`;
+    const n=full?14:6; for(let i=0;i<n;i++){const a=i*0.5, r=full?20+i*7:6+i*4; s+=`<ellipse cx="${fx+Math.cos(a)*r}" cy="${fy+20+Math.sin(a)*r}" rx="4" ry="6" fill="none" stroke="#7b828a" stroke-width="2.5"/>`;}
+    if(full) s+=`<circle cx="${fx+Math.cos(6.5)*111}" cy="${fy+20+Math.sin(6.5)*111}" r="10" fill="#555" stroke="${INK}" stroke-width="3"/>`; }
+  s+=hand(fx,fy,G);
+  // head: hood with eye slit, headband tails
+  s+=`<circle cx="${cx}" cy="${hy}" r="36" fill="${G}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<rect x="${cx-28}" y="${hy-8}" width="56" height="18" rx="8" fill="${SKIN}"/>`;
+  const ec=full?o.glow:INK;
+  s+=`<path d="M${cx-22},${hy-4} L${cx-6},${hy} M${cx+22},${hy-4} L${cx+6},${hy}" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>`;
+  s+=`<circle cx="${cx-13}" cy="${hy+3}" r="4" fill="${ec}"/><circle cx="${cx+13}" cy="${hy+3}" r="4" fill="${ec}"/>`;
+  s+=`<path d="M${cx-37},${hy-16} Q${cx},${hy-24} ${cx+37},${hy-16}" stroke="${A}" stroke-width="8" fill="none"/>`;
+  const tl=full?-30:10;
+  s+=`<path d="M${cx-34},${hy-14} Q${cx-80},${hy+tl} ${cx-110},${hy+tl+20} M${cx-34},${hy-14} Q${cx-70},${hy+tl+20} ${cx-96},${hy+tl+44}" stroke="${A}" stroke-width="7" fill="none" stroke-linecap="round"/>`;
+  s+=`<circle cx="${cx}" cy="${hy-20}" r="7" fill="url(#gold)" stroke="${INK}" stroke-width="2"/>`;
+  for(let i=0;i<3;i++) s+=mark(cx-40+i*40,hy-82,full||i<1).replace(/#ff3b1f/g,o.glow);
+  if(full) s+=shout(cx,hy-126,o.shout,o.glow);
+  return s;
+};}
+const items=[
+ ['ninja-classic-black','NINJA','CLASSIC · BLACK & RED','katana, red headband; full = shadow clones',classic({gi:'#1c1c22',accent:'#d9233a',trim:'#3a3a44',wrap:'#bbb',weapon:'katana',back:false,fx:'clones',glow:'#ff3b1f',shout:'NOWHERE TO HIDE'}),'MARKS','#ff3b1f'],
+ ['ninja-classic-indigo','NINJA','CLASSIC · NIGHT INDIGO','shuriken thrower; full = a smoke-bomb cloud',classic({gi:'#26305a',accent:'#e9e1cf',trim:'#3e4a80',wrap:'#e9e1cf',weapon:'shuriken',back:true,fx:'smoke',glow:'#ffd23a',shout:'POOF!'}),'MARKS','#ffd23a'],
+ ['ninja-classic-ash','NINJA','CLASSIC · ASH GREY','chain-and-sickle; full = speed lines, chain whirls',classic({gi:'#5a5e66',accent:ORANGE,trim:'#7b828a',wrap:'#2a2a2a',weapon:'kusari',back:true,fx:'speed',glow:ORANGE,shout:'TOO FAST!'}),'MARKS',ORANGE],
+];
+const wrap=document.getElementById('cards');
+for(const [id,f,t,tag,fn,lab,col] of items){
+  const svg=`<svg width="1200" height="800" viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+   ${bg()}${header2(f,t,tag)}
+   ${caption(320,lab+': EMPTY')}${caption(880,lab+': FULL')}
+   <line x1="600" y1="130" x2="600" y2="680" stroke="${INK}" stroke-width="2" stroke-dasharray="8 10" opacity=".35"/>
+   ${fn(320,false)}${fn(880,true)}
+   ${meter(110,lab,0.08,false,col)}${meter(670,lab,1,true,col)}
+  </svg>`;
+  const d=document.createElement('div');d.className='card';d.id=id;d.innerHTML=svg;wrap.appendChild(d);
+}
+</script></body></html>
