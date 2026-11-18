@@ -1173,8 +1173,8 @@ function pilgrim(): FighterDef {
   };
 }
 
-// First Light: an original fighter inspired by the Wampanoag, the "People of the First Light" of the coast where the
-// first Thanksgiving harvest was shared. Drawn plainly and respectfully: long hair, a deerskin mantle, a wampum
+// Sachem (the Wampanoag word for a chief or leader; id 'firstlight'): an original fighter inspired by the Wampanoag, the "People of the First Light" of the coast where the
+// first Thanksgiving harvest was shared, led by a sachem. Drawn plainly and respectfully: long hair, a deerskin mantle, a wampum
 // sash and a dugout canoe paddle. No headdress or caricature. Fights with the paddle, a fishing spear and a net,
 // and a fish weir that catches an attack and sends it back.
 // Signature: the Three Sisters (corn, beans, squash). Ground hits grow corn, air hits beans, specials and throws
@@ -1183,7 +1183,7 @@ function pilgrim(): FighterDef {
 function firstlight(): FighterDef {
   return {
     id: 'firstlight',
-    name: 'First Light',
+    name: 'Sachem',
     blurb: 'Paddle, spear and net: ground, air and special hits grow the Three Sisters; all three = Tidal Sweep.',
     specials: { neutral: 'Fishing Spear', side: 'Net Cast', up: 'Paddle Vault', down: 'Fish Weir' },
     halfW: 22, height: 32, hurtR: 22,

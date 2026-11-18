@@ -3,7 +3,7 @@
 // the Spark's pointed hat, the Titan's size and boxy head, the Ninja's hood, the Gunslinger's hat and revolver,
 // the Chef's toque and pan, the Ghost's sheet, the Yo-yo Kid's cap and yo-yo, the Bard's guitar, and the secret
 // River's round belly and propeller beanie (ADR-0077). Seasonal (ADR-0082): the Turkey's tail fan, beak and wattle,
-// the Pilgrim's tall buckled hat, white collar and blunderbuss, and First Light's long hair, deerskin mantle,
+// the Pilgrim's tall buckled hat, white collar and blunderbuss, and Sachem's long hair, deerskin mantle,
 // wampum sash and canoe paddle (drawn plainly: no headdress, no caricature).
 // Local units around the body centre, y down, facing +x.
 
@@ -333,7 +333,7 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
     ctx.stroke();
   }
 
-  // First Light's deerskin mantle over the shoulders, and the wampum sash across it.
+  // Sachem's deerskin mantle over the shoulders, and the wampum sash across it.
   if (id === 'firstlight') {
     ctx.fillStyle = '#b98a57';
     ctx.strokeStyle = PALETTE.ink;
@@ -518,7 +518,7 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
     }
   }
 
-  // First Light's long dark hair, down the back, tied with a band in the slot color.
+  // Sachem's long dark hair, down the back, tied with a band in the slot color.
   if (id === 'firstlight') {
     ctx.fillStyle = '#1f1a17';
     ctx.beginPath();

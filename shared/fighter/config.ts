@@ -227,6 +227,6 @@ export const SIGNATURE = {
   gobble: { max: 100, perDealt: 1.6, perTaken: 1.0 },
   /** Pilgrim's harvest: each smash or throw that lands gathers a sheaf. Full: the next Blunderbuss shot is the Harvest Cannon. */
   harvest: { max: 3, cannonDmg: 2.2, cannonKb: 1.6 },
-  /** First Light's Three Sisters: ground hits grow corn, air hits beans, specials and throws squash. All three: the next smash is a Tidal Sweep. */
+  /** Sachem's Three Sisters: ground hits grow corn, air hits beans, specials and throws squash. All three: the next smash is a Tidal Sweep. */
   sisters: { tidalDmg: 1.3, tidalKb: 1.35 },
 } as const;

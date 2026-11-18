@@ -231,7 +231,7 @@ const OWN: Record<FighterId, Partial<Record<MoveId, MoveLook>>> = {
     uspecial: { pose: 'rise', fx: 'wind', color: ATTACK_COLORS.special.pilgrim },
     dspecial: { pose: 'throw', fx: 'arc', color: ATTACK_COLORS.special.pilgrim },
   },
-  // First Light (seasonal): a canoe paddle, a fishing spear, a net and a fish weir.
+  // Sachem (seasonal): a canoe paddle, a fishing spear, a net and a fish weir.
   firstlight: {
     jab: { pose: 'thrust', fx: 'arc', color: null },
     jab2: { pose: 'slash', fx: 'arc', color: null },
