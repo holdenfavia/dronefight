@@ -1,5 +1,6 @@
-// The fighters, drawn as stick figures with the Canvas 2D API (ADR-0072, ADR-0073; placeholder art, owner's
-// request 2026-11-10). Each one has its own silhouette: the Brawler's gloves and headband, the Blade's sword,
+// The fighters, drawn with the Canvas 2D API (ADR-0072, ADR-0073). The ten roster fighters wear their dressed
+// looks (ADR-0084, drawn in dressed.ts on this same skeleton); River and the seasonal fighters are still stick
+// figures (placeholder art, owner's request 2026-11-10). Each one has its own silhouette: the Brawler's gloves and headband, the Blade's sword,
 // the Spark's pointed hat, the Titan's size and boxy head, the Ninja's hood, the Gunslinger's hat and revolver,
 // the Chef's toque and pan, the Ghost's sheet, the Yo-yo Kid's cap and yo-yo, the Bard's guitar, and the secret
 // River's round belly and propeller beanie (ADR-0077). Seasonal (ADR-0082): the Turkey's tail fan, beak and wattle,
@@ -12,6 +13,7 @@ import { FIGHTERS } from '../../shared/fighter/fighters';
 import { cheatOn } from './cheats';
 import { CHEAT_LOOKS, PALETTE } from './config';
 import type { AttackPose } from './moveLooks';
+import { DRESSED, drawDressed, type Skeleton } from './dressed';
 
 export interface FigurePose {
   color: string;
@@ -32,6 +34,10 @@ export interface FigurePose {
   strike?: number;
   /** 0..1: the Brawler's rage (glowing gloves when full). */
   rage?: number;
+  /** 0..1: how full the fighter's signature meter is (ADR-0079); shown on the dressed looks (ADR-0084). */
+  meter?: number;
+  /** The signature move is ready (full meter). */
+  ready?: boolean;
 }
 
 /**
@@ -63,6 +69,9 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
   const shoulderW = titan ? H * 0.12 : river ? H * 0.2 : 0;
 
   const limbs = new Path2D();
+  // The same limbs as point lists, for the dressed looks (ADR-0084).
+  const legLines: number[][] = [];
+  const armLines: number[][] = [];
   // Spine (the Titan has broad shoulders).
   limbs.moveTo(0, neckY);
   limbs.lineTo(0, hipY);
@@ -76,7 +85,10 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
     const bend = airborne ? 0.9 : 0.25;
     limbs.moveTo(side * hipW, hipY);
     limbs.lineTo(kneeX, kneeY);
-    limbs.lineTo(kneeX + Math.sin(angle - bend) * legLen * 0.5, kneeY + Math.cos(angle - bend) * legLen * 0.5);
+    const fx = kneeX + Math.sin(angle - bend) * legLen * 0.5;
+    const fy = kneeY + Math.cos(angle - bend) * legLen * 0.5;
+    limbs.lineTo(fx, fy);
+    legLines.push([side * hipW, hipY, kneeX, kneeY, fx, fy]);
   };
   // Arms: angle 0 hangs down, PI/2 points forward, PI points up. The first arm drawn is the front one.
   const hands: { x: number; y: number; angle: number }[] = [];
@@ -90,11 +102,15 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
     const hy = shoulderY + Math.cos(angle) * armLen * reach;
     limbs.lineTo(hx, hy);
     hands.push({ x: hx, y: hy, angle });
+    armLines.push([sx, shoulderY, elbowX, elbowY, hx, hy]);
   };
   const straightLeg = (angle: number, side: number, reach = 1) => {
     if (ghost) return;
     limbs.moveTo(side * hipW, hipY);
-    limbs.lineTo(side * hipW + Math.sin(angle) * legLen * reach, hipY + Math.cos(angle) * legLen * reach);
+    const ex = side * hipW + Math.sin(angle) * legLen * reach;
+    const ey = hipY + Math.cos(angle) * legLen * reach;
+    limbs.lineTo(ex, ey);
+    legLines.push([side * hipW, hipY, (side * hipW + ex) / 2, (hipY + ey) / 2, ex, ey]);
   };
   const k = Math.max(0, Math.min(1, pose.strike ?? 1));
   const wind = (from: number, to: number) => from + (to - from) * k;
@@ -203,6 +219,16 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
       else if (id === 'bard') { arm(P * 0.3, 0.9); arm(P * 0.55, 1.1); }
       else if (id === 'brawler') { arm(P * 0.62 + swing * 0.15, 0.85); arm(P * 0.5 - swing * 0.15, 0.75); }
       else { arm(-swing + 0.3); arm(swing - 0.3); }
+  }
+
+  if (DRESSED.has(id)) {
+    const sk: Skeleton = { H, lw, headR, headY, neckY, shoulderY, hipY, footY, legLen, shoulderW, hipW, airborne, legs: legLines, arms: armLines, hands, swordLength: SWORD_LENGTH };
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    drawDressed(ctx, id, pose, sk);
+    ctx.restore();
+    return;
   }
 
   ctx.save();
