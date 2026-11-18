@@ -205,8 +205,52 @@ const OWN: Record<FighterId, Partial<Record<MoveId, MoveLook>>> = {
     bthrow: { pose: 'throw', fx: 'flame', color: ATTACK_COLORS.special.river },
     uthrow: { pose: 'throw', fx: 'flame', color: ATTACK_COLORS.special.river },
   },
+  // Turkey (seasonal): pecks, wing slaps, a strut, flaps and gobbles.
+  turkey: {
+    jab: { pose: 'punch', fx: 'puff', color: null },
+    jab2: { pose: 'punch', fx: 'puff', color: null },
+    jab3: { pose: 'punch', fx: 'wind', color: null },
+    ftilt: { pose: 'slash', fx: 'wind', color: null },
+    nair: { pose: 'spin', fx: 'wind', color: null },
+    fsmash: { pose: 'punch', fx: 'flame', color: ATTACK_COLORS.smash },
+    nspecial: { pose: 'throw', fx: 'arc', color: ATTACK_COLORS.special.turkey },
+    sspecial: { pose: 'dash', fx: 'puff', color: ATTACK_COLORS.special.turkey },
+    uspecial: { pose: 'rise', fx: 'wind', color: ATTACK_COLORS.special.turkey },
+    dspecial: { pose: 'cast', fx: 'shock', color: ATTACK_COLORS.special.turkey },
+    thundergobble: { pose: 'cast', fx: 'shock', color: ATTACK_COLORS.smash },
+  },
+  // Pilgrim (seasonal): a threshing flail, a blunderbuss, a pitchfork, pumpkins.
+  pilgrim: {
+    jab: { pose: 'slash', fx: 'arc', color: null },
+    jab2: { pose: 'overhead', fx: 'arc', color: null },
+    ftilt: { pose: 'slash', fx: 'arc', color: null },
+    fsmash: { pose: 'overhead', fx: 'shock', color: ATTACK_COLORS.smash },
+    nspecial: { pose: 'shoot', fx: 'energy', color: ATTACK_COLORS.special.pilgrim },
+    reload: { pose: 'counter', fx: 'arc', color: ATTACK_COLORS.special.pilgrim },
+    sspecial: { pose: 'thrust', fx: 'energy', color: ATTACK_COLORS.special.pilgrim },
+    uspecial: { pose: 'rise', fx: 'wind', color: ATTACK_COLORS.special.pilgrim },
+    dspecial: { pose: 'throw', fx: 'arc', color: ATTACK_COLORS.special.pilgrim },
+  },
+  // First Light (seasonal): a canoe paddle, a fishing spear, a net and a fish weir.
+  firstlight: {
+    jab: { pose: 'thrust', fx: 'arc', color: null },
+    jab2: { pose: 'slash', fx: 'arc', color: null },
+    ftilt: { pose: 'slash', fx: 'wind', color: null },
+    utilt: { pose: 'upslash', fx: 'arc', color: null },
+    dtilt: { pose: 'lowslash', fx: 'arc', color: null },
+    fsmash: { pose: 'slash', fx: 'wind', color: ATTACK_COLORS.smash },
+    usmash: { pose: 'upslash', fx: 'flame', color: ATTACK_COLORS.smash },
+    fair: { pose: 'slash', fx: 'arc', color: null },
+    bair: { pose: 'backslash', fx: 'arc', color: null },
+    nspecial: { pose: 'throw', fx: 'energy', color: ATTACK_COLORS.special.firstlight },
+    sspecial: { pose: 'throw', fx: 'wind', color: ATTACK_COLORS.special.firstlight },
+    uspecial: { pose: 'rise', fx: 'wind', color: ATTACK_COLORS.special.firstlight },
+    dspecial: { pose: 'counter', fx: 'wind', color: ATTACK_COLORS.special.firstlight },
+    weirhit: { pose: 'slash', fx: 'energy', color: ATTACK_COLORS.counter },
+  },
 };
 
+// Seasonal fighters (ADR-0082) are added below.
 const FALLBACK: MoveLook = { pose: 'punch', fx: 'arc', color: null };
 
 export function moveLook(id: FighterId, move: MoveId): MoveLook {

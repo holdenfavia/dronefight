@@ -60,13 +60,15 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 
 **Secret:** River, unlocked by the code RIVER (ADR-0077): a big, round **glass cannon** (ADR-0078): fastest walk, hard hits, the strongest grabs and throws, a Belly Flop down special, but light and takes 1.25× knockback. Never drawn by Random or CPUs.
 
+**Seasonal events** (ADR-0082): fighters and stages that join for part of the year (dates in US Central), tagged **Seasonal** on every menu; while on, Random and CPUs can draw them. **Thanksgiving, Nov 1–30:** Turkey (Gobble meter → Thunder Gobble), Pilgrim (one-shot blunderbuss; harvest → Harvest Cannon), First Light (an original Wampanoag-inspired fighter, drawn without caricature; Three Sisters → Tidal Sweep), and the Harvest Farm stage. Christmas next.
+
 ## Cheat codes (ADR-0077)
 
-Tap Space three times quickly on any menu to open the code box; type a code again to turn it off. RIVER (secret fighter), MOONJUMP, ONEHIT (fight rules; online the host's apply to the room), BIGHEAD, PURPLE, MIRROR, TURBO (offline fights only).
+Tap Space three times quickly on any menu to open the code box; type a code again to turn it off. RIVER (secret fighter), MOONJUMP, ONEHIT (fight rules; online the host's apply to the room), BIGHEAD, PURPLE, MIRROR, TURBO (offline fights only). SEASONS turns every seasonal event on, all year.
 
 ## Stages
 
-Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Crane Yard (narrow deck, two high crane arms). Same blast zones on all.
+Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Crane Yard (narrow deck, two high crane arms). Same blast zones on all. Seasonal: Harvest Farm (Thanksgiving) is **on the ground**: the floor runs past both sides, so KOs are only off the left, right and top (ADR-0082).
 
 ## Look and sound
 

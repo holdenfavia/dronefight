@@ -82,6 +82,8 @@ export const ATTACK_COLORS = {
     brawler: '#ff3b3b', blade: '#bfe9ff', spark: '#3fd0ff', titan: '#c9934f',
     ninja: '#6f7bff', gunslinger: '#ffd23f', chef: '#ff7b54', ghost: '#c8fff0', yoyo: '#ff4fd8', bard: '#4dd4a8',
     river: '#b8e0ff',
+    // Seasonal (ADR-0082).
+    turkey: '#c8642b', pilgrim: '#e0b04a', firstlight: '#6fc3c9',
   },
   /** Status effects shown over a fighter. */
   curse: '#b06bff',
@@ -100,7 +102,24 @@ export const SIGNATURE_LOOKS: Record<string, { text: string; color: string }> = 
   payback: { text: 'PAYBACK!', color: '#ffb36b' },
   assassinate: { text: 'ASSASSINATE!', color: '#6f7bff' },
   golden: { text: 'GOLDEN!', color: '#ffd23f' },
+  thundergobble: { text: 'THUNDER GOBBLE!', color: '#ff8a3d' },
+  cannon: { text: 'HARVEST CANNON!', color: '#e0b04a' },
+  tidal: { text: 'TIDAL SWEEP!', color: '#6fc3c9' },
 };
+
+/** The Harvest Farm's autumn look (seasonal stage, ADR-0082). */
+export const FALL = {
+  skyTop: '#f2a65a',
+  skyHorizon: '#ffd39a',
+  skyBottom: '#ffe6c2',
+  hillFar: '#d49a63',
+  hillMid: '#b8743f',
+  hillNear: '#8f5a2e',
+  barn: '#a8322a',
+  leaves: ['#d9542b', '#e8892f', '#f2b632', '#b8401f', '#c97a2a'],
+  /** Leaves drifting across the screen. */
+  leafCount: 28,
+} as const;
 
 /** Online fights (ADR-0076): how many server frames to keep in hand against network jitter. */
 export const ONLINE = {

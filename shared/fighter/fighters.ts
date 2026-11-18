@@ -4,7 +4,10 @@
 // (Brawler's armored haymaker, Blade's sword tip, Spark's teleports and rewind, Titan's armor and carry grab), and its own
 // signature mechanic with a HUD meter (ADR-0079; the logic is in signature.ts, the numbers in config.ts SIGNATURE).
 
-export type FighterId = 'brawler' | 'blade' | 'spark' | 'titan' | 'ninja' | 'gunslinger' | 'chef' | 'ghost' | 'yoyo' | 'bard' | 'river';
+export type FighterId =
+  | 'brawler' | 'blade' | 'spark' | 'titan' | 'ninja' | 'gunslinger' | 'chef' | 'ghost' | 'yoyo' | 'bard' | 'river'
+  // Seasonal (ADR-0082): Thanksgiving.
+  | 'turkey' | 'pilgrim' | 'firstlight';
 
 /** The roster everyone sees (and the pool Random and CPUs draw from). */
 export const FIGHTER_IDS: readonly FighterId[] = ['brawler', 'blade', 'spark', 'titan', 'ninja', 'gunslinger', 'chef', 'ghost', 'yoyo', 'bard'];
@@ -12,8 +15,14 @@ export const FIGHTER_IDS: readonly FighterId[] = ['brawler', 'blade', 'spark', '
 /** Secret fighters, unlocked by a cheat code on the menus (ADR-0077). Never drawn by Random or CPUs. */
 export const SECRET_FIGHTER_IDS: readonly FighterId[] = ['river'];
 
-/** Every fighter the sim knows, secret ones included (what online picks may be). */
-export const ALL_FIGHTER_IDS: readonly FighterId[] = [...FIGHTER_IDS, ...SECRET_FIGHTER_IDS];
+/**
+ * Seasonal fighters (ADR-0082): on the roster, tagged Seasonal, only while their event is on. Which event each
+ * belongs to, and when it runs, is in shared/seasons.ts.
+ */
+export const SEASONAL_FIGHTER_IDS: readonly FighterId[] = ['turkey', 'pilgrim', 'firstlight'];
+
+/** Every fighter the sim knows, secret and seasonal ones included (what online picks may be). */
+export const ALL_FIGHTER_IDS: readonly FighterId[] = [...FIGHTER_IDS, ...SECRET_FIGHTER_IDS, ...SEASONAL_FIGHTER_IDS];
 
 /** Moves every fighter has. */
 export type CoreMoveId =
@@ -30,7 +39,9 @@ export type ExtraMoveId =
   | 'nspecialAir' | 'sspecialAir' | 'dspecialAir'
   | 'counterhit' | 'riposte' | 'carry' | 'carryslam' | 'quake' | 'reload' | 'quickdraw' | 'bellyflop'
   // Signature moves (ADR-0079): what a special turns into when its fighter's meter is full.
-  | 'kopunch' | 'flashcut' | 'cook' | 'tempoEncore' | 'lullabyEncore';
+  | 'kopunch' | 'flashcut' | 'cook' | 'tempoEncore' | 'lullabyEncore'
+  // Seasonal fighters (ADR-0082).
+  | 'thundergobble' | 'weirhit';
 
 export type MoveId = CoreMoveId | ExtraMoveId;
 
@@ -1018,6 +1029,218 @@ function river(): FighterDef {
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Seasonal fighters: Thanksgiving (ADR-0082). On the roster, tagged Seasonal, while the event runs (shared/seasons.ts).
+
+// Turkey: light, flappy and loud. Pecks and wing slaps, a strutting dash, flaps to recover, and a gobble that
+// stuns anyone close. Signature: the Gobble meter fills from hits dealt and taken; full, Gobble becomes Thunder Gobble.
+
+function turkey(): FighterDef {
+  return {
+    id: 'turkey',
+    name: 'Turkey',
+    blurb: 'Flappy and loud: hits fill the Gobble meter; full, Gobble becomes Thunder Gobble.',
+    specials: { neutral: 'Egg Lob', side: 'Turkey Trot', up: 'Flap Flap', down: 'Gobble' },
+    halfW: 26, height: 30, hurtR: 23,
+    weight: 84,
+    walkSpeed: 360, airSpeed: 330, airAccel: 2500,
+    gravity: 2000, maxFall: 780, fastFall: 1300,
+    jumpSpeed: 800, airJumpSpeed: 700, airJumps: 2,
+    upSpecials: 1, sideSpecials: 1, hoverFrames: 45,
+    moves: {
+      // Peck, peck, wing slap.
+      jab: { frames: 10, hitboxes: [hb(2, 3, 30, 6, 16, 2, 70, 18, 10)], next: { move: 'jab2', from: 4 } },
+      jab2: { frames: 12, hitboxes: [hb(2, 3, 32, 6, 16, 2, 70, 18, 10)], next: { move: 'jab3', from: 5 } },
+      jab3: { frames: 24, hitboxes: [hb(4, 6, 34, 2, 24, 5, 42, 44, 72)] },
+      // A wing slap that reaches.
+      ftilt: { frames: 24, hitboxes: [hb(6, 9, 42, 2, 22, 9, 38, 32, 94)] },
+      // Tail fan snaps up.
+      utilt: { frames: 22, hitboxes: [hb(4, 9, -4, 36, 28, 7, 95, 38, 88)] },
+      dtilt: { frames: 18, hitboxes: [hb(4, 6, 36, -14, 18, 5, 70, 34, 50)] },
+      // Wattle whip: a lunging head-butt, wattle first.
+      fsmash: { frames: 48, charge: { frame: 11, max: 60, dmg: 0.4 }, lunge: { frame: 13, vx: 380, vy: 0 }, hitboxes: [hb(14, 17, 40, 6, 26, 15, 38, 38, 100)] },
+      // The tail fan pops open overhead.
+      usmash: { frames: 44, charge: { frame: 8, max: 60, dmg: 0.4 }, hitboxes: [hb(11, 16, 0, 40, 36, 14, 90, 36, 100)] },
+      // Scratch both sides.
+      dsmash: {
+        frames: 40, charge: { frame: 6, max: 60, dmg: 0.4 },
+        hitboxes: [hb(9, 11, 38, -14, 22, 11, 25, 36, 94), hb(14, 16, -38, -14, 22, 11, 155, 36, 94)],
+      },
+      // Feather flurry.
+      nair: { frames: 30, landLag: 6, rehit: 6, hitboxes: [hb(4, 16, 0, 0, 36, 2, 60, 22, 10), hb(17, 19, 0, 0, 38, 5, 45, 34, 80)] },
+      fair: { frames: 26, landLag: 7, hitboxes: [hb(6, 9, 36, 2, 22, 9, 40, 30, 94)] },
+      bair: { frames: 26, landLag: 7, hitboxes: [hb(5, 8, -36, 2, 24, 11, 145, 30, 100)] },
+      uair: { frames: 24, landLag: 6, hitboxes: [hb(4, 8, 0, 36, 24, 8, 88, 30, 94)] },
+      // Talons down.
+      dair: { frames: 32, landLag: 11, hitboxes: [hb(9, 12, 0, -32, 22, 11, -70, 26, 86)] },
+      // Lobs an egg; it cracks on whoever it lands on.
+      nspecial: {
+        frames: 30,
+        projectile: { frame: 10, def: { kind: 'bomb', look: 'egg', speed: 600, angle: 40, r: 10, lifeFrames: 90, gravity: 1500, blastR: 34, limit: 2, hit: { dmg: 6, angle: 60, bkb: 26, kbg: 40, stun: 10 } } },
+      },
+      // A strutting dash with pecks all the way.
+      sspecial: {
+        frames: 40, recovery: true, rehit: 6, gravity: { from: 1, to: 18, scale: 0.3 }, lunge: { frame: 6, vx: 720, vy: 60 },
+        hitboxes: [hb(6, 22, 30, 4, 22, 2, 60, 20, 10), hb(23, 25, 34, 4, 26, 6, 40, 44, 76)],
+      },
+      // Flap flap flap: a slow climb, steerable.
+      uspecial: { frames: 46, recovery: true, helpless: true, boost: { frame: 5, speed: 860, steer: 55 }, gravity: { from: 5, to: 40, scale: 0.45 }, hitboxes: [hb(5, 14, 0, 8, 32, 6, 85, 46, 60)] },
+      // GOBBLE: a shout all around that stuns.
+      dspecial: { frames: 40, hitboxes: [hb(10, 13, 0, 4, 56, 3, 80, 30, 10, { stun: 40 })] },
+      // Thunder Gobble: the full meter, a huge shout that stuns longer and launches.
+      thundergobble: {
+        frames: 52, invincible: { from: 1, to: 12 },
+        hitboxes: [hb(12, 16, 0, 4, 88, 12, 70, 52, 90, { stun: 30 })],
+      },
+      grab: grab(28, 20, 7, 28),
+      pummel: pummel(2),
+      fthrow: throwMove(24, 10, 8, 40, 52, 68),
+      bthrow: throwMove(28, 12, 10, 140, 48, 90, true),
+      uthrow: throwMove(26, 11, 7, 90, 62, 64),
+      // Sits on them like an egg.
+      dthrow: throwMove(26, 12, 6, 78, 46, 44),
+      getupattack: getupAttack(32, 6),
+    },
+  };
+}
+
+// Pilgrim: a sturdy settler in a tall hat. A threshing flail for normals, a one-shot blunderbuss that has to be
+// reloaded every shot, a pitchfork charge and pumpkins tossed onto the stage.
+// Signature: Harvest. Landing smashes and throws gathers sheaves; three, and the next blunderbuss shot is the Harvest Cannon.
+
+function pilgrim(): FighterDef {
+  return {
+    id: 'pilgrim',
+    name: 'Pilgrim',
+    blurb: 'Sturdy settler: smashes and throws gather the harvest; full, the blunderbuss fires a cannonball.',
+    specials: { neutral: 'Blunderbuss (1)', side: 'Pitchfork Charge', up: 'Hat in Hand', down: 'Pumpkin Toss' },
+    halfW: 24, height: 33, hurtR: 23,
+    weight: 106,
+    walkSpeed: 310, airSpeed: 290, airAccel: 2200,
+    gravity: 2450, maxFall: 960, fastFall: 1500,
+    jumpSpeed: 820, airJumpSpeed: 740, airJumps: 1,
+    upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
+    ammo: 1,
+    moves: {
+      // Flail jabs.
+      jab: { frames: 16, hitboxes: [hb(3, 5, 34, 4, 20, 3, 65, 24, 20)], next: { move: 'jab2', from: 7 } },
+      jab2: { frames: 28, hitboxes: [hb(5, 8, 40, 4, 24, 7, 40, 44, 76)] },
+      // The flail swings out long.
+      ftilt: { frames: 28, hitboxes: [hb(8, 11, 56, 2, 22, 10, 36, 32, 96)] },
+      utilt: { frames: 26, hitboxes: [hb(6, 11, 6, 40, 28, 9, 92, 38, 94)] },
+      dtilt: { frames: 22, hitboxes: [hb(6, 8, 48, -16, 20, 7, 30, 30, 64)] },
+      // A big overhead flail threshing the floor.
+      fsmash: { frames: 54, charge: { frame: 14, max: 60, dmg: 0.4 }, hitboxes: [hb(18, 21, 54, 0, 30, 18, 36, 40, 104)] },
+      usmash: { frames: 48, charge: { frame: 10, max: 60, dmg: 0.4 }, hitboxes: [hb(14, 19, 0, 56, 30, 16, 90, 38, 104)] },
+      dsmash: {
+        frames: 48, charge: { frame: 8, max: 60, dmg: 0.4 },
+        hitboxes: [hb(14, 17, 50, -14, 26, 14, 28, 40, 98), hb(14, 17, -50, -14, 26, 14, 152, 40, 98)],
+      },
+      nair: { frames: 28, landLag: 7, hitboxes: [hb(5, 12, 0, 0, 36, 9, 50, 28, 86)] },
+      fair: { frames: 32, landLag: 9, hitboxes: [hb(9, 12, 48, 2, 26, 12, 40, 30, 98)] },
+      bair: { frames: 30, landLag: 9, hitboxes: [hb(7, 10, -40, 2, 24, 13, 145, 30, 102)] },
+      uair: { frames: 28, landLag: 8, hitboxes: [hb(6, 10, 0, 44, 26, 10, 88, 30, 96)] },
+      dair: { frames: 36, landLag: 13, hitboxes: [hb(11, 14, 0, -40, 24, 13, -75, 26, 88)] },
+      // One heavy shot, then a reload every time.
+      nspecial: {
+        frames: 28,
+        projectile: { frame: 8, def: { kind: 'shot', look: 'musketball', speed: 1300, angle: 0, r: 8, lifeFrames: 34, gravity: 0, hit: { dmg: 10, angle: 30, bkb: 34, kbg: 60 } } },
+      },
+      reload: { frames: 46, reload: { frame: 38 } },
+      // Charges forward pitchfork first.
+      sspecial: {
+        frames: 44, recovery: true, gravity: { from: 1, to: 18, scale: 0.3 }, lunge: { frame: 9, vx: 860, vy: 80 },
+        hitboxes: [hb(9, 20, 40, 2, 24, 11, 38, 44, 88)],
+      },
+      // Hat in hand, a hop and a climb.
+      uspecial: {
+        frames: 32, recovery: true, helpless: true, boost: { frame: 6, speed: 1080, steer: 30 },
+        hitboxes: [hb(6, 10, 0, 20, 30, 8, 85, 50, 66)],
+      },
+      // Tosses a pumpkin; it bursts where it lands.
+      dspecial: {
+        frames: 36,
+        projectile: { frame: 12, def: { kind: 'bomb', look: 'pumpkin', speed: 520, angle: 32, r: 14, lifeFrames: 90, gravity: 1700, blastR: 44, limit: 1, hit: { dmg: 10, angle: 50, bkb: 34, kbg: 72 } } },
+      },
+      grab: grab(30, 20, 7, 30),
+      pummel: pummel(3),
+      fthrow: throwMove(28, 12, 10, 40, 56, 76),
+      bthrow: throwMove(32, 14, 11, 140, 52, 94, true),
+      uthrow: throwMove(28, 12, 9, 90, 62, 74),
+      dthrow: throwMove(28, 13, 8, 75, 50, 50),
+      getupattack: getupAttack(34, 7),
+    },
+  };
+}
+
+// First Light: an original fighter inspired by the Wampanoag, the "People of the First Light" of the coast where the
+// first Thanksgiving harvest was shared. Drawn plainly and respectfully: long hair, a deerskin mantle, a wampum
+// sash and a dugout canoe paddle. No headdress or caricature. Fights with the paddle, a fishing spear and a net,
+// and a fish weir that catches an attack and sends it back.
+// Signature: the Three Sisters (corn, beans, squash). Ground hits grow corn, air hits beans, specials and throws
+// squash; all three, and the next smash is a Tidal Sweep.
+
+function firstlight(): FighterDef {
+  return {
+    id: 'firstlight',
+    name: 'First Light',
+    blurb: 'Paddle, spear and net: ground, air and special hits grow the Three Sisters; all three = Tidal Sweep.',
+    specials: { neutral: 'Fishing Spear', side: 'Net Cast', up: 'Paddle Vault', down: 'Fish Weir' },
+    halfW: 22, height: 32, hurtR: 22,
+    weight: 96,
+    walkSpeed: 380, airSpeed: 320, airAccel: 2500,
+    gravity: 2350, maxFall: 920, fastFall: 1450,
+    jumpSpeed: 850, airJumpSpeed: 760, airJumps: 1,
+    upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
+    moves: {
+      // Paddle jabs: butt of the shaft, then the blade.
+      jab: { frames: 14, hitboxes: [hb(3, 4, 32, 4, 18, 3, 70, 22, 15)], next: { move: 'jab2', from: 6 } },
+      jab2: { frames: 24, hitboxes: [hb(4, 6, 44, 2, 22, 6, 40, 44, 72)] },
+      // A long paddle stroke.
+      ftilt: { frames: 26, hitboxes: [hb(7, 10, 58, 0, 22, 9, 36, 32, 96)] },
+      utilt: { frames: 24, hitboxes: [hb(5, 10, 10, 44, 26, 8, 92, 38, 92)] },
+      dtilt: { frames: 20, hitboxes: [hb(5, 7, 54, -16, 18, 6, 30, 30, 60)] },
+      // A full-body paddle sweep, like pulling hard against the current.
+      fsmash: { frames: 50, charge: { frame: 12, max: 60, dmg: 0.4 }, hitboxes: [hb(16, 19, 60, 2, 30, 16, 36, 40, 102)] },
+      usmash: { frames: 46, charge: { frame: 9, max: 60, dmg: 0.4 }, hitboxes: [hb(12, 17, 0, 60, 30, 15, 90, 38, 104)] },
+      dsmash: {
+        frames: 44, charge: { frame: 7, max: 60, dmg: 0.4 },
+        hitboxes: [hb(11, 13, 58, -16, 24, 13, 25, 38, 98), hb(16, 18, -58, -16, 24, 13, 155, 38, 98)],
+      },
+      nair: { frames: 28, landLag: 6, hitboxes: [hb(5, 13, 0, 0, 40, 8, 50, 28, 84)] },
+      fair: { frames: 28, landLag: 8, hitboxes: [hb(7, 10, 54, 2, 24, 10, 40, 30, 96)] },
+      bair: { frames: 28, landLag: 8, hitboxes: [hb(6, 9, -50, 2, 24, 12, 145, 30, 102)] },
+      uair: { frames: 26, landLag: 7, hitboxes: [hb(5, 9, 0, 54, 24, 9, 88, 30, 94)] },
+      dair: { frames: 34, landLag: 11, hitboxes: [hb(10, 13, 0, -48, 22, 11, -72, 26, 86)] },
+      // A fishing spear, thrown in a flat arc.
+      nspecial: {
+        frames: 30,
+        projectile: { frame: 10, def: { kind: 'shot', look: 'spear', speed: 1100, angle: 6, r: 8, lifeFrames: 40, gravity: 600, limit: 1, hit: { dmg: 8, angle: 35, bkb: 30, kbg: 58 } } },
+      },
+      // A fishing net cast far out: catches on the ground or in the air.
+      sspecial: {
+        frames: 48, recovery: true, gravity: { from: 1, to: 24, scale: 0.35 },
+        hitboxes: [hb(13, 17, 90, 4, 30, 0, 0, 0, 0, { grab: true, grabAir: true })],
+      },
+      // Plants the paddle and vaults up.
+      uspecial: {
+        frames: 32, recovery: true, helpless: true, boost: { frame: 6, speed: 1100, steer: 30 },
+        hitboxes: [hb(6, 10, 0, 10, 32, 9, 85, 50, 70)],
+      },
+      // A fish weir: an attack that swims into it is caught and turned back.
+      dspecial: { frames: 36, counter: { from: 5, to: 22, move: 'weirhit', mult: 1.25 } },
+      weirhit: { frames: 28, invincible: { from: 1, to: 12 }, hitboxes: [hb(5, 8, 44, 2, 34, 8, 40, 55, 92, { counter: true })] },
+      grab: grab(30, 20, 7, 30),
+      pummel: pummel(2),
+      fthrow: throwMove(26, 11, 9, 42, 54, 72),
+      bthrow: throwMove(30, 13, 10, 140, 50, 92, true),
+      uthrow: throwMove(26, 11, 8, 90, 62, 66),
+      dthrow: throwMove(26, 12, 6, 75, 48, 46),
+      getupattack: getupAttack(34, 7),
+    },
+  };
+}
+
 export const FIGHTERS: Record<FighterId, FighterDef> = {
   brawler: brawler(),
   blade: blade(),
@@ -1030,4 +1253,7 @@ export const FIGHTERS: Record<FighterId, FighterDef> = {
   yoyo: yoyo(),
   bard: bard(),
   river: river(),
+  turkey: turkey(),
+  pilgrim: pilgrim(),
+  firstlight: firstlight(),
 };

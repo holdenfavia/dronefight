@@ -8,7 +8,7 @@ import {
 import { FIGHTERS, type FighterDef, type FighterId, type Hitbox, type HitStats, type MoveDef, type MoveId, type ProjectileDef } from './fighters.js';
 import { nextRandom } from './rng.js';
 import {
-  afterStrike, beginMove, blinkScale, feastArmor, fizzleDamage, newSignatureState, onArmor, onProjectileMiss, projectileHit, puppetInput,
+  afterStrike, beginMove, blinkScale, feastArmor, fizzleDamage, newSignatureState, onArmor, onProjectileMiss, projectileHit, puppetInput, shotSig,
   resetSignature, rewindHeals, shadowStepPriority, signatureAction, strikeMods, tickSignature, type SignatureKind,
 } from './signature.js';
 import { STAGES, type Platform, type StageDef, type StageId } from './stages.js';
@@ -1629,7 +1629,7 @@ function updateProjectiles(world: World): void {
           continue;
         }
         if (p.kind === 'shot') {
-          if (f.invincible <= 0) strike(world, owner, f, p.hit, p.vx >= 0 ? 1 : -1, p.x, p.y, { melee: false, move: p.move, sig: p.look === 'goldbullet' ? 'golden' : undefined });
+          if (f.invincible <= 0) strike(world, owner, f, p.hit, p.vx >= 0 ? 1 : -1, p.x, p.y, { melee: false, move: p.move, sig: shotSig(p.look) });
         }
         touched = true;
         gone = true;

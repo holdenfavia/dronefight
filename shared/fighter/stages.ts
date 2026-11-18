@@ -1,8 +1,12 @@
 // Stages (ADR-0070): one solid main platform, optional pass-through platforms, blast zones.
 
-export type StageId = 'rooftop' | 'helipad' | 'cranes';
+export type StageId = 'rooftop' | 'helipad' | 'cranes' | 'harvest';
 
-export const STAGE_IDS: readonly StageId[] = ['rooftop', 'helipad', 'cranes'];
+/** Every stage the sim knows. Seasonal ones (ADR-0082) are offered only while their event is on (shared/seasons.ts). */
+export const STAGE_IDS: readonly StageId[] = ['rooftop', 'helipad', 'cranes', 'harvest'];
+
+/** Seasonal stages (ADR-0082): which event each belongs to is in shared/seasons.ts. */
+export const SEASONAL_STAGE_IDS: readonly StageId[] = ['harvest'];
 
 export interface Platform {
   x1: number;
@@ -22,6 +26,11 @@ export interface StageDef {
   blast: { left: number; right: number; top: number; bottom: number };
   /** Where fighters start, by slot. */
   spawns: { x: number; y: number }[];
+  /**
+   * The part of the stage the camera frames when everyone is close (defaults to the main platform). For ground
+   * stages, whose floor runs past the side blast zones.
+   */
+  view?: { x1: number; x2: number };
 }
 
 const BLAST = { left: -1020, right: 1020, top: 820, bottom: -520 };
@@ -59,6 +68,23 @@ export const STAGES: Record<StageId, StageDef> = {
     ],
     blast: BLAST,
     spawns: [{ x: -180, y: 0 }, { x: 180, y: 0 }, { x: -340, y: 170 }, { x: 340, y: 170 }],
+  },
+  // Seasonal, Thanksgiving (ADR-0082). Owner's request: on the ground, so there's no falling off: the floor runs
+  // past both side blast zones and you can only be knocked out off the left, the right or the top.
+  harvest: {
+    id: 'harvest',
+    name: 'Harvest Farm',
+    blurb: 'A fall farm on solid ground: no falling, only out the sides or the top.',
+    platforms: [
+      { x1: -1400, x2: 1400, y: 0, solid: true, depth: 240 },
+      // Hay bales on the left, a hay wagon on the right, an oak bough up high.
+      { x1: -310, x2: -150, y: 100, solid: false, depth: 10 },
+      { x1: 150, x2: 330, y: 115, solid: false, depth: 10 },
+      { x1: -100, x2: 110, y: 235, solid: false, depth: 10 },
+    ],
+    blast: BLAST,
+    spawns: [{ x: -220, y: 0 }, { x: 220, y: 0 }, { x: -80, y: 0 }, { x: 80, y: 0 }],
+    view: { x1: -440, x2: 440 },
   },
 };
 

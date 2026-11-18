@@ -3,10 +3,11 @@
 
 import { BOT_LEVEL_NAMES, type BotLevel } from '../../shared/fighter/bot';
 import { MATCH } from '../../shared/fighter/config';
-import { ALL_FIGHTER_IDS, FIGHTER_IDS, FIGHTERS, type FighterId } from '../../shared/fighter/fighters';
+import { ALL_FIGHTER_IDS, FIGHTERS, type FighterId } from '../../shared/fighter/fighters';
 import type { MatchRules, World } from '../../shared/fighter/sim';
 import { INGREDIENTS, signatureGauge, type SignatureGauge } from '../../shared/fighter/signature';
-import { activeCheats, cheatRules, CHEATS, enterCode, onCheatsChange, rosterIds } from './cheats';
+import { activeCheats, cheatRules, CHEATS, enterCode, onCheatsChange, randomFighters, rosterIds, seasonsNow, stageIds } from './cheats';
+import { seasonOfFighter, seasonOfStage, type SeasonDef } from '../../shared/seasons';
 import { STAGE_IDS, STAGES, type StageId } from '../../shared/fighter/stages';
 import { MENU, SLOT_COLORS, TEAM_COLORS, TEAM_NAMES, fighterColor } from './config';
 import { isTeam, sideCount, startingTeam, TEAM_COUNT } from '../../shared/online';
@@ -76,6 +77,10 @@ export function loadSetup(): MatchSetup {
     s.teams = s.teams === true;
     s.friendlyFire = s.friendlyFire === true;
     s.stocks = Math.max(1, Math.min(5, Math.round(s.stocks) || d.stocks));
+    // A seasonal fighter or stage saved during its event, after the event is over (ADR-0082).
+    const roster = rosterIds();
+    for (const slot of s.slots) if (!roster.includes(slot.fighter)) slot.fighter = 'brawler';
+    if (!stageIds().includes(s.stage)) s.stage = 'rooftop';
     return s;
   } catch {
     return defaultSetup();
@@ -148,6 +153,36 @@ function previewCanvas(id: FighterId, color: string, size = 120): HTMLCanvasElem
   return c;
 }
 
+/** The Seasonal tag on a seasonal fighter or stage (ADR-0082). */
+function seasonTag(season: SeasonDef, cls = 'season-tag'): HTMLElement {
+  const tag = el('span', cls, 'Seasonal');
+  tag.title = `${season.name} event`;
+  tag.style.setProperty('--season', season.color);
+  return tag;
+}
+
+/** "Stage: Harvest Farm · Seasonal". */
+function stageLabel(id: StageId): string {
+  return `Stage: ${STAGES[id].name}${seasonOfStage(id) ? ' · Seasonal' : ''}`;
+}
+
+/** The next stage on offer here after this one. */
+function nextStage(id: StageId): StageId {
+  const list = stageIds();
+  return list[(list.indexOf(id) + 1) % list.length]!;
+}
+
+/** The main menu's banner for each seasonal event on now. */
+function seasonBanners(): HTMLElement[] {
+  return seasonsNow().map((season) => {
+    const b = el('div', 'season-banner');
+    b.style.setProperty('--season', season.color);
+    b.style.setProperty('--season-accent', season.accent);
+    b.append(el('strong', '', `${season.name} event`), document.createTextNode(` ${season.blurb}`), seasonTag(season));
+    return b;
+  });
+}
+
 /** A big question mark in place of a fighter (the Random tile). */
 function randomArt(cls: string): HTMLElement {
   return el('div', `random-art ${cls}`, '?');
@@ -159,6 +194,19 @@ export interface MenuHandlers {
 }
 
 type ScreenId = 'title' | 'main' | 'select' | 'online' | 'controls' | 'pause' | 'results';
+
+/** "Seasonal · Thanksgiving" under a seasonal fighter's name (nothing for the everyday cast). */
+function seasonLine(id: FighterId | null): HTMLElement[] {
+  const season = id ? seasonOfFighter(id) : null;
+  if (!season) return [];
+  const line = el('div', 'season-line', `Seasonal · ${season.name}`);
+  line.style.setProperty('--season', season.color);
+  return [line];
+}
+
+function pickOne<T>(list: readonly T[]): T {
+  return list[Math.floor(Math.random() * list.length)]!;
+}
 
 /** Roster tiles: every fighter (and any unlocked secret ones), then Random. */
 function rosterTiles(): (FighterId | 'random')[] {
@@ -511,6 +559,7 @@ export class Ui {
   private cheatsChanged(): void {
     const roster = rosterIds();
     for (const slot of this.setup.slots) if (!roster.includes(slot.fighter)) slot.fighter = 'brawler';
+    if (!stageIds().includes(this.setup.stage)) this.setup.stage = 'rooftop';
     saveSetup(this.setup);
     if (this.screenId === 'select') this.showSelect();
     if (this.screenId === 'online') this.showOnline();
@@ -550,7 +599,7 @@ export class Ui {
       list.appendChild(b);
       return b;
     });
-    page.append(list, el('div', 'menu-hint', 'W S or ↑ ↓ to choose · Enter to pick · Esc back'), wipNotice());
+    page.append(list, ...seasonBanners(), el('div', 'menu-hint', 'W S or ↑ ↓ to choose · Enter to pick · Esc back'), wipNotice());
     this.show('main', page, buttons);
   }
 
@@ -610,6 +659,7 @@ export class Ui {
         card.append(
           slot.random ? randomArt('panel-art') : previewCanvas(slot.fighter, color),
           el('div', 'fighter-name', slot.random ? 'Random' : def.name),
+          ...seasonLine(slot.random ? null : slot.fighter),
           el('div', 'blurb', slot.random ? 'Picked when the fight starts' : def.blurb),
           el('div', 'hint', slot.kind === 'p1' ? 'WASD or arrows to pick' : i === this.editSlot ? 'Click a fighter above' : 'Click to pick its fighter'),
         );
@@ -627,8 +677,8 @@ export class Ui {
     page.appendChild(panels);
 
     const options = el('div', 'options');
-    const stageBtn = this.button('option', `Stage: ${STAGES[s.stage].name}`, () => {
-      s.stage = STAGE_IDS[(STAGE_IDS.indexOf(s.stage) + 1) % STAGE_IDS.length]!;
+    const stageBtn = this.button('option', stageLabel(s.stage), () => {
+      s.stage = nextStage(s.stage);
       this.commit();
     });
     const stocksBtn = this.button('option', `Stocks: ${s.stocks}`, () => {
@@ -669,6 +719,12 @@ export class Ui {
       const t = this.button('tile', '', () => pick(tile));
       t.title = tile === 'random' ? 'Random fighter' : FIGHTERS[tile].blurb;
       t.append(tile === 'random' ? randomArt('tile-art') : previewCanvas(tile, '#eeeeea', MENU.tileSize), el('span', 'tile-name', tile === 'random' ? 'Random' : FIGHTERS[tile].name));
+      const season = tile === 'random' ? null : seasonOfFighter(tile);
+      if (season) {
+        t.classList.add('seasonal');
+        t.style.setProperty('--season', season.color);
+        t.appendChild(seasonTag(season, 'season-tag corner'));
+      }
       const tokens = el('div', 'tokens');
       for (let i = 0; i < MATCH.maxFighters; i++) {
         const slot = slotAt(i);
@@ -827,7 +883,7 @@ export class Ui {
     };
     page.appendChild(this.rosterGrid(
       asSlot,
-      (tile) => net.setPick({ fighter: tile === 'random' ? FIGHTER_IDS[Math.floor(Math.random() * FIGHTER_IDS.length)]! : tile, ready: false }),
+      (tile) => net.setPick({ fighter: tile === 'random' ? pickOne(randomFighters()) : tile, ready: false }),
       members.findIndex((m) => m.id === room.you),
       true,
     ));
@@ -852,7 +908,7 @@ export class Ui {
         card.appendChild(el('div', 'kind', `${who}${m.id === host ? ' · Host' : ''}`));
         // You pick your own team; nobody else can move you (ADR-0081).
         if (teamOn) card.appendChild(this.teamButton(p.team, m.id === room.you && !room.playing ? () => net.setPick({ team: (p.team + 1) % TEAM_COUNT, ready: false }) : null));
-        card.append(previewCanvas(p.fighter, color), el('div', 'fighter-name', FIGHTERS[p.fighter].name));
+        card.append(previewCanvas(p.fighter, color), el('div', 'fighter-name', FIGHTERS[p.fighter].name), ...seasonLine(p.fighter));
         card.appendChild(el('div', `ready-tag ${p.ready ? 'on' : ''}`, p.ready ? 'Ready' : 'Picking…'));
       } else if (cpu) {
         card.classList.add('cpu');
@@ -898,8 +954,8 @@ export class Ui {
     const oneTeam = teamOn && sideCount([...members.map((_m, i) => pickOf(i).team), ...cpuTeams]) < 2;
     const canStart = everyone && fighters >= 2 && !oneTeam && !room.playing;
     const stage = isHost
-      ? this.button('option', `Stage: ${STAGES[settings.stage].name}`, () => net.setSettings({ ...settings, stage: STAGE_IDS[(STAGE_IDS.indexOf(settings.stage) + 1) % STAGE_IDS.length]! }))
-      : el('div', 'option static', `Stage: ${STAGES[settings.stage].name}`);
+      ? this.button('option', stageLabel(settings.stage), () => net.setSettings({ ...settings, stage: nextStage(settings.stage) }))
+      : el('div', 'option static', stageLabel(settings.stage));
     const stocks = isHost
       ? this.button('option', `Stocks: ${settings.stocks}`, () => net.setSettings({ ...settings, stocks: (settings.stocks % 5) + 1 }))
       : el('div', 'option static', `Stocks: ${settings.stocks}`);

@@ -21,11 +21,25 @@ export type SignatureKind =
   | 'ingredient' | Recipe
   | 'haunt' | 'possess'
   | 'trick'
-  | 'groove' | 'offbeat' | 'encore';
+  | 'groove' | 'offbeat' | 'encore'
+  // Seasonal fighters (ADR-0082).
+  | 'gobbleReady' | 'thundergobble'
+  | 'harvest' | 'cannon'
+  | 'sister' | 'tidal';
+
+/** First Light's Three Sisters, as bits in the meter. */
+export const SISTERS = { corn: 1, beans: 2, squash: 4, all: 7 } as const;
+
+/** How many of the Three Sisters a meter holds. */
+export function sistersCount(meter: number): number {
+  return (meter & 1) + ((meter >> 1) & 1) + ((meter >> 2) & 1);
+}
 
 const AERIALS: ReadonlySet<MoveId> = new Set<MoveId>(['nair', 'fair', 'bair', 'uair', 'dair']);
 const SMASHES: ReadonlySet<MoveId> = new Set<MoveId>(['fsmash', 'usmash', 'dsmash', 'quake']);
 /** Moves that don't count for the Bard's beat (grabbing, holding, getting up). */
+/** First Light: moves that grow squash (specials; throws count too). */
+const SPECIALS: ReadonlySet<MoveId> = new Set<MoveId>(['nspecial', 'sspecial', 'uspecial', 'dspecial', 'weirhit']);
 const OFF_BEAT_FREE: ReadonlySet<MoveId> = new Set<MoveId>(['grab', 'pummel', 'fthrow', 'bthrow', 'uthrow', 'dthrow', 'getupattack', 'counterhit']);
 
 function emit(world: World, e: GameEvent): void {
@@ -183,6 +197,32 @@ export function beginMove(world: World, f: Fighter, move: MoveId): MoveId {
     case 'chef':
       if (move === 'dspecial' && f.pantry.length >= S.pantry.size) return 'cook';
       break;
+    case 'turkey':
+      if (move === 'dspecial' && f.meter >= S.gobble.max) {
+        f.meter = 0;
+        f.moveSig = 'thundergobble';
+        sig(world, f, 'thundergobble');
+        return 'thundergobble';
+      }
+      break;
+    case 'pilgrim':
+      if (move === 'nspecial' && f.meter >= S.harvest.max) {
+        f.meter = 0;
+        f.moveMod = S.harvest.cannonDmg;
+        f.moveKb = S.harvest.cannonKb;
+        f.moveSig = 'cannon';
+        sig(world, f, 'cannon');
+      }
+      break;
+    case 'firstlight':
+      if (SMASHES.has(move) && f.meter === SISTERS.all) {
+        f.meter = 0;
+        f.moveMod = S.sisters.tidalDmg;
+        f.moveKb = S.sisters.tidalKb;
+        f.moveSig = 'tidal';
+        sig(world, f, 'tidal');
+      }
+      break;
     case 'bard': {
       if (OFF_BEAT_FREE.has(move)) break;
       if ((move === 'sspecial' || move === 'dspecial') && f.meter >= S.groove.max) {
@@ -225,7 +265,12 @@ export function projectileHit(f: Fighter, hit: HitStats): { hit: HitStats; look?
   if (f.id === 'chef' && f.buffKind === 'soup' && f.move === 'nspecial') {
     out = { ...out, dmg: out.dmg + SIGNATURE.pantry.soupDmg, stun: Math.max(out.stun ?? 0, SIGNATURE.pantry.soupStun) };
   }
-  return { hit: out, look: f.moveSig === 'golden' ? 'goldbullet' : undefined };
+  return { hit: out, look: f.moveSig === 'golden' ? 'goldbullet' : f.moveSig === 'cannon' ? 'cannonball' : undefined };
+}
+
+/** Signature shots, by the look they fly with: what the hit is called. */
+export function shotSig(look: string | undefined): string | undefined {
+  return look === 'goldbullet' ? 'golden' : look === 'cannonball' ? 'cannon' : undefined;
 }
 
 /** A fizzled spell only stings: 1 to 2 damage (its knockback is already zero). */
@@ -295,7 +340,7 @@ export function strikeMods(world: World, a: Fighter, t: Fighter, opts: Signature
     dmg *= a.moveMod;
     kb *= a.moveKb;
     bonus += a.moveBonus;
-    if (a.moveSig === 'payback' || a.moveSig === 'kopunch' || a.moveSig === 'flashcut') name = a.moveSig;
+    if (a.moveSig === 'payback' || a.moveSig === 'kopunch' || a.moveSig === 'flashcut' || a.moveSig === 'thundergobble' || a.moveSig === 'tidal') name = a.moveSig;
   }
   // Chains: hits in a row.
   a.chain = world.frame - a.chainFrame <= chainWindow(a) ? a.chain + 1 : 1;
@@ -389,6 +434,28 @@ export function afterStrike(world: World, a: Fighter, t: Fighter, dmg: number, l
     case 'yoyo':
       if (a.chain >= SIGNATURE.trick.finisherFrom) sig(world, a, 'trick');
       break;
+    case 'turkey': {
+      if (opts.move === 'thundergobble') break;
+      const was = a.meter;
+      a.meter = Math.min(S.gobble.max, a.meter + dmg * S.gobble.perDealt);
+      if (was < S.gobble.max && a.meter >= S.gobble.max) sig(world, a, 'gobbleReady');
+      break;
+    }
+    case 'pilgrim':
+      if (a.meter < S.harvest.max && opts.move && ((opts.melee && SMASHES.has(opts.move)) || opts.isThrow)) {
+        a.meter++;
+        sig(world, a, 'harvest');
+      }
+      break;
+    case 'firstlight': {
+      if (dmg <= 0 || a.moveSig === 'tidal' || !opts.move) break;
+      const sister = opts.isThrow || !opts.melee || SPECIALS.has(opts.move) ? SISTERS.squash : AERIALS.has(opts.move) ? SISTERS.beans : SISTERS.corn;
+      if (!(a.meter & sister)) {
+        a.meter |= sister;
+        sig(world, a, 'sister');
+      }
+      break;
+    }
     default:
       break;
   }
@@ -405,6 +472,12 @@ export function afterStrike(world: World, a: Fighter, t: Fighter, dmg: number, l
     case 'bard':
       if (launched && t.meter > 0) t.meter--;
       break;
+    case 'turkey': {
+      const was = t.meter;
+      t.meter = Math.min(S.gobble.max, t.meter + dmg * S.gobble.perTaken);
+      if (was < S.gobble.max && t.meter >= S.gobble.max) sig(world, t, 'gobbleReady');
+      break;
+    }
     default:
       break;
   }
@@ -495,6 +568,20 @@ export function signatureGauge(world: World, f: Fighter): SignatureGauge | null 
         text: f.meter >= S.groove.max ? 'ENCORE' : undefined, beat: Math.max(0, 1 - Math.min(ph, 1 - ph) * 6),
       };
     }
+    case 'turkey': {
+      const ready = f.meter >= S.gobble.max;
+      return { label: 'GOBBLE', value: f.meter / S.gobble.max, ready, text: ready ? 'THUNDER' : `${Math.floor(f.meter)}%` };
+    }
+    case 'pilgrim':
+      return { label: 'HARVEST', value: f.meter / S.harvest.max, pips: S.harvest.max, lit: f.meter, ready: f.meter >= S.harvest.max, text: f.meter >= S.harvest.max ? 'CANNON' : undefined };
+    case 'firstlight': {
+      const n = sistersCount(f.meter);
+      const missing = (['corn', 'beans', 'squash'] as const).filter((k) => !(f.meter & SISTERS[k]));
+      return {
+        label: 'SISTERS', value: n / 3, pips: 3, lit: n, ready: n === 3,
+        text: n === 3 ? 'TIDAL SWEEP' : n === 2 ? `NEED ${missing[0]!.toUpperCase()}` : undefined,
+      };
+    }
     default:
       return null;
   }
@@ -509,4 +596,5 @@ export function koFraction(f: Fighter): number {
 export const SIGNATURE_NAMES: Partial<Record<FighterId, string>> = {
   brawler: 'KO Meter', blade: 'Edge', spark: 'Mana', titan: 'Payback', ninja: 'Marks',
   gunslinger: 'Hot Streak', chef: 'Pantry', ghost: 'Haunt', yoyo: 'Trick Combo', bard: 'Groove',
+  turkey: 'Gobble', pilgrim: 'Harvest', firstlight: 'Three Sisters',
 };

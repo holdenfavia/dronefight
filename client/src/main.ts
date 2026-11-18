@@ -5,11 +5,11 @@ import './styles.css';
 import { botInput, createBot, type Bot } from '../../shared/fighter/bot';
 import { DT } from '../../shared/fighter/config';
 import { decodeInput, describeDrift, deserializeWorld, encodeInput, serializeWorld, type MatchStart } from '../../shared/online';
-import { FIGHTER_IDS, FIGHTERS } from '../../shared/fighter/fighters';
+import { FIGHTERS } from '../../shared/fighter/fighters';
 import { createWorld, NO_INPUT, step, type GameEvent, type Input, type World } from '../../shared/fighter/sim';
 import { Sfx } from './audio';
 import { Keyboard } from './input';
-import { cheatOn, cheatRules, onCheatsChange, TripleTap } from './cheats';
+import { cheatOn, cheatRules, onCheatsChange, randomFighters, TripleTap } from './cheats';
 import { CHEAT_LOOKS, ONLINE } from './config';
 import { Renderer, type Prev } from './render';
 import { NetClient } from './net';
@@ -97,12 +97,16 @@ function attractWorld(): World {
   return w;
 }
 
+function pickRandom<T>(list: readonly T[]): T {
+  return list[Math.floor(Math.random() * list.length)]!;
+}
+
 function startMatch(setup: MatchSetup): void {
   matchSetup = setup;
   // Random picks are drawn here, on the client, so the sim stays deterministic (Hard rule 2).
   const active = setup.slots
     .filter((s) => s.kind !== 'off')
-    .map((s) => ({ ...s, fighter: s.random ? FIGHTER_IDS[Math.floor(Math.random() * FIGHTER_IDS.length)]! : s.fighter }));
+    .map((s) => ({ ...s, fighter: s.random ? pickRandom(randomFighters()) : s.fighter }));
   const seed = (Math.random() * 1e9) | 0;
   // Team battles (ADR-0081): each fighter brings its team; friendly fire is a rule of the fight.
   const rules = { ...cheatRules(), friendlyFire: setup.teams && setup.friendlyFire };
