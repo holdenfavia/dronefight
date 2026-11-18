@@ -1,6 +1,6 @@
 # Retexture looks (concepts)
 
-Looks Holden picked on 2026-11-18 for when the fighters get real art instead of placeholder stick figures (roadmap: "Real character art to replace the stick figures"). **These are concepts only. Nothing here is in the game yet.** The SPEC still says placeholder stick figures until the retexture starts.
+Looks Holden picked on 2026-11-18 to replace the placeholder stick figures. **They are in the game** as Canvas 2D vector drawings (ADR-0084, `client/src/dressed.ts`). These sheets are the concept art the in-game looks were drawn from; the game simplifies some details (for example the Ghost's puppet strings, the Bard's coins and the Brawler's double flex are not drawn).
 
 Each sheet shows the fighter with its signature meter (ADR-0079) empty on the left and full on the right. `picked-lineup.png` has all ten on one page.
 
@@ -19,7 +19,7 @@ Each sheet shows the fighter with its signature meter (ADR-0079) empty on the le
 
 Not covered yet: River (secret) and the seasonal fighters (Turkey, Pilgrim, Chief).
 
-## Rules for the real art
+## Rules for the art
 
 - Hard rule 3 still applies: all original, nothing copied from another game. Titan's iron giant was drawn as an original design in place of a requested Minecraft iron golem.
 - Keep one color per player slot and the team colors (ADR-0026, ADR-0081). These sheets use the P1 orange accent.
