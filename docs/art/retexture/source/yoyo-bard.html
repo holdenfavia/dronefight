@@ -1,0 +1,300 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#111;font-family:Oswald,Impact,sans-serif}
+.card{width:1200px;height:800px;position:relative;overflow:hidden;margin-bottom:20px}
+svg{display:block}
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute">
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#8fb0cf"/><stop offset="0.7" stop-color="#f0d3a8"/><stop offset="1" stop-color="#f5c690"/>
+  </linearGradient>
+  <radialGradient id="glowO"><stop offset="0" stop-color="#ffb347" stop-opacity=".9"/><stop offset="1" stop-color="#ff6a00" stop-opacity="0"/></radialGradient>
+  <radialGradient id="glowR"><stop offset="0" stop-color="#ff5a3c" stop-opacity=".85"/><stop offset="1" stop-color="#ff2000" stop-opacity="0"/></radialGradient>
+  <radialGradient id="glowG"><stop offset="0" stop-color="#ffe680" stop-opacity=".95"/><stop offset="1" stop-color="#ffb000" stop-opacity="0"/></radialGradient>
+  <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe58a"/><stop offset=".5" stop-color="#e0a420"/><stop offset="1" stop-color="#9c6a00"/></linearGradient>
+  <linearGradient id="leather" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a3a3a"/><stop offset="1" stop-color="#121212"/></linearGradient>
+  <filter id="soft"><feGaussianBlur stdDeviation="6"/></filter>
+</defs>
+</svg>
+
+<div id="cards"></div>
+
+<script>
+const ORANGE='#ff7a1a', INK='#151515', SKIN='#f2c9a0', SKIN_D='#d9a77a';
+
+function bg(){
+  let s=`<rect width="1200" height="800" fill="url(#sky)"/>`;
+  // skyline
+  const b=[[0,560,90],[70,520,110],[200,580,80],[300,500,120],[440,545,90],[560,590,70],[660,510,130],[820,560,90],[930,495,120],[1070,540,130]];
+  for(const [x,y,w] of b){s+=`<rect x="${x}" y="${y}" width="${w}" height="${800-y}" fill="#6f8aa6" opacity=".55"/>`;
+    for(let wy=y+18;wy<700;wy+=34)for(let wx=x+12;wx<x+w-14;wx+=26)s+=`<rect x="${wx}" y="${wy}" width="12" height="14" fill="#a9bfd4" opacity=".5"/>`;}
+  // rooftop floor
+  s+=`<rect x="0" y="690" width="1200" height="110" fill="#2b2f36"/><rect x="0" y="690" width="1200" height="8" fill="${ORANGE}"/>`;
+  return s;
+}
+
+function header(num,title,tag){
+  return `<rect x="0" y="0" width="1200" height="96" fill="#0c0c0e" opacity=".88"/>
+  <rect x="0" y="96" width="1200" height="5" fill="${ORANGE}"/>
+  <text x="36" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="${ORANGE}">${num}</text>
+  <text x="92" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="#fff" letter-spacing="1">BRAWLER · ${title}</text>
+  <text x="1164" y="62" text-anchor="end" font-family="Oswald" font-weight="500" font-size="22" fill="#cfcfcf">${tag}</text>`;
+}
+
+function meter(x,label,pct,full,color){
+  const w=300;
+  return `<g transform="translate(${x},722)">
+   <rect x="0" y="0" width="${w+120}" height="56" rx="6" fill="#0c0c0e" opacity=".85"/>
+   <text x="14" y="36" font-family="Oswald" font-weight="700" font-size="22" fill="#fff">${label}</text>
+   <rect x="100" y="18" width="${w}" height="20" rx="4" fill="#333"/>
+   <rect x="100" y="18" width="${w*pct}" height="20" rx="4" fill="${color}"/>
+   ${full?`<rect x="98" y="16" width="${w+4}" height="24" rx="5" fill="none" stroke="#fff" stroke-width="2"/>`:''}
+  </g>`;
+}
+function caption(x,t){return `<text x="${x}" y="150" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="28" fill="${INK}" letter-spacing="2">${t}</text>`}
+function shadow(cx){return `<ellipse cx="${cx}" cy="692" rx="110" ry="14" fill="#000" opacity=".25"/>`}
+function limb(pts,w,c){return `<polyline points="${pts}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`}
+function sparks(cx,cy,n,r,col){let s='';for(let i=0;i<n;i++){const a=i/n*Math.PI*2+0.3*i;const r1=r*(0.7+0.3*((i*37)%10)/10),r2=r1+26+((i*13)%14);
+ s+=`<line x1="${cx+Math.cos(a)*r1}" y1="${cy+Math.sin(a)*r1}" x2="${cx+Math.cos(a)*r2}" y2="${cy+Math.sin(a)*r2}" stroke="${col}" stroke-width="5" stroke-linecap="round"/>`;}return s;}
+
+function header2(fighter,title,tag){
+  return `<rect x="0" y="0" width="1200" height="96" fill="#0c0c0e" opacity=".88"/>
+  <rect x="0" y="96" width="1200" height="5" fill="${ORANGE}"/>
+  <text x="36" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="${ORANGE}">${fighter}</text>
+  <text x="${36+fighter.length*24+14}" y="66" font-family="Oswald" font-weight="700" font-size="46" fill="#fff" letter-spacing="1">· ${title}</text>
+  <text x="1164" y="62" text-anchor="end" font-family="Oswald" font-weight="500" font-size="22" fill="#cfcfcf">${tag}</text>`;
+}
+const STEEL='#9aa3ad', STEEL_D='#5d656e';
+function boot(x,y,c){return `<rect x="${x-22}" y="${y-4}" width="44" height="18" rx="6" fill="${c}" stroke="${INK}" stroke-width="3"/>`}
+function face(cx,hy,mood){ // simple eyes + mouth
+  let s=`<circle cx="${cx-12}" cy="${hy+2}" r="4" fill="${INK}"/><circle cx="${cx+12}" cy="${hy+2}" r="4" fill="${INK}"/>`;
+  s+= mood==='grin'?`<path d="M${cx-13},${hy+16} Q${cx},${hy+27} ${cx+13},${hy+16}" fill="#fff" stroke="${INK}" stroke-width="3.5"/>`
+     :mood==='smirk'?`<path d="M${cx-10},${hy+18} Q${cx+4},${hy+22} ${cx+14},${hy+13}" fill="none" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>`
+     :`<path d="M${cx-10},${hy+18} L${cx+10},${hy+18}" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>`;
+  return s;
+}
+function glint(x,y,r,c){return `<path d="M${x},${y-r} L${x+r*.22},${y-r*.22} L${x+r},${y} L${x+r*.22},${y+r*.22} L${x},${y+r} L${x-r*.22},${y+r*.22} L${x-r},${y} L${x-r*.22},${y-r*.22} Z" fill="${c}"/>`}
+function shout(cx,y,t,c){return `<text x="${cx}" y="${y}" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="44" fill="${c}" stroke="${INK}" stroke-width="6" paint-order="stroke">${t}</text>`}
+
+function robe(cx,sh,hip,col,trim){
+  return `<path d="M${cx-30},${sh} L${cx+30},${sh} L${cx+64},${hip+112} L${cx-64},${hip+112} Z" fill="${col}" stroke="${INK}" stroke-width="5"/>`+
+   (trim?`<path d="M${cx-60},${hip+98} L${cx+60},${hip+98}" stroke="${trim}" stroke-width="6"/>`:'');
+}
+function hand(x,y,c){return `<circle cx="${x}" cy="${y}" r="10" fill="${c||SKIN}" stroke="${INK}" stroke-width="3"/>`}
+
+function body(cx,sh,hip,col,w){w=w||40;return `<path d="M${cx-w},${sh} L${cx+w},${sh} L${cx+w-6},${hip+8} L${cx-w+6},${hip+8} Z" fill="${col}" stroke="${INK}" stroke-width="5"/>`}
+function legs(cx,hip,col,shoe){return limb(`${cx-14},${hip} ${cx-36},${hip+64} ${cx-46},${hip+124}`,20,col)+limb(`${cx+14},${hip} ${cx+36},${hip+64} ${cx+46},${hip+124}`,20,col)+boot(cx-50,hip+128,shoe)+boot(cx+50,hip+128,shoe)}
+function mark(x,y,on){return `<g transform="translate(${x},${y})">${on?'<circle r="22" fill="url(#glowR)"/>':''}<path d="M0,-12 L4,-4 L12,0 L4,4 L0,12 L-4,4 L-12,0 L-4,-4 Z" fill="${on?'#ff3b1f':'#888'}" stroke="${INK}" stroke-width="2"/></g>`}
+
+const RAINBOW=['#ff3b1f','#ff9a1a','#ffd23a','#7dff6a','#38e8ff','#c86bff'];
+function yoyo(x,y,c,r){r=r||16;return `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}" stroke="${INK}" stroke-width="4"/><line x1="${x-r}" y1="${y}" x2="${x+r}" y2="${y}" stroke="${INK}" stroke-width="3"/><circle cx="${x}" cy="${y}" r="${r*.3}" fill="#fff" stroke="${INK}" stroke-width="2"/>`}
+function combo(x,y,n,c){return `<text x="${x}" y="${y}" text-anchor="middle" font-family="Oswald" font-weight="700" font-size="${n>3?54:30}" fill="${c}" stroke="${INK}" stroke-width="6" paint-order="stroke">x${n}</text>`}
+function yoyoTrick(cx,hx,hy,full,c){
+  let s='';
+  if(full){ // around-the-world loop with rainbow trail
+    const ox=hx+60, oy=hy-40, R=70;
+    for(let i=0;i<6;i++){ const a=-Math.PI*0.9+i*0.36; s+=`<circle cx="${ox+Math.cos(a)*R}" cy="${oy+Math.sin(a)*R}" r="${10+i}" fill="${RAINBOW[i]}" opacity="${0.35+i*0.1}"/>`; }
+    const ex=ox+Math.cos(1.0)*R, ey=oy+Math.sin(1.0)*R;
+    s+=`<line x1="${hx}" y1="${hy}" x2="${ex}" y2="${ey}" stroke="#fff" stroke-width="2.5"/>`+`<circle cx="${ex}" cy="${ey}" r="34" fill="url(#glowG)"/>`+yoyo(ex,ey,c,18);
+  } else { s+=`<line x1="${hx}" y1="${hy}" x2="${hx+4}" y2="${hy+110}" stroke="#fff" stroke-width="2.5"/>`+yoyo(hx+4,hy+116,c,16); }
+  return s;
+}
+function kidHead(cx,hy,full){ return `<circle cx="${cx}" cy="${hy}" r="42" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`+
+  `<circle cx="${cx-14}" cy="${hy+4}" r="5" fill="${INK}"/><circle cx="${cx+14}" cy="${hy+4}" r="5" fill="${INK}"/><circle cx="${cx-12}" cy="${hy+2}" r="1.8" fill="#fff"/><circle cx="${cx+16}" cy="${hy+2}" r="1.8" fill="#fff"/>`+
+  `<circle cx="${cx-26}" cy="${hy+18}" r="6" fill="#f0a0a0" opacity=".7"/><circle cx="${cx+26}" cy="${hy+18}" r="6" fill="#f0a0a0" opacity=".7"/>`+
+  (full?`<path d="M${cx-14},${hy+20} Q${cx},${hy+36} ${cx+14},${hy+20} Z" fill="#fff" stroke="${INK}" stroke-width="3"/>`:`<path d="M${cx-10},${hy+22} Q${cx},${hy+28} ${cx+10},${hy+22}" fill="none" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>`); }
+
+/* YO-YO KID: skater */
+function skater(cx,full){
+  const hip=590, sh=488, hy=430, H='#3aa8a0'; let s=shadow(cx);
+  // skateboard on back
+  s+=`<rect x="${cx-58}" y="${sh-30}" width="20" height="130" rx="10" fill="${ORANGE}" stroke="${INK}" stroke-width="4" transform="rotate(-14 ${cx-48} ${sh+30})"/>`;
+  s+=limb(`${cx-12},${hip} ${cx-28},${hip+50} ${cx-34},${hip+94}`,18,'#4a5a7a')+limb(`${cx+12},${hip} ${cx+28},${hip+50} ${cx+34},${hip+94}`,18,'#4a5a7a');
+  s+=boot(cx-38,hip+98,'#fafafa')+boot(cx+38,hip+98,'#fafafa');
+  s+=`<path d="M${cx-34},${sh} L${cx+34},${sh} L${cx+38},${hip+8} L${cx-38},${hip+8} Z" fill="${H}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-22},${hip-22} L${cx+22},${hip-22} L${cx+18},${hip-4} L${cx-18},${hip-4} Z" fill="#2a8078" stroke="${INK}" stroke-width="3"/>`;
+  s+=`<path d="M${cx-8},${sh} l-4,30 M${cx+8},${sh} l4,30" stroke="#fafafa" stroke-width="3"/>`;
+  s+=limb(`${cx-34},${sh+10} ${cx-60},${sh+44} ${cx-50},${sh+76}`,14,H)+hand(cx-50,sh+78);
+  const hx=cx+80, hy2=sh+20;
+  s+=limb(`${cx+34},${sh+10} ${cx+60},${sh+30} ${hx},${hy2}`,14,H);
+  s+=yoyoTrick(cx,hx,hy2,full,'#ff3b1f')+hand(hx,hy2);
+  s+=kidHead(cx,hy,full);
+  // backwards cap
+  s+=`<path d="M${cx-42},${hy-6} Q${cx-40},${hy-48} ${cx},${hy-48} Q${cx+40},${hy-48} ${cx+42},${hy-6} Z" fill="#ff3b1f" stroke="${INK}" stroke-width="4"/><path d="M${cx-38},${hy-14} q-30,4 -36,18 q20,6 36,-4" fill="#ff3b1f" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<circle cx="${cx}" cy="${hy-48}" r="4" fill="#ff3b1f" stroke="${INK}" stroke-width="2"/>`;
+  s+= full? combo(cx-110,hy-60,8,'#ffd23a') : combo(cx-90,hy-60,1,'#bbb');
+  if(full) s+=shout(cx+30,hy-120,'SICK TRICK!','#7dff6a');
+  return s;
+}
+
+/* YO-YO KID: candy propeller kid */
+function candykid(cx,full){
+  const hip=590, sh=488, hy=430, P='#ff8fb8'; let s=shadow(cx);
+  s+=limb(`${cx-12},${hip} ${cx-24},${hip+50} ${cx-28},${hip+94}`,16,'#fafafa')+limb(`${cx+12},${hip} ${cx+24},${hip+50} ${cx+28},${hip+94}`,16,'#fafafa');
+  for(const d of [-1,1]) for(let i=0;i<3;i++) s+=`<rect x="${cx+d*26-9}" y="${hip+30+i*20}" width="18" height="10" fill="${P}"/>`;
+  s+=boot(cx-32,hip+98,'#ffd23a')+boot(cx+32,hip+98,'#ffd23a');
+  // overalls
+  s+=`<path d="M${cx-34},${sh} L${cx+34},${sh} L${cx+40},${hip+10} L${cx-40},${hip+10} Z" fill="#fff3a0" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-28},${sh+40} L${cx+28},${sh+40} L${cx+34},${hip+20} L${cx-34},${hip+20} Z" fill="#6ab0ff" stroke="${INK}" stroke-width="4"/><path d="M${cx-24},${sh+40} L${cx-20},${sh} M${cx+24},${sh+40} L${cx+20},${sh}" stroke="#6ab0ff" stroke-width="6"/>`;
+  s+=`<circle cx="${cx}" cy="${sh+70}" r="10" fill="${P}" stroke="${INK}" stroke-width="2"/><path d="M${cx-6},${sh+66} q6,8 12,0" stroke="#fff" stroke-width="2" fill="none"/>`;
+  s+=limb(`${cx-34},${sh+10} ${cx-60},${sh+44} ${cx-50},${sh+76}`,14,'#fff3a0')+hand(cx-50,sh+78);
+  // lollipop in other hand when empty
+  if(!full) s+=`<line x1="${cx-50}" y1="${sh+78}" x2="${cx-56}" y2="${sh+30}" stroke="#fff" stroke-width="5"/><circle cx="${cx-56}" cy="${sh+20}" r="14" fill="${P}" stroke="${INK}" stroke-width="3"/><path d="M${cx-56},${sh+20} m-8,0 a8,8 0 1,1 8,8" stroke="#fff" stroke-width="3" fill="none"/>`;
+  const hx=cx+80, hy2=sh+20;
+  s+=limb(`${cx+34},${sh+10} ${cx+60},${sh+30} ${hx},${hy2}`,14,'#fff3a0');
+  // candy yo-yo: swirl
+  if(full){ const ox=hx+40, oy=hy2-60; s+=`<line x1="${hx}" y1="${hy2}" x2="${ox}" y2="${oy}" stroke="#fff" stroke-width="2.5"/><circle cx="${ox}" cy="${oy}" r="62" fill="url(#glowG)"/><circle cx="${ox}" cy="${oy}" r="38" fill="${P}" stroke="${INK}" stroke-width="5"/>`;
+    for(let i=0;i<4;i++) s+=`<path d="M${ox},${oy} q${20-i*4},${-20+i*6} ${30-i*6},${4+i*6}" stroke="#fff" stroke-width="5" fill="none" transform="rotate(${i*90} ${ox} ${oy})"/>`;
+    for(let i=0;i<5;i++) s+=`<circle cx="${ox-60+i*28}" cy="${oy+60+(i%2)*14}" r="6" fill="${RAINBOW[i]}" stroke="${INK}" stroke-width="1.5"/>`; }
+  else s+=`<line x1="${hx}" y1="${hy2}" x2="${hx+4}" y2="${hy2+100}" stroke="#fff" stroke-width="2.5"/><circle cx="${hx+4}" cy="${hy2+116}" r="16" fill="${P}" stroke="${INK}" stroke-width="4"/><path d="M${hx-4},${hy2+116} a8,8 0 1,1 8,8" stroke="#fff" stroke-width="3" fill="none"/>`;
+  s+=hand(hx,hy2);
+  s+=kidHead(cx,hy,full);
+  // propeller beanie
+  s+=`<path d="M${cx-40},${hy-10} Q${cx-40},${hy-50} ${cx},${hy-50} Q${cx+40},${hy-50} ${cx+40},${hy-10} Z" fill="#ff3b1f" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<path d="M${cx-40},${hy-10} Q${cx-20},${hy-50} ${cx},${hy-50} L${cx},${hy-10} Z" fill="#ffd23a" opacity=".9"/><path d="M${cx},${hy-50} Q${cx+20},${hy-50} ${cx+40},${hy-10} L${cx},${hy-10} Z" fill="#38a8ff" opacity=".9"/>`;
+  s+=`<line x1="${cx}" y1="${hy-50}" x2="${cx}" y2="${hy-64}" stroke="${INK}" stroke-width="4"/>`;
+  if(full) s+=`<ellipse cx="${cx}" cy="${hy-66}" rx="44" ry="7" fill="#fff" opacity=".6"/><path d="M${cx-50},${hy-74} l-10,-4 M${cx+50},${hy-74} l10,-4" stroke="#fff" stroke-width="3"/>`;
+  else s+=`<path d="M${cx-30},${hy-70} L${cx+30},${hy-60}" stroke="#7dff6a" stroke-width="8" stroke-linecap="round"/>`;
+  s+= full? combo(cx-100,hy-80,8,'#ff8fb8') : combo(cx+80,hy-50,1,'#bbb');
+  if(full) s+=shout(cx-20,hy-130,'SUGAR RUSH!','#ff8fb8');
+  return s;
+}
+
+/* YO-YO KID: circus acrobat */
+function acrobat(cx,full){
+  const lift=full?-40:0, hip=590+lift, sh=488+lift, hy=430+lift; let s=shadow(cx);
+  if(full){ // tumbling pose: one leg up
+    s+=limb(`${cx-12},${hip} ${cx-30},${hip+50} ${cx-40},${hip+94}`,16,'#d9233a')+limb(`${cx+12},${hip} ${cx+60},${hip+10} ${cx+100},${hip-20}`,16,'#d9233a');
+    s+=boot(cx-44,hip+98,'#fafafa')+`<ellipse cx="${cx+108}" cy="${hip-24}" rx="16" ry="10" fill="#fafafa" stroke="${INK}" stroke-width="3"/>`;
+  } else { s+=limb(`${cx-12},${hip} ${cx-24},${hip+50} ${cx-30},${hip+94}`,16,'#d9233a')+limb(`${cx+12},${hip} ${cx+24},${hip+50} ${cx+30},${hip+94}`,16,'#d9233a')+boot(cx-34,hip+98,'#fafafa')+boot(cx+34,hip+98,'#fafafa'); }
+  // striped leotard
+  s+=`<path d="M${cx-32},${sh} L${cx+32},${sh} L${cx+30},${hip+10} L${cx-30},${hip+10} Z" fill="#fafafa" stroke="${INK}" stroke-width="5"/>`;
+  for(let i=0;i<4;i++) s+=`<rect x="${cx-30}" y="${sh+10+i*24}" width="60" height="11" fill="#d9233a"/>`;
+  s+=`<path d="M${cx-32},${sh} L${cx+32},${sh} L${cx+30},${hip+10} L${cx-30},${hip+10} Z" fill="none" stroke="${INK}" stroke-width="5"/>`;
+  // ruffle collar
+  for(let i=-3;i<=3;i++) s+=`<circle cx="${cx+i*11}" cy="${sh-2}" r="9" fill="#ffd23a" stroke="${INK}" stroke-width="2"/>`;
+  s+=limb(`${cx-32},${sh+10} ${cx-62},${sh+30} ${cx-80},${sh+4}`,14,'#fafafa')+hand(cx-82,sh);
+  const hx=cx+80, hy2=sh+20;
+  s+=limb(`${cx+32},${sh+10} ${cx+60},${sh+30} ${hx},${hy2}`,14,'#fafafa');
+  s+=yoyoTrick(cx,hx,hy2,full,'#ffd23a')+hand(hx,hy2);
+  // juggling stars over the other hand at full
+  if(full) for(let i=0;i<3;i++) s+=glint(cx-100+i*20,sh-50-i*30+(i==1?-10:0),14,RAINBOW[i*2]);
+  s+=kidHead(cx,hy,full);
+  // hair + tiny top hat
+  s+=`<path d="M${cx-42},${hy-4} Q${cx-40},${hy-40} ${cx},${hy-40} Q${cx+40},${hy-40} ${cx+42},${hy-4} Q${cx+10},${hy-24} ${cx-42},${hy-4}" fill="#d97a2a"/>`;
+  s+=`<rect x="${cx+2}" y="${hy-80}" width="34" height="36" fill="#d9233a" stroke="${INK}" stroke-width="3" transform="rotate(14 ${cx+19} ${hy-62})"/><ellipse cx="${cx+16}" cy="${hy-42}" rx="28" ry="6" fill="#d9233a" stroke="${INK}" stroke-width="3" transform="rotate(14 ${cx+16} ${hy-42})"/><rect x="${cx+3}" y="${hy-56}" width="34" height="6" fill="#ffd23a" transform="rotate(14 ${cx+19} ${hy-53})"/>`;
+  s+= full? combo(cx-130,hy-40,8,'#ffd23a') : combo(cx-80,hy-60,1,'#bbb');
+  if(full) s+=shout(cx+20,hy-120,'TA-DA!','#ffd23a');
+  return s;
+}
+
+/* BARD helpers */
+function note(x,y,c,r){r=r||1;return `<g transform="translate(${x},${y}) scale(${r})"><ellipse cx="0" cy="0" rx="9" ry="7" fill="${c}" stroke="${INK}" stroke-width="2" transform="rotate(-20)"/><line x1="8" y1="-2" x2="8" y2="-30" stroke="${INK}" stroke-width="3"/><path d="M8,-30 q14,6 10,18" stroke="${INK}" stroke-width="3" fill="none"/></g>`}
+function notes(cx,y,n,c){let s='';for(let i=0;i<n;i++) s+=note(cx-60+i*30,y+((i%2)?-14:0),c,1);return s;}
+
+/* BARD: rock star */
+function rocker(cx,full){
+  const hip=560, sh=440, hy=380; let s=shadow(cx);
+  if(full){ for(const d of [-1,1]) s+=`<path d="M${cx+d*20},130 L${cx+d*160},690 L${cx+d*60},690 Z" fill="#fff6c8" opacity=".25"/>`;
+    for(const [dx,h] of [[-170,60],[-130,90],[130,80],[170,56]]) s+=`<path d="M${cx+dx-16},690 q-4,${-h*0.6} 16,${-h} q20,${h*0.4} 16,${h} Z" fill="#ff9a1a" stroke="${INK}" stroke-width="3"/><path d="M${cx+dx-6},690 q0,${-h*0.4} 6,${-h*0.6} q8,${h*0.3} 6,${h*0.6} Z" fill="#fff27a"/>`; }
+  s+=limb(`${cx-14},${hip} ${cx-50},${hip+60} ${cx-66},${hip+124}`,20,'#1c1c22')+limb(`${cx+14},${hip} ${cx+44},${hip+64} ${cx+60},${hip+124}`,20,'#1c1c22');
+  s+=boot(cx-70,hip+128,INK)+boot(cx+64,hip+128,INK);
+  for(const x of [cx-56,cx+48]) s+=`<path d="M${x},${hip+60} l10,6 l-10,6" stroke="#bbb" stroke-width="2" fill="none"/>`;
+  s+=`<path d="M${cx-42},${sh} L${cx+42},${sh} L${cx+38},${hip+8} L${cx-38},${hip+8} Z" fill="#f4f4f4" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-10},${sh+36} l10,-14 l10,14 l-10,16 Z" fill="${ORANGE}"/>`;
+  s+=`<path d="M${cx-44},${sh-4} L${cx-14},${sh} L${cx-18},${hip+6} L${cx-44},${hip+2} Z M${cx+44},${sh-4} L${cx+14},${sh} L${cx+18},${hip+6} L${cx+44},${hip+2} Z" fill="url(#leather)" stroke="${INK}" stroke-width="4"/>`;
+  for(let i=0;i<4;i++) s+=`<circle cx="${cx-30}" cy="${sh+10+i*8}" r="2.5" fill="#ccc"/>`;
+  // electric guitar (flying-V-ish original shape)
+  const gx=cx+6, gy=hip-10;
+  s+=`<g transform="rotate(-24 ${gx} ${gy})"><path d="M${gx-60},${gy-26} L${gx+20},${gy-6} L${gx+20},${gy+6} L${gx-60},${gy+26} L${gx-40},${gy} Z" fill="#d9233a" stroke="${INK}" stroke-width="4"/><rect x="${gx+18}" y="${gy-5}" width="120" height="10" fill="#6b4226" stroke="${INK}" stroke-width="2"/><path d="M${gx+136},${gy-12} l26,4 l0,16 l-26,4 Z" fill="${INK}"/><rect x="${gx-24}" y="${gy-8}" width="8" height="16" fill="#ccc"/></g>`;
+  s+=limb(`${cx-42},${sh+10} ${cx-56},${sh+60} ${cx-26},${hip-6}`,16,'#1c1c22')+hand(cx-26,hip-8);
+  s+=limb(`${cx+42},${sh+10} ${cx+80},${sh+40} ${cx+100},${hip-60}`,16,'#1c1c22')+hand(cx+100,hip-62);
+  // head + spiky hair + shades
+  s+=`<circle cx="${cx}" cy="${hy}" r="36" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<path d="M${cx-38},${hy-6} l-14,-30 l18,8 l-2,-30 l18,20 l10,-30 l10,28 l18,-24 l-2,30 l20,-6 l-14,30 Q${cx},${hy-26} ${cx-38},${hy-6}" fill="${full?ORANGE:'#1c1c22'}" stroke="${INK}" stroke-width="3"/>`;
+  s+=`<rect x="${cx-30}" y="${hy-6}" width="26" height="14" rx="4" fill="${INK}"/><rect x="${cx+4}" y="${hy-6}" width="26" height="14" rx="4" fill="${INK}"/><line x1="${cx-4}" y1="${hy}" x2="${cx+4}" y2="${hy}" stroke="${INK}" stroke-width="3"/>`;
+  s+= full?`<path d="M${cx-14},${hy+16} Q${cx},${hy+34} ${cx+14},${hy+16} Z" fill="#fff" stroke="${INK}" stroke-width="3"/>`:`<path d="M${cx-8},${hy+20} L${cx+10},${hy+18}" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>`;
+  s+=notes(cx+20,hy-80,full?5:1,full?'#ffd23a':'#bbb');
+  if(full) s+=shout(cx,hy-140,'ENCORE!','#ffd23a');
+  return s;
+}
+
+/* BARD: minstrel */
+function minstrel(cx,full){
+  const hip=560, sh=440, hy=380; let s=shadow(cx);
+  s+=limb(`${cx-14},${hip} ${cx-40},${hip+60} ${cx-52},${hip+124}`,18,'#3aa83a')+limb(`${cx+14},${hip} ${cx+36},${hip+64} ${cx+50},${hip+124}`,18,'#d9233a');
+  s+=`<path d="M${cx-74},${hip+124} q20,-8 38,0 q4,-10 12,-12" fill="none" stroke="#6b4226" stroke-width="12" stroke-linecap="round"/><path d="M${cx+30},${hip+124} q20,-8 38,0 q6,-10 14,-12" fill="none" stroke="#6b4226" stroke-width="12" stroke-linecap="round"/>`;
+  // tunic with zigzag hem
+  s+=`<path d="M${cx-38},${sh} L${cx+38},${sh} L${cx+46},${hip+30} l-12,-12 l-12,12 l-12,-12 l-12,12 l-12,-12 l-12,12 l-12,-12 l-12,12 Z" fill="#6b3fa0" stroke="${INK}" stroke-width="5"/>`;
+  s+=`<rect x="${cx-40}" y="${hip-18}" width="80" height="10" fill="#6b4226" stroke="${INK}" stroke-width="2"/>`;
+  // lute
+  const lx=cx+10, ly=hip-30;
+  s+=`<g transform="rotate(-30 ${lx} ${ly})"><ellipse cx="${lx-20}" cy="${ly}" rx="44" ry="34" fill="#d9a046" stroke="${INK}" stroke-width="4"/><circle cx="${lx-16}" cy="${ly}" r="10" fill="#5a3418"/><rect x="${lx+20}" y="${ly-6}" width="90" height="12" fill="#8a5a2a" stroke="${INK}" stroke-width="2"/><path d="M${lx+108},${ly-8} l24,-20 l6,8 l-22,24 Z" fill="#8a5a2a" stroke="${INK}" stroke-width="2"/></g>`;
+  s+=limb(`${cx-38},${sh+10} ${cx-54},${sh+60} ${cx-20},${ly+4}`,16,'#6b3fa0')+hand(cx-20,ly+2);
+  s+=limb(`${cx+38},${sh+10} ${cx+70},${sh+30} ${cx+86},${ly-50}`,16,'#6b3fa0')+hand(cx+86,ly-52);
+  // head, goatee, feathered cap
+  s+=`<circle cx="${cx}" cy="${hy}" r="36" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  s+=face(cx,hy,full?'grin':'smirk')+`<path d="M${cx-6},${hy+30} l6,14 l6,-14" fill="#8a5a2a" stroke="${INK}" stroke-width="2"/>`;
+  s+=`<path d="M${cx-44},${hy-10} Q${cx-30},${hy-54} ${cx+10},${hy-48} Q${cx+46},${hy-40} ${cx+50},${hy-14} Q${cx},${hy-24} ${cx-44},${hy-10}" fill="#2a8a5a" stroke="${INK}" stroke-width="4"/>`;
+  s+=`<path d="M${cx+20},${hy-46} Q${cx+70},${hy-110} ${cx+90},${hy-104} Q${cx+60},${hy-80} ${cx+30},${hy-40}" fill="${full?'#ffd23a':'#d9233a'}" stroke="${INK}" stroke-width="3"/>`;
+  if(full) for(let i=0;i<7;i++){ const a=i*0.9; s+=note(cx+Math.cos(a)*140, sh+20+Math.sin(a)*90, RAINBOW[i%6], 1.1); }
+  else s+=notes(cx-20,hy-80,1,'#bbb');
+  s+= full? '' : '';
+  if(full) s+=shout(cx-20,hy-110,'A SONG!','#ffd23a');
+  return s;
+}
+
+/* BARD: street busker */
+function busker(cx,full){
+  const hip=560, sh=440, hy=380; let s=shadow(cx);
+  // open guitar case with coins
+  s+=`<path d="M${cx+80},686 L${cx+200},686 L${cx+190},660 L${cx+90},660 Z" fill="#3a2418" stroke="${INK}" stroke-width="4"/><path d="M${cx+92},662 L${cx+188},662 L${cx+184},682 L${cx+96},682 Z" fill="#a5122a"/>`;
+  const coins=full?9:1; for(let i=0;i<coins;i++) s+=`<circle cx="${cx+104+(i%5)*18}" cy="${676-Math.floor(i/5)*8}" r="6" fill="url(#gold)" stroke="${INK}" stroke-width="1.5"/>`;
+  if(full) for(let i=0;i<4;i++) s+=`<path d="M${cx+110+i*20},${640-i*16} c-6,-8 -16,0 -8,8 l8,8 l8,-8 c8,-8 -2,-16 -8,-8" fill="#ff5a7a" stroke="${INK}" stroke-width="2"/>`;
+  s+=limb(`${cx-14},${hip} ${cx-36},${hip+64} ${cx-46},${hip+124}`,20,'#4a5a7a')+limb(`${cx+14},${hip} ${cx+36},${hip+64} ${cx+46},${hip+124}`,20,'#4a5a7a');
+  s+=boot(cx-50,hip+128,'#6b4226')+boot(cx+50,hip+128,'#6b4226');
+  // flannel shirt
+  s+=`<path d="M${cx-40},${sh} L${cx+40},${sh} L${cx+36},${hip+8} L${cx-36},${hip+8} Z" fill="#3a7a5a" stroke="${INK}" stroke-width="5"/>`;
+  for(let x=-30;x<=30;x+=20) s+=`<line x1="${cx+x}" y1="${sh}" x2="${cx+x}" y2="${hip+8}" stroke="#2a5a40" stroke-width="5"/>`;
+  for(let y=sh+20;y<hip;y+=26) s+=`<line x1="${cx-38}" y1="${y}" x2="${cx+38}" y2="${y}" stroke="#2a5a40" stroke-width="5"/>`;
+  // acoustic guitar
+  const gx=cx-4, gy=hip-20;
+  s+=`<g transform="rotate(-26 ${gx} ${gy})"><ellipse cx="${gx-30}" cy="${gy}" rx="40" ry="36" fill="#d9a046" stroke="${INK}" stroke-width="4"/><ellipse cx="${gx+12}" cy="${gy}" rx="28" ry="26" fill="#d9a046" stroke="${INK}" stroke-width="4"/><rect x="${gx-40}" y="${gy-30}" width="40" height="60" fill="#d9a046"/><circle cx="${gx-6}" cy="${gy}" r="11" fill="#3a2418"/><rect x="${gx+36}" y="${gy-6}" width="110" height="12" fill="#6b4226" stroke="${INK}" stroke-width="2"/><rect x="${gx+144}" y="${gy-10}" width="22" height="20" rx="3" fill="#3a2418"/></g>`;
+  s+=limb(`${cx-40},${sh+10} ${cx-52},${sh+60} ${cx-24},${gy+6}`,16,'#3a7a5a')+hand(cx-24,gy+4);
+  s+=limb(`${cx+40},${sh+10} ${cx+80},${sh+30} ${cx+104},${gy-62}`,16,'#3a7a5a')+hand(cx+104,gy-64);
+  // harmonica holder
+  s+=`<rect x="${cx-14}" y="${hy+36}" width="28" height="8" fill="#c7ced6" stroke="${INK}" stroke-width="2"/>`;
+  // head + beanie + beard stubble
+  s+=`<circle cx="${cx}" cy="${hy}" r="36" fill="${SKIN}" stroke="${INK}" stroke-width="5"/>`;
+  s+= full? `<path d="M${cx-22},${hy+2} Q${cx-14},${hy-6} ${cx-6},${hy+2} M${cx+6},${hy+2} Q${cx+14},${hy-6} ${cx+22},${hy+2}" stroke="${INK}" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M${cx-12},${hy+16} Q${cx},${hy+30} ${cx+12},${hy+16} Z" fill="#fff" stroke="${INK}" stroke-width="3"/>` : face(cx,hy,'flat');
+  s+=`<path d="M${cx-30},${hy+14} Q${cx},${hy+44} ${cx+30},${hy+14}" fill="none" stroke="#8a6a4a" stroke-width="3" stroke-dasharray="2 4"/>`;
+  s+=`<path d="M${cx-38},${hy-8} Q${cx-40},${hy-60} ${cx},${hy-62} Q${cx+40},${hy-60} ${cx+38},${hy-8} Z" fill="#d97a2a" stroke="${INK}" stroke-width="4"/><rect x="${cx-40}" y="${hy-18}" width="80" height="14" rx="6" fill="#b5602a" stroke="${INK}" stroke-width="3"/><circle cx="${cx}" cy="${hy-64}" r="9" fill="#f4f4f4" stroke="${INK}" stroke-width="2"/>`;
+  s+=notes(cx,hy-96,full?5:1,full?'#ff5a7a':'#bbb');
+  if(full) s+=shout(cx,hy-150,'ONE MORE SONG!','#ff5a7a');
+  return s;
+}
+
+const items=[
+ ['yoyo-skater-kid','YO-YO KID','SKATER KID','combo counter climbs; full = rainbow around-the-world',skater,'TRICK','#ffd23a'],
+ ['yoyo-candy-kid','YO-YO KID','CANDY PROPELLER KID','full = beanie spins, sprinkles fly',candykid,'TRICK','#ff8fb8'],
+ ['yoyo-circus-kid','YO-YO KID','CIRCUS ACROBAT','full = flips and juggling stars',acrobat,'TRICK','#ffd23a'],
+ ['bard-rock-star','BARD','ROCK STAR','notes pile up on the beat; full = stage lights and pyro',rocker,'GROOVE','#ffd23a'],
+ ['bard-minstrel','BARD','MINSTREL','lute and feathered cap; full = rainbow notes swirl around him',minstrel,'GROOVE','#c86bff'],
+ ['bard-street-busker','BARD','STREET BUSKER','acoustic guitar and harmonica; full = coins and hearts fill his case',busker,'GROOVE','#ff5a7a'],
+];
+const wrap=document.getElementById('cards');
+for(const [id,f,t,tag,fn,lab,col] of items){
+  const svg=`<svg width="1200" height="800" viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+   ${bg()}${header2(f,t,tag)}
+   ${caption(320,lab+': EMPTY')}${caption(880,lab+': FULL')}
+   <line x1="600" y1="130" x2="600" y2="680" stroke="${INK}" stroke-width="2" stroke-dasharray="8 10" opacity=".35"/>
+   ${fn(320,false)}${fn(880,true)}
+   ${meter(110,lab,0.08,false,col)}${meter(670,lab,1,true,col)}
+  </svg>`;
+  const d=document.createElement('div');d.className='card';d.id=id;d.innerHTML=svg;wrap.appendChild(d);
+}
+</script></body></html>
