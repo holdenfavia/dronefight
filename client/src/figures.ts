@@ -3,8 +3,8 @@
 // the Spark's pointed hat, the Titan's size and boxy head, the Ninja's hood, the Gunslinger's hat and revolver,
 // the Chef's toque and pan, the Ghost's sheet, the Yo-yo Kid's cap and yo-yo, the Bard's guitar, and the secret
 // River's round belly and propeller beanie (ADR-0077). Seasonal (ADR-0082): the Turkey's tail fan, beak and wattle,
-// the Pilgrim's tall buckled hat, white collar and blunderbuss, and First Light's long hair, deerskin mantle,
-// wampum sash and canoe paddle (drawn plainly: no headdress, no caricature).
+// the Pilgrim's tall buckled hat, white collar and blunderbuss, and Chief's long hair, deerskin mantle,
+// wampum sash and canoe paddle (drawn plainly: a headband with a few simple feathers, no caricature).
 // Local units around the body centre, y down, facing +x.
 
 import type { FighterId } from '../../shared/fighter/fighters';
@@ -333,7 +333,7 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
     ctx.stroke();
   }
 
-  // First Light's deerskin mantle over the shoulders, and the wampum sash across it.
+  // Chief's deerskin mantle over the shoulders, and the wampum sash across it.
   if (id === 'firstlight') {
     ctx.fillStyle = '#b98a57';
     ctx.strokeStyle = PALETTE.ink;
@@ -518,7 +518,7 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
     }
   }
 
-  // First Light's long dark hair, down the back, tied with a band in the slot color.
+  // Chief's long dark hair, down the back, tied with a band in the slot color.
   if (id === 'firstlight') {
     ctx.fillStyle = '#1f1a17';
     ctx.beginPath();
@@ -726,6 +726,28 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+  } else if (id === 'firstlight') {
+    // A headband in the slot color with a few simple feathers at the back.
+    ctx.fillRect(-headR * 1.02, headY - headR * 0.6, headR * 2.04, headR * 0.32);
+    const tilt = Math.sin(pose.phase * 0.3) * 0.05;
+    const feathers: [number, number, string][] = [[-0.75, -0.35, '#f4efe6'], [-0.45, -0.1, '#c8642b'], [-1.0, -0.6, '#3a2a20']];
+    for (const [fx, lean, col] of feathers) {
+      ctx.save();
+      ctx.translate(headR * fx, headY - headR * 0.55);
+      ctx.rotate(lean + tilt);
+      ctx.fillStyle = col;
+      ctx.strokeStyle = PALETTE.ink;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(0, -headR * 0.75, headR * 0.2, headR * 0.75, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -headR * 1.4);
+      ctx.stroke();
+      ctx.restore();
+    }
   } else if (titan) {
     // A brow plate and a belt.
     ctx.fillRect(-headR, capY - 2, headR * 2, 5);

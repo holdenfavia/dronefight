@@ -44,7 +44,7 @@ export const SEASONS: Record<SeasonId, SeasonDef> = {
   thanksgiving: {
     id: 'thanksgiving',
     name: 'Thanksgiving',
-    blurb: 'Turkey, Pilgrim and First Light join the fight, on the Harvest Farm.',
+    blurb: 'Turkey, Pilgrim and Chief join the fight, on the Harvest Farm.',
     start: { month: 11, day: 1 },
     end: { month: 11, day: 30 },
     fighters: ['turkey', 'pilgrim', 'firstlight'],

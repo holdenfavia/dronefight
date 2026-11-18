@@ -44,7 +44,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 ## Later
 
-- [x] Seasonal events framework; Thanksgiving: Turkey, Pilgrim, First Light, Harvest Farm (ADR-0082)
+- [x] Seasonal events framework; Thanksgiving: Turkey, Pilgrim, Chief, Harvest Farm (ADR-0082)
 - [ ] Christmas event: fighters and a winter stage (add a `SEASONS` entry, ADR-0082)
 - [ ] More fighters, more stages, items
 - [ ] Gamepad support

@@ -72,7 +72,7 @@ describe('Thanksgiving fighters (ADR-0082)', () => {
     expect(w.fighters[0]!.meter).toBe(1);
   });
 
-  it('First Light: ground, air and special hits grow the Three Sisters; all three make the next smash a Tidal Sweep', () => {
+  it('Chief: ground, air and special hits grow the Three Sisters; all three make the next smash a Tidal Sweep', () => {
     const w = duel('firstlight', 'titan', 50);
     const f = w.fighters[0]!;
     run(w, 30, tap({ aimRight: true, attack: true }));
