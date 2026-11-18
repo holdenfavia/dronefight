@@ -10,7 +10,7 @@ A **side-view platform fighter** to play with friends: an original cast of ten f
 
 - Desktop browsers (Chrome/Edge primary; Safari/Firefox best-effort), **keyboard only** (ADR-0070).
 - Up to **4 fighters** per match: **one player per keyboard** (ADR-0071), CPUs (Easy, Normal, Hard) fill the rest. No local 2-player until online play.
-- Boot to a title screen and main menu (Fight, Online, Controls), then a **roster-grid character select** with four player panels; CPUs are tagged **CPU** with their level everywhere (ADR-0075).
+- Boot to a title screen and main menu (Fight, Online, Controls, Settings), then a **roster-grid character select** with four player panels; CPUs are tagged **CPU** with their level everywhere (ADR-0075). **Settings** sets your own **tag** (up to 4 letters or digits, over your fighter) and **color**, saved in the browser and shown to the room online (ADR-0083).
 - **Online** with friends by two-digit room code (ADR-0005) or invite link `?room=NN`: each player on their own computer picks and readies up in the room's lobby, the host sets stage, stocks and CPUs and starts. The **server runs the fight** and sends every frame's inputs to everyone; snapshots heal drift; late joiners watch; a leaver's fighter becomes a CPU (ADR-0076).
 
 ## Rules (ADR-0070)
@@ -72,7 +72,7 @@ Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Cr
 
 ## Look and sound
 
-- Bright sky over a parallax city, orange / black / white (ADR-0007), characters drawn as **placeholder stick figures** for now (owner's request), each with its own silhouette (gloves, sword, pointed hat, huge build, hood, cowboy hat, toque, sheet, cap and yo-yo, guitar) in the player's color (one color per slot: orange, lime, cyan, pink; ADR-0026; the team color in team battles, ADR-0081). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
+- Bright sky over a parallax city, orange / black / white (ADR-0007), characters drawn as **placeholder stick figures** for now (owner's request), each with its own silhouette (gloves, sword, pointed hat, huge build, hood, cowboy hat, toque, sheet, cap and yo-yo, guitar) in the player's color (one color per slot: orange, lime, cyan, pink, ADR-0026, unless the player picked their own, ADR-0083; the team color in team battles, ADR-0081). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
 - Menus: bold condensed caps on dark translucent panels with orange accents (ADR-0039).
 - All sound synthesized in the browser (ADR-0010).
 

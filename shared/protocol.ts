@@ -6,10 +6,12 @@ import type { BotLevel } from './fighter/bot.js';
 import type { FighterId } from './fighter/fighters.js';
 import { isBotLevel, isFighterId, isInputBits, isStageId, isTeam, type MatchStart, type RoomSettings } from './online.js';
 import { MATCH } from './fighter/config.js';
+import { parseProfile, type Profile } from './profile.js';
 
 export type ClientMessage =
-  | { t: 'create' }
-  | { t: 'join'; code: string }
+  /** `profile`: your tag and color (ADR-0083), shown to the room. */
+  | { t: 'create'; profile?: Profile }
+  | { t: 'join'; code: string; profile?: Profile }
   | { t: 'leave' }
   | { t: 'relay'; data: unknown }
   /** Your fighter, Ready and team (ADR-0081) in the lobby. */
@@ -26,6 +28,9 @@ export interface RoomMember {
   fighter: FighterId;
   ready: boolean;
   team: number;
+  /** Their personal tag and color (ADR-0083). */
+  tag: string;
+  color: number;
 }
 
 export type ServerMessage =
@@ -79,11 +84,13 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   const msg = m as Record<string, unknown>;
   switch (msg.t) {
     case 'create':
+      return 'profile' in msg ? { t: 'create', profile: parseProfile(msg.profile) } : { t: 'create' };
     case 'leave':
     case 'start':
       return { t: msg.t };
     case 'join':
-      return typeof msg.code === 'string' && /^\d{2}$/.test(msg.code) ? { t: 'join', code: msg.code } : null;
+      if (typeof msg.code !== 'string' || !/^\d{2}$/.test(msg.code)) return null;
+      return 'profile' in msg ? { t: 'join', code: msg.code, profile: parseProfile(msg.profile) } : { t: 'join', code: msg.code };
     case 'relay':
       return 'data' in msg ? { t: 'relay', data: msg.data } : null;
     case 'pick':

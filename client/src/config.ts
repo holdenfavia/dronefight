@@ -7,9 +7,17 @@ export const SLOT_COLORS = ['#ff6a13', '#9be22d', '#2ec5ff', '#ff4fa3'] as const
 export const TEAM_COLORS = ['#ff3b30', '#2f7bff', '#36d15a', '#ffd21f'] as const;
 export const TEAM_NAMES = ['Red', 'Blue', 'Green', 'Yellow'] as const;
 
-/** A fighter's color: its team's in a team battle, otherwise its slot's. */
+/** Free-for-all colors by slot for the fight on screen: the slot colors, or players' own (ADR-0083). */
+let fightColors: readonly string[] = SLOT_COLORS;
+
+/** Set the free-for-all colors by slot (shared/profile.ts resolveColors); no argument = the slot colors. */
+export function setFightColors(colors: readonly string[] = SLOT_COLORS): void {
+  fightColors = colors;
+}
+
+/** A fighter's color: its team's in a team battle, otherwise its slot's or its player's own. */
 export function fighterColor(f: { slot: number; team: number }): string {
-  return (f.team >= 0 ? TEAM_COLORS[f.team] : SLOT_COLORS[f.slot]) ?? '#fff';
+  return (f.team >= 0 ? TEAM_COLORS[f.team] : fightColors[f.slot] ?? SLOT_COLORS[f.slot]) ?? '#fff';
 }
 
 /** Menu layout (ADR-0075). */

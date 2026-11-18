@@ -7,6 +7,7 @@ import type { BotLevel } from '../../shared/fighter/bot';
 import type { FighterId } from '../../shared/fighter/fighters';
 import type { MatchStart, MemberPick, RoomSettings } from '../../shared/online';
 import type { ClientMessage, RoomMember, ServerMessage } from '../../shared/protocol';
+import { profile } from './profile';
 
 export type NetStatus = 'offline' | 'connecting' | 'online';
 
@@ -64,7 +65,7 @@ export class NetClient {
   }
 
   create(): void {
-    this.send({ t: 'create' });
+    this.send({ t: 'create', profile: profile() });
   }
 
   join(code: string): void {
@@ -72,7 +73,7 @@ export class NetClient {
       this.fail('Room codes are two digits, like 42');
       return;
     }
-    this.send({ t: 'join', code });
+    this.send({ t: 'join', code, profile: profile() });
   }
 
   leave(): void {

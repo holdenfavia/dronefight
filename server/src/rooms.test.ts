@@ -32,10 +32,26 @@ describe('rooms', () => {
     expect(room.code).toBe('42');
     expect(room.you).toBe(1);
     expect(room.host).toBe(0);
-    expect(room.members).toEqual([{ id: 0, fighter: 'ninja', ready: true, team: 0 }, { id: 1, fighter: 'titan', ready: true, team: 1 }]);
+    expect(room.members).toEqual([
+      { id: 0, fighter: 'ninja', ready: true, team: 0, tag: '', color: -1 },
+      { id: 1, fighter: 'titan', ready: true, team: 1, tag: '', color: -1 },
+    ]);
     rooms.leave(a);
     rooms.leave(b);
     expect(rooms.stats()).toEqual({ rooms: 0, players: 0, fights: 0 });
+  });
+
+  it('shares each member\'s tag and color with the room and the fight (ADR-0083)', () => {
+    const rooms = new RoomManager(() => 0.42);
+    const a = peer();
+    const b = peer();
+    rooms.handle(a, parseClientMessage('{"t":"create","profile":{"tag":"hf","color":4}}')!);
+    rooms.handle(b, parseClientMessage('{"t":"join","code":"42","profile":{"tag":"cpu9","color":77}}')!);
+    expect(last(a, 'room')!.members.map((m) => [m.tag, m.color])).toEqual([['HF', 4], ['', -1]]);
+    rooms.handle(a, { t: 'pick', fighter: 'ninja', ready: true });
+    rooms.handle(b, { t: 'pick', fighter: 'titan', ready: true });
+    rooms.handle(a, { t: 'start' });
+    expect(last(b, 'match')!.start.fighters.map((f) => [f.tag, f.color])).toEqual([['HF', 4], ['', -1]]);
   });
 
   it('rejects unknown rooms and bad messages', () => {
