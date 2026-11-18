@@ -7,6 +7,7 @@ import { FIGHTER_IDS, type FighterId } from '../../shared/fighter/fighters.js';
 import { defaultRoomSettings, serializeWorld, sideCount, SNAPSHOT_EVERY_FRAMES, startingTeam, type MatchFighter, type RoomSettings } from '../../shared/online.js';
 import { MAX_ROOM_MEMBERS, type ClientMessage, type RoomMember, type ServerMessage } from '../../shared/protocol.js';
 import { OnlineMatch } from './match.js';
+import { defaultProfile, type Profile } from '../../shared/profile.js';
 import { activeSeasons, randomPool } from '../../shared/seasons.js';
 
 export interface Peer {
@@ -22,6 +23,8 @@ interface Member {
   ready: boolean;
   /** Team for team battles (ADR-0081). */
   team: number;
+  /** Personal tag and color (ADR-0083). */
+  profile: Profile;
 }
 
 interface Room {
@@ -50,7 +53,7 @@ export class RoomManager {
         if (!code) return send(peer, { t: 'error', code: 'no-codes', message: 'Every room code is in use' });
         const room: Room = { code, members: new Map(), nextId: 0, settings: defaultRoomSettings(), match: null, pending: [], pendingFrom: 0 };
         this.rooms.set(code, room);
-        this.add(peer, room);
+        this.add(peer, room, msg.profile);
         return;
       }
       case 'join': {
@@ -59,7 +62,7 @@ export class RoomManager {
         if (this.peerRoom.get(peer)?.room === room) return;
         if (room.members.size >= MAX_ROOM_MEMBERS) return send(peer, { t: 'error', code: 'room-full', message: 'That room is full' });
         this.leave(peer);
-        this.add(peer, room);
+        this.add(peer, room, msg.profile);
         return;
       }
       case 'leave':
@@ -166,7 +169,7 @@ export class RoomManager {
   private startMatch(room: Room): void {
     const s = room.settings;
     const teams = !!s.teams;
-    const fighters: MatchFighter[] = [...room.members.entries()].map(([id, m]) => ({ fighter: m.fighter, member: id, level: 0, team: teams ? m.team : -1 }));
+    const fighters: MatchFighter[] = [...room.members.entries()].map(([id, m]) => ({ fighter: m.fighter, member: id, level: 0, team: teams ? m.team : -1, tag: m.profile.tag, color: m.profile.color }));
     // CPUs are drawn from the everyday cast plus the fighters of the seasonal events on today (ADR-0082).
     const pool = randomPool(activeSeasons(this.now()));
     s.cpus.forEach((level, i) => {
@@ -190,12 +193,12 @@ export class RoomManager {
     this.broadcastRoom(room);
   }
 
-  private add(peer: Peer, room: Room): void {
+  private add(peer: Peer, room: Room, profile: Profile = defaultProfile()): void {
     const id = room.nextId++;
     const taken = new Set([...room.members.values()].map((m) => m.fighter));
     const fighter = FIGHTER_IDS.find((f) => !taken.has(f)) ?? FIGHTER_IDS[0]!;
     const team = startingTeam([...room.members.values()].map((m) => m.team));
-    room.members.set(id, { peer, fighter, ready: false, team });
+    room.members.set(id, { peer, fighter, ready: false, team, profile });
     this.peerRoom.set(peer, { room, id });
     trimCpus(room);
     this.broadcastRoom(room);
@@ -209,7 +212,7 @@ export class RoomManager {
   }
 
   private broadcastRoom(room: Room): void {
-    const members: RoomMember[] = [...room.members.entries()].map(([id, m]) => ({ id, fighter: m.fighter, ready: m.ready, team: m.team }));
+    const members: RoomMember[] = [...room.members.entries()].map(([id, m]) => ({ id, fighter: m.fighter, ready: m.ready, team: m.team, tag: m.profile.tag, color: m.profile.color }));
     const host = hostOf(room);
     for (const [id, m] of room.members) {
       send(m.peer, { t: 'room', code: room.code, you: id, members, host, settings: room.settings, playing: !!room.match });

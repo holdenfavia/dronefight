@@ -97,6 +97,9 @@ export interface MatchFighter {
   level: BotLevel | 0;
   /** Team in a team battle (ADR-0081), -1 in a free-for-all. */
   team: number;
+  /** A member's personal tag and color (ADR-0083); CPUs have none. */
+  tag?: string;
+  color?: number;
 }
 
 export interface MatchStart {

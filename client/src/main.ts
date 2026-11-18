@@ -10,10 +10,11 @@ import { createWorld, NO_INPUT, step, type GameEvent, type Input, type World } f
 import { Sfx } from './audio';
 import { Keyboard } from './input';
 import { cheatOn, cheatRules, onCheatsChange, randomFighters, TripleTap } from './cheats';
-import { CHEAT_LOOKS, ONLINE } from './config';
+import { CHEAT_LOOKS, ONLINE, setFightColors } from './config';
+import { resolveColors } from '../../shared/profile';
 import { Renderer, type Prev } from './render';
 import { NetClient } from './net';
-import { Ui, slotTag, type MatchSetup } from './ui';
+import { Ui, setupColors, slotTag, type MatchSetup } from './ui';
 
 /** Frames the "GO!" and "GAME!" banners stay up. */
 const GO_FRAMES = 50;
@@ -113,6 +114,8 @@ function startMatch(setup: MatchSetup): void {
   world = createWorld(setup.stage, active.map((s) => ({ id: s.fighter, team: setup.teams ? s.team : -1 })), setup.stocks, seed, rules);
   bots = active.map((s, i) => (s.kind === 'bot' ? createBot(i, s.level, seed) : null));
   human = active.map((s) => s.kind === 'p1');
+  // Your own tag and color (ADR-0083); CPUs keep theirs.
+  setFightColors(setupColors(setup.slots).filter((_c, i) => setup.slots[i]!.kind !== 'off'));
   names = active.map((s) => `${slotTag(s)} ${FIGHTERS[s.fighter].name}`);
   tags = active.map((s) => ({ text: slotTag(s), cpu: s.kind === 'bot' }));
   renderer.setTags(tags);
@@ -138,8 +141,11 @@ function startOnline(start: MatchStart, you: number): void {
   onlineBuffering = true;
   onlineMenu = false;
   onlineResults = true;
-  tags = start.fighters.map((f, i) => (f.member < 0 ? { text: `CPU ${f.level}`, cpu: true } : { text: i === you ? 'YOU' : `P${i + 1}`, cpu: false }));
-  names = start.fighters.map((f, i) => `${f.member < 0 ? `CPU ${f.level}` : `P${i + 1}`} ${FIGHTERS[f.fighter].name}${i === you ? ' (you)' : ''}`);
+  // Each player's own tag and color (ADR-0083), the same on every screen in the room.
+  setFightColors(resolveColors(start.fighters.map((f) => (f.member >= 0 ? f.color ?? -1 : -1))));
+  const tagOf = (f: MatchStart['fighters'][number], i: number) => (f.member < 0 ? `CPU ${f.level}` : f.tag || (i === you ? 'YOU' : `P${i + 1}`));
+  tags = start.fighters.map((f, i) => ({ text: tagOf(f, i), cpu: f.member < 0 }));
+  names = start.fighters.map((f, i) => `${f.member < 0 ? `CPU ${f.level}` : f.tag || `P${i + 1}`} ${FIGHTERS[f.fighter].name}${i === you ? ' (you)' : ''}`);
   renderer.setTags(tags);
   prev = world.fighters.map((f) => ({ x: f.x, y: f.y }));
   goTimer = 0;
@@ -218,6 +224,7 @@ function toMenu(screen: 'select' | 'main' | 'online' = 'main'): void {
   onlineQueue = [];
   ui.hideHud();
   world = attractWorld();
+  setFightColors();
   attractBots = world.fighters.map((f) => createBot(f.slot, 2, 3));
   prev = world.fighters.map((f) => ({ x: f.x, y: f.y }));
   renderer.reset(world);

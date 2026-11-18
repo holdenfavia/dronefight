@@ -10,6 +10,8 @@ import { activeCheats, cheatRules, CHEATS, enterCode, onCheatsChange, randomFigh
 import { seasonOfFighter, seasonOfStage, type SeasonDef } from '../../shared/seasons';
 import { STAGE_IDS, STAGES, type StageId } from '../../shared/fighter/stages';
 import { MENU, SLOT_COLORS, TEAM_COLORS, TEAM_NAMES, fighterColor } from './config';
+import { PROFILE_COLOR_NAMES, PROFILE_COLORS, TAG_MAX, cleanTag, resolveColors } from '../../shared/profile';
+import { profile, setProfile } from './profile';
 import { isTeam, sideCount, startingTeam, TEAM_COUNT } from '../../shared/online';
 import { drawFighterFigure } from './figures';
 import { KEY_LABELS } from './input';
@@ -108,9 +110,21 @@ export function slotLabel(slot: SlotSetup): string {
   return 'Off';
 }
 
-/** The short tag over a fighter's head and on its HUD card: "P1", or "CPU 3" for a Hard CPU (ADR-0075). */
+/** The short tag over a fighter's head and on its HUD card: your own tag or "P1", or "CPU 3" for a Hard CPU (ADR-0075, ADR-0083). */
 export function slotTag(slot: SlotSetup): string {
-  return slot.kind === 'bot' ? `CPU ${slot.level}` : 'P1';
+  return slot.kind === 'bot' ? `CPU ${slot.level}` : profile().tag || 'P1';
+}
+
+/**
+ * Free-for-all colors for the four slots of a setup: the fighters that are in take colors in order, with your
+ * own color on your fighter (ADR-0083), the same as in the fight. Off slots keep their slot color.
+ */
+export function setupColors(slots: readonly SlotSetup[]): string[] {
+  const on = slots.map((x, i) => [x, i] as const).filter(([x]) => x.kind !== 'off');
+  const colors = resolveColors(on.map(([x]) => (x.kind === 'p1' ? profile().color : -1)));
+  const out: string[] = slots.map((_x, i) => SLOT_COLORS[i]!);
+  on.forEach(([, i], k) => { out[i] = colors[k]!; });
+  return out;
 }
 
 /** Why this setup can't start yet, or null when it can. */
@@ -193,7 +207,7 @@ export interface MenuHandlers {
   onClick(): void;
 }
 
-type ScreenId = 'title' | 'main' | 'select' | 'online' | 'controls' | 'pause' | 'results';
+type ScreenId = 'title' | 'main' | 'select' | 'online' | 'controls' | 'settings' | 'pause' | 'results';
 
 /** "Seasonal · Thanksgiving" under a seasonal fighter's name (nothing for the everyday cast). */
 function seasonLine(id: FighterId | null): HTMLElement[] {
@@ -339,7 +353,7 @@ export class Ui {
       return false;
     }
     if (code === 'Escape') {
-      if (id === 'select' || id === 'online') {
+      if (id === 'select' || id === 'online' || id === 'settings') {
         this.handlers.onClick();
         if (id === 'online') this.net.disconnect();
         this.showMain();
@@ -592,6 +606,7 @@ export class Ui {
       ['Fight', 'You against CPUs on this keyboard', () => this.showSelect()],
       ['Online', 'Make or join a room with a friend', () => this.showOnline()],
       ['Controls', 'Every key and move', () => this.showControls(() => this.showMain())],
+      ['Settings', 'Your tag and color', () => this.showSettings()],
     ];
     const buttons = items.map(([label, sub, go]) => {
       const b = this.button('menu-item', '', go);
@@ -613,6 +628,71 @@ export class Ui {
     this.show('controls', page, [done]);
   }
 
+  /** Personal settings (ADR-0083): the tag over your fighter's head and your color, saved in this browser. */
+  showSettings(): void {
+    const me = profile();
+    const page = el('div', 'screen modal');
+    const panel = el('div', 'panel settings-panel');
+    panel.append(el('h2', '', 'Settings'));
+
+    const color = me.color >= 0 ? PROFILE_COLORS[me.color]! : SLOT_COLORS[0];
+    const preview = el('div', 'settings-preview');
+    const tagLabel = el('div', 'settings-tag', me.tag || 'P1');
+    tagLabel.style.color = color;
+    preview.append(tagLabel, previewCanvas(this.setup.slots.find((x) => x.kind === 'p1' && !x.random)?.fighter ?? 'brawler', color, 110));
+
+    const tagRow = el('label', 'settings-row');
+    const input = el('input', 'tag-input');
+    input.maxLength = TAG_MAX;
+    input.placeholder = 'P1';
+    input.ariaLabel = 'Your tag';
+    input.value = me.tag;
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    input.oninput = () => {
+      // Capitals and digits only, as typed; a tag that would pose as a CPU just doesn't stick.
+      input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, TAG_MAX);
+      const tag = cleanTag(input.value);
+      setProfile({ tag });
+      tagLabel.textContent = tag || 'P1';
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === 'Escape') { e.stopPropagation(); input.blur(); }
+    };
+    tagRow.append(el('span', 'settings-label', 'Your tag'), input);
+
+    const swatches = el('div', 'swatches');
+    const pick = (c: number) => {
+      setProfile({ color: c });
+      this.showSettings();
+    };
+    const auto = this.button(`swatch auto ${me.color < 0 ? 'on' : ''}`, 'Auto', () => pick(-1));
+    auto.title = "Your slot's color";
+    const buttons = [auto, ...PROFILE_COLORS.map((c, i) => {
+      const b = this.button(`swatch ${me.color === i ? 'on' : ''}`, '', () => pick(i));
+      b.style.setProperty('--swatch', c);
+      b.title = PROFILE_COLOR_NAMES[i]!;
+      b.ariaLabel = PROFILE_COLOR_NAMES[i]!;
+      return b;
+    })];
+    swatches.append(...buttons);
+    const colorRow = el('div', 'settings-row');
+    colorRow.append(el('span', 'settings-label', 'Your color'), swatches);
+
+    const done = this.button('fight', 'Back', () => this.showMain());
+    panel.append(
+      preview,
+      tagRow,
+      el('div', 'tips', `Up to ${TAG_MAX} letters or numbers, shown over your fighter and on your card. Empty: P1.`),
+      colorRow,
+      el('div', 'tips', 'Online, friends see your tag and color too. If two players pick the same color, whoever joined first keeps it. In team battles everyone wears their team\'s color.'),
+      done,
+    );
+    page.appendChild(panel);
+    const focus = [...buttons, done];
+    this.show('settings', page, focus, me.color + 1);
+  }
+
   // ------------------------------------------------------------------------------------------ Character select
 
   /** Roster grid on top, four player panels below, stage and stocks, Fight (ADR-0075). */
@@ -632,11 +712,14 @@ export class Ui {
       (i) => s.slots[i]!,
       (tile) => this.assign(this.editSlot, tile),
       this.editSlot,
+      (i) => slotTag(s.slots[i]!),
+      (i) => this.slotColors()[i]!,
     ));
 
     const panels = el('div', 'slots');
+    const colors = this.slotColors();
     s.slots.forEach((slot, i) => {
-      const color = s.teams ? TEAM_COLORS[slot.team]! : SLOT_COLORS[i]!;
+      const color = colors[i]!;
       const card = el('div', `slot ${slot.kind === 'off' ? 'off' : ''} ${slot.kind === 'bot' ? 'cpu' : ''} ${i === this.editSlot && slot.kind !== 'off' ? 'editing' : ''}`);
       card.style.setProperty('--slot', color);
       const kind = this.button('kind', slotLabel(slot), () => {
@@ -712,7 +795,13 @@ export class Ui {
    * The roster grid. Each tile shows tokens for the slots that picked it; the edited slot's cursor is
    * outlined in its color.
    */
-  private rosterGrid(slotAt: (i: number) => SlotSetup | null, pick: (tile: FighterId | 'random') => void, cursorSlot: number, online = false): HTMLElement {
+  private rosterGrid(
+    slotAt: (i: number) => SlotSetup | null,
+    pick: (tile: FighterId | 'random') => void,
+    cursorSlot: number,
+    tagOf: (i: number) => string,
+    colorOf: (i: number) => string,
+  ): HTMLElement {
     const grid = el('div', 'roster');
     const cursor = slotAt(cursorSlot);
     rosterTiles().forEach((tile) => {
@@ -730,12 +819,12 @@ export class Ui {
         const slot = slotAt(i);
         if (!slot || slot.kind === 'off') continue;
         if ((tile === 'random') !== !!slot.random || (tile !== 'random' && slot.fighter !== tile)) continue;
-        const tok = el('span', `token ${slot.kind === 'bot' ? 'cpu' : ''}`, online ? `P${i + 1}` : slotTag(slot));
-        tok.style.setProperty('--slot', SLOT_COLORS[i]!);
+        const tok = el('span', `token ${slot.kind === 'bot' ? 'cpu' : ''}`, tagOf(i));
+        tok.style.setProperty('--slot', colorOf(i));
         tokens.appendChild(tok);
         if (i === cursorSlot) {
           t.classList.add('cursor');
-          t.style.setProperty('--slot', SLOT_COLORS[i]!);
+          t.style.setProperty('--slot', colorOf(i));
         }
       }
       t.appendChild(tokens);
@@ -802,6 +891,12 @@ export class Ui {
       b.addEventListener('click', (e) => e.stopPropagation());
     }
     return b;
+  }
+
+  /** Each slot's color on the select screen: its team's in a team battle, otherwise as in the fight (ADR-0083). */
+  private slotColors(): string[] {
+    const s = this.setup;
+    return s.teams ? s.slots.map((x) => TEAM_COLORS[x.team]!) : setupColors(s.slots);
   }
 
   fight(): void {
@@ -881,30 +976,37 @@ export class Ui {
       const level = settings.cpus[i - members.length];
       return level ? { kind: 'bot', fighter: 'brawler', level, random: true, team: 0 } : null;
     };
+    // Members' own colors (ADR-0083); CPUs fill in around them.
+    const ffaColors = resolveColors([...members.map((m) => m.color), ...settings.cpus.map(() => -1)]);
+    const memberTag = (i: number) => members[i]!.tag || `P${i + 1}`;
+    const teamOn = !!settings.teams;
+    const cpuTeams = settings.cpus.map((_c, i) => settings.cpuTeams?.[i] ?? 0);
+    const colorAt = (i: number): string => {
+      const team = i < members.length ? pickOf(i).team : i - members.length < settings.cpus.length ? cpuTeams[i - members.length]! : -1;
+      return teamOn && team >= 0 ? TEAM_COLORS[team]! : ffaColors[i] ?? SLOT_COLORS[i]!;
+    };
     page.appendChild(this.rosterGrid(
       asSlot,
       (tile) => net.setPick({ fighter: tile === 'random' ? pickOne(randomFighters()) : tile, ready: false }),
       members.findIndex((m) => m.id === room.you),
-      true,
+      (i) => (i < members.length ? memberTag(i) : `CPU ${settings.cpus[i - members.length] ?? ''}`),
+      colorAt,
     ));
 
     // The host's rule cheats (MOONJUMP, ONEHIT) are the room's rules (ADR-0077).
     if (isHost && !room.playing && !sameRules(settings.rules, cheatRules())) net.setSettings({ ...settings, rules: cheatRules() });
-    const cpuTeams = settings.cpus.map((_c, i) => settings.cpuTeams?.[i] ?? 0);
     const setCpus = (cpus: BotLevel[], teams = cpuTeams) => net.setSettings({ ...settings, cpus, cpuTeams: teams.slice(0, cpus.length) });
-    const teamOn = !!settings.teams;
     const panels = el('div', 'slots');
     for (let i = 0; i < MATCH.maxFighters; i++) {
       const cpuIndex = i - members.length;
       const cpu = cpuIndex >= 0 ? settings.cpus[cpuIndex] : undefined;
-      const team = i < members.length ? pickOf(i).team : cpu ? cpuTeams[cpuIndex]! : -1;
-      const color = teamOn && team >= 0 ? TEAM_COLORS[team]! : SLOT_COLORS[i]!;
+      const color = colorAt(i);
       const card = el('div', 'slot');
       card.style.setProperty('--slot', color);
       if (i < members.length) {
         const m = members[i]!;
         const p = pickOf(i);
-        const who = m.id === room.you ? 'You' : `Player ${i + 1}`;
+        const who = m.id === room.you ? (m.tag ? `${m.tag} (you)` : 'You') : m.tag || `Player ${i + 1}`;
         card.appendChild(el('div', 'kind', `${who}${m.id === host ? ' · Host' : ''}`));
         // You pick your own team; nobody else can move you (ADR-0081).
         if (teamOn) card.appendChild(this.teamButton(p.team, m.id === room.you && !room.playing ? () => net.setPick({ team: (p.team + 1) % TEAM_COUNT, ready: false }) : null));

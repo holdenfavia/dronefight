@@ -583,3 +583,53 @@ kbd {
   text-align: center;
 }
 .season-banner strong { color: var(--season-accent); text-transform: uppercase; letter-spacing: 0.08em; }
+
+/* ---------- Personal settings (ADR-0083) ---------- */
+
+.settings-panel { width: min(560px, 100%); }
+.settings-preview { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.settings-tag {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.settings-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.settings-label { font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.tag-input {
+  width: 4.6em;
+  padding: 4px 8px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--paper);
+  font: 900 32px var(--ui);
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.tag-input:focus { outline: none; border-color: var(--orange); }
+.tag-input::placeholder { color: rgba(255, 255, 255, 0.25); }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 400px; }
+.swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  background: var(--swatch, transparent);
+  cursor: pointer;
+  padding: 0;
+}
+.swatch.auto {
+  width: auto;
+  border-radius: 18px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--paper);
+  font: 800 16px var(--ui);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.swatch:hover { border-color: rgba(255, 255, 255, 0.6); }
+.swatch.on { border-color: var(--paper); box-shadow: 0 0 0 2px var(--ink), 0 0 12px var(--swatch, var(--orange)); }
+.swatch.focus { outline: 3px solid var(--orange); outline-offset: 2px; }
