@@ -2,7 +2,7 @@
 // backdrop, stage art, fighters, hit effects and screen shake.
 
 import { FIGHTERS, type MoveId } from '../../shared/fighter/fighters';
-import { INGREDIENTS, koFraction } from '../../shared/fighter/signature';
+import { INGREDIENTS, koFraction, signatureGauge } from '../../shared/fighter/signature';
 import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
 import { SHIELD } from '../../shared/fighter/config';
 import type { Platform } from '../../shared/fighter/stages';
@@ -1350,9 +1350,14 @@ export class Renderer {
     ctx.rotate(tilt + spin);
     if (invisible) ctx.globalAlpha = 0.45;
     const thrust = f.grounded ? 0.2 : f.vy > 0 ? 1 : 0.5;
+    // The signature meter shows on the dressed looks (ADR-0084). The Yo-yo Kid's only while a combo is live.
+    const gauge = signatureGauge(world, f);
+    const meter = gauge && !(f.id === 'yoyo' && !gauge.text) ? gauge.value : 0;
     drawFighterFigure(ctx, f.id, {
       color,
       rage: koFraction(f),
+      meter,
+      ready: gauge?.ready ?? false,
       phase: this.time * (0.9 + thrust * 0.8) + f.slot,
       blink: this.blinkAmount(f.slot) + (f.action === 'hitstun' || f.action === 'shieldbreak' ? 1 : 0),
       flash: this.flashes.get(f.slot) ?? 0,
