@@ -27,7 +27,7 @@ export type SignatureKind =
   | 'harvest' | 'cannon'
   | 'sister' | 'tidal';
 
-/** Sachem's Three Sisters, as bits in the meter. */
+/** Chief's Three Sisters, as bits in the meter. */
 export const SISTERS = { corn: 1, beans: 2, squash: 4, all: 7 } as const;
 
 /** How many of the Three Sisters a meter holds. */
@@ -38,7 +38,7 @@ export function sistersCount(meter: number): number {
 const AERIALS: ReadonlySet<MoveId> = new Set<MoveId>(['nair', 'fair', 'bair', 'uair', 'dair']);
 const SMASHES: ReadonlySet<MoveId> = new Set<MoveId>(['fsmash', 'usmash', 'dsmash', 'quake']);
 /** Moves that don't count for the Bard's beat (grabbing, holding, getting up). */
-/** Sachem: moves that grow squash (specials; throws count too). */
+/** Chief: moves that grow squash (specials; throws count too). */
 const SPECIALS: ReadonlySet<MoveId> = new Set<MoveId>(['nspecial', 'sspecial', 'uspecial', 'dspecial', 'weirhit']);
 const OFF_BEAT_FREE: ReadonlySet<MoveId> = new Set<MoveId>(['grab', 'pummel', 'fthrow', 'bthrow', 'uthrow', 'dthrow', 'getupattack', 'counterhit']);
 
