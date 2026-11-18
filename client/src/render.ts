@@ -6,7 +6,7 @@ import { INGREDIENTS, koFraction, signatureGauge } from '../../shared/fighter/si
 import { activeHitboxes, centerY, chargeFraction, fighterDef, isAlive, moveActive, type Fighter, type GameEvent, type Projectile, type World } from '../../shared/fighter/sim';
 import { SHIELD } from '../../shared/fighter/config';
 import type { Platform } from '../../shared/fighter/stages';
-import { ATTACK_COLORS, CAMERA, CPU_TAG, FALL, FEEL, PALETTE, SIGNATURE_LOOKS, fighterColor } from './config';
+import { ATTACK_COLORS, CAMERA, CITY_LOOKS, CPU_TAG, FALL, FEEL, HARBOR, PALETTE, SIGNATURE_LOOKS, fighterColor, type CityLook } from './config';
 import { moveLook, type MoveLook } from './moveLooks';
 import { drawFighterFigure } from './figures';
 import { cheatOn } from './cheats';
@@ -39,6 +39,15 @@ export interface Prev {
   y: number;
 }
 
+/** How far the Helipad's truss tower lifts the pad above its skyscraper's roof. */
+const HELIPAD_TOWER = 120;
+
+/** A shipping container color, for any whole number. */
+function containerColor(n: number): string {
+  const list = HARBOR.containers;
+  return list[((n % list.length) + list.length) % list.length]!;
+}
+
 export class Renderer {
   readonly canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -60,6 +69,9 @@ export class Renderer {
   private purple = false;
   /** The Harvest Farm (seasonal, ADR-0082): an autumn sky and countryside instead of the city. */
   private fall = false;
+  /** The city stage's time of day (Rooftop, Helipad, Crane Yard). */
+  private look: CityLook = CITY_LOOKS.rooftop;
+  private stageId = 'rooftop';
   private mirrored = false;
   private purpleCheck = 0;
   private platforms: Platform[] = [];
@@ -500,6 +512,8 @@ export class Renderer {
     if (++this.purpleCheck % 60 === 1) this.purple = isPurpleSkyTime() || cheatOn('purple');
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.fall = world.stage.id === 'harvest';
+    this.stageId = world.stage.id;
+    this.look = CITY_LOOKS[world.stage.id as keyof typeof CITY_LOOKS] ?? CITY_LOOKS.rooftop;
     this.drawSky();
     const sh = this.shake;
     ctx.save();
@@ -532,23 +546,24 @@ export class Renderer {
     const ctx = this.ctx;
     const g = ctx.createLinearGradient(0, 0, 0, this.h);
     const fall = this.fall && !this.purple;
-    g.addColorStop(0, this.purple ? PALETTE.purpleTop : fall ? FALL.skyTop : PALETTE.skyTop);
-    g.addColorStop(0.75, this.purple ? PALETTE.purpleHorizon : fall ? FALL.skyHorizon : PALETTE.skyHorizon);
-    g.addColorStop(1, this.purple ? '#f0dcff' : fall ? FALL.skyBottom : '#ffe9c9');
+    const L = this.fall || this.purple ? CITY_LOOKS.rooftop : this.look;
+    g.addColorStop(0, this.purple ? PALETTE.purpleTop : fall ? FALL.skyTop : L.skyTop);
+    g.addColorStop(0.75, this.purple ? PALETTE.purpleHorizon : fall ? FALL.skyHorizon : L.skyHorizon);
+    g.addColorStop(1, this.purple ? '#f0dcff' : fall ? FALL.skyBottom : L.skyBottom);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, this.w, this.h);
     // Sun glow, barely moving with the camera.
-    const sunX = this.w * 0.72 - this.cam.x * 0.03;
-    const sunY = this.h * 0.62 + this.cam.y * 0.02;
-    const r = this.h * 0.5;
+    const sunX = this.w * L.sunX - this.cam.x * 0.03;
+    const sunY = this.h * L.sunY + this.cam.y * 0.02;
+    const r = this.h * L.sunSize;
     const sg = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, r);
-    sg.addColorStop(0, 'rgba(255,248,226,0.95)');
-    sg.addColorStop(0.08, 'rgba(255,236,190,0.75)');
+    sg.addColorStop(0, L.sunCore);
+    sg.addColorStop(0.08, L.sunGlow);
     sg.addColorStop(1, 'rgba(255,200,140,0)');
     ctx.fillStyle = sg;
     ctx.fillRect(0, 0, this.w, this.h);
     // Drifting clouds.
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillStyle = this.purple || this.fall ? 'rgba(255,255,255,0.55)' : L.clouds;
     for (let i = 0; i < 6; i++) {
       const cx = ((i * 397 + this.time * (0.15 + i * 0.03) - this.cam.x * 0.08) % (this.w + 400) + this.w + 400) % (this.w + 400) - 200;
       const cy = this.h * (0.12 + (i % 3) * 0.09) + this.cam.y * 0.05;
@@ -575,9 +590,10 @@ export class Renderer {
       };
     };
     if (this.fall) { this.drawCountryside(layer); return; }
+    const look = this.look;
     // Hills.
     const hills = layer(0.05, 0.5, 0.78);
-    ctx.fillStyle = this.purple ? '#8a63c9' : '#9fb6c9';
+    ctx.fillStyle = this.purple ? '#8a63c9' : look.hills;
     ctx.beginPath();
     ctx.moveTo(0, this.h);
     for (let px = 0; px <= this.w + 20; px += 20) {
@@ -602,7 +618,7 @@ export class Renderer {
           const step = 22 * L.s;
           for (let wy = top + step * 0.6; wy < this.h; wy += step) {
             for (let wx = x + step * 0.4; wx < x + w - step * 0.4; wx += step) {
-              if (((wx * 13 + wy * 7) | 0) % 5 === 0) continue;
+              if (((((wx * 13 + wy * 7) | 0) % 20) + 20) % 20 >= look.litWindows * 20) continue;
               ctx.fillRect(wx, wy, step * 0.45, step * 0.5);
             }
           }
@@ -610,8 +626,137 @@ export class Renderer {
         }
       }
     };
-    city(this.far, 0.15, 0.55, 0.92, this.purple ? '#6c4aa8' : '#7f97ad', '');
-    city(this.near, 0.3, 0.7, 1.02, this.purple ? '#3e2a66' : '#51667a', this.purple ? 'rgba(255,214,255,0.25)' : 'rgba(255,236,200,0.22)');
+    city(this.far, 0.15, 0.55, 0.92, this.purple ? '#6c4aa8' : look.far, '');
+    if (this.stageId === 'cranes') { this.drawHarbor(layer); return; }
+    if (this.stageId === 'helipad') this.drawHelicopterFlyby(layer(0.12, 0.55, 0.9));
+    city(this.near, 0.3, 0.7, 1.02, this.purple ? '#3e2a66' : look.near, this.purple ? 'rgba(255,214,255,0.25)' : look.windows);
+  }
+
+  /** The Crane Yard's backdrop: the bay at dusk, ships going by, and a quay of containers and gantry cranes. */
+  private drawHarbor(layer: (parallax: number, zoomK: number, horizon: number) => { x: (x: number) => number; y: (y: number) => number; s: number }): void {
+    const ctx = this.ctx;
+    const purple = this.purple;
+    // The water, from the far shore down.
+    const sea = layer(0.2, 0.6, 0.84);
+    const shore = Math.max(0, sea.y(0));
+    const wg = ctx.createLinearGradient(0, shore, 0, this.h);
+    wg.addColorStop(0, purple ? '#7a5ab8' : HARBOR.waterTop);
+    wg.addColorStop(1, purple ? '#3e2a66' : HARBOR.waterBottom);
+    ctx.fillStyle = wg;
+    ctx.fillRect(0, shore, this.w, this.h - shore);
+    // The low sun's reflection, broken into ripples.
+    const sunX = this.w * this.look.sunX - this.cam.x * 0.03;
+    ctx.fillStyle = purple ? 'rgba(255,214,255,0.35)' : 'rgba(255,214,170,0.45)';
+    for (let i = 0; i < 14; i++) {
+      const y = shore + 6 + i * 9 * sea.s;
+      if (y > this.h) break;
+      const half = (60 - i * 3 + Math.sin(this.time * 0.05 + i) * 10) * sea.s;
+      ctx.fillRect(sunX - half, y, half * 2, 2 * sea.s);
+    }
+    // Two container ships crossing the bay, very slowly.
+    const ships = layer(0.22, 0.6, 0.89);
+    for (const [base, dir] of [[-500, 1], [900, -1]] as const) {
+      const span = 4200;
+      const wx = ((base + dir * this.time * 0.15) % span + span * 1.5) % span - span / 2;
+      const x = ships.x(wx);
+      const y = ships.y(0);
+      const k = ships.s;
+      if (x < -400 * k || x > this.w + 400 * k) continue;
+      ctx.fillStyle = purple ? '#2e2050' : '#2a2f3e';
+      ctx.beginPath();
+      ctx.moveTo(x - 180 * k, y - 30 * k);
+      ctx.lineTo(x + 200 * k, y - 30 * k);
+      ctx.lineTo(x + 175 * k, y);
+      ctx.lineTo(x - 165 * k, y);
+      ctx.closePath();
+      ctx.fill();
+      // Bridge at the stern.
+      const stern = dir > 0 ? -150 : 130;
+      ctx.fillRect(x + stern * k, y - 70 * k, 24 * k, 40 * k);
+      // Stacks of containers.
+      for (let c = 0; c < 9; c++) {
+        const cx = x + (-110 + c * 30 - (dir > 0 ? 0 : 40)) * k;
+        const rows = 1 + ((c * 7 + base) & 1);
+        for (let r = 0; r < rows; r++) {
+          ctx.fillStyle = purple ? '#5a4a8a' : containerColor(c + r * 3 + (base & 3));
+          ctx.globalAlpha = 0.7;
+          ctx.fillRect(cx, y - (44 + r * 14) * k, 28 * k, 13 * k);
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+    // The quay in front: a concrete edge, container stacks and ship-to-shore gantry cranes.
+    const quay = layer(0.3, 0.7, 1.02);
+    const qy = quay.y(15);
+    const k = quay.s;
+    ctx.fillStyle = purple ? '#3e2a66' : this.look.near;
+    ctx.fillRect(0, qy, this.w, this.h - qy + 2);
+    for (let i = -16; i <= 16; i++) {
+      const wx = i * 260 + ((i * 37) & 63);
+      const x = quay.x(wx);
+      if (x < -300 * k || x > this.w + 300 * k) continue;
+      if ((i & 3) === 0) {
+        // A gantry crane: two A-frame legs, a boom reaching out over the water.
+        ctx.strokeStyle = purple ? '#5a4a8a' : '#c2563a';
+        ctx.lineWidth = Math.max(1, 5 * k);
+        ctx.beginPath();
+        ctx.moveTo(x - 50 * k, qy);
+        ctx.lineTo(x - 30 * k, qy - 200 * k);
+        ctx.moveTo(x + 50 * k, qy);
+        ctx.lineTo(x + 30 * k, qy - 200 * k);
+        ctx.moveTo(x - 40 * k, qy - 100 * k);
+        ctx.lineTo(x + 40 * k, qy - 100 * k);
+        ctx.moveTo(x - 130 * k, qy - 200 * k);
+        ctx.lineTo(x + 220 * k, qy - 200 * k);
+        ctx.moveTo(x, qy - 260 * k);
+        ctx.lineTo(x - 130 * k, qy - 200 * k);
+        ctx.moveTo(x, qy - 260 * k);
+        ctx.lineTo(x + 220 * k, qy - 200 * k);
+        ctx.moveTo(x, qy - 260 * k);
+        ctx.lineTo(x, qy - 200 * k);
+        ctx.stroke();
+        continue;
+      }
+      // A stack of containers.
+      const rows = 2 + ((i * 5) & 1) + ((i * 11) & 1);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < 3; c++) {
+          if (r === rows - 1 && ((i + c) & 3) === 1) continue;
+          ctx.fillStyle = purple ? '#5a4a8a' : containerColor(i * 3 + c * 2 + r);
+          ctx.globalAlpha = 0.6;
+          ctx.fillRect(x + (c * 62 - 90) * k, qy - (r + 1) * 26 * k, 60 * k, 24 * k);
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+  }
+
+  /** A helicopter crossing the sunset behind the Helipad, its light blinking. */
+  private drawHelicopterFlyby(L: { x: (x: number) => number; y: (y: number) => number; s: number }): void {
+    const ctx = this.ctx;
+    const span = 5200;
+    const wx = ((this.time * 0.9) % span) - span / 2;
+    const x = L.x(wx);
+    const y = L.y(520 + Math.sin(this.time * 0.01) * 20);
+    const k = L.s;
+    if (x < -100 || x > this.w + 100) return;
+    ctx.fillStyle = this.purple ? '#3e2a66' : '#2c2b42';
+    ctx.beginPath();
+    ctx.ellipse(x, y, 22 * k, 11 * k, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(x - 60 * k, y - 3 * k, 45 * k, 5 * k);
+    ctx.fillRect(x - 64 * k, y - 10 * k, 5 * k, 14 * k);
+    ctx.fillRect(x - 16 * k, y + 13 * k, 34 * k, 2 * k);
+    // The rotor, blurred to a flicker.
+    ctx.globalAlpha = 0.5 + 0.4 * Math.sin(this.time * 1.7);
+    ctx.fillRect(x - 40 * k, y - 15 * k, 80 * k, 2 * k);
+    ctx.globalAlpha = 1;
+    if ((this.time >> 4) % 3 === 0) {
+      ctx.fillStyle = '#ff3b30';
+      ctx.beginPath();
+      ctx.arc(x - 62 * k, y - 10 * k, Math.max(1.5, 3 * k), 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   /** The Harvest Farm's backdrop: autumn hills, a barn and a silo, rows of fall trees. */
@@ -713,10 +858,17 @@ export class Renderer {
       for (let wy = top + step * 0.5; wy < this.h + 40; wy += step) {
         for (let wx = x + step * 0.3; wx < x + w - step * 0.5; wx += step) ctx.fillRect(wx, wy, step * 0.5, step * 0.55);
       }
-      // Rooftop clutter.
-      this.box(-300, main.y, 70, 34, '#4b5058');
-      this.box(-290, main.y + 34, 50, 10, '#5e646d');
-      this.box(230, main.y, 50, 50, '#4b5058');
+      // Rooftop clutter, set back behind the edge and faded so it reads as scenery, not something to stand on.
+      ctx.globalAlpha = 0.5;
+      this.box(-300, main.y, 70, 30, '#6a737d');
+      ctx.strokeStyle = '#3b4047';
+      ctx.lineWidth = Math.max(1, 2 * s);
+      ctx.beginPath();
+      ctx.arc(this.sx(-265), this.sy(main.y + 15), 10 * s, 0, Math.PI * 2);
+      ctx.stroke();
+      this.box(230, main.y, 46, 44, '#6a737d');
+      this.box(236, main.y + 44, 34, 6, '#7d868f');
+      ctx.globalAlpha = 1;
       ctx.strokeStyle = '#26282b';
       ctx.lineWidth = Math.max(1, 3 * s);
       ctx.beginPath();
@@ -734,56 +886,224 @@ export class Renderer {
       ctx.fillRect(0, top, this.w, this.h - top + 40);
       this.drawScarecrow(-420, main.y);
       for (const [px, pr] of [[-360, 16], [-330, 11], [380, 18], [410, 12], [600, 15]] as const) this.drawPumpkin(px, main.y, pr);
-      // Under the oak bough: its trunk.
-      this.box(-20, main.y, 40, 235, '#5a3a24');
+      this.drawOak(main.y);
     } else if (id === 'helipad') {
-      // A truss tower under the pad.
-      ctx.strokeStyle = '#3a3e44';
+      this.drawSkyscraper(main.y - main.depth - HELIPAD_TOWER);
+      // A truss tower holding the pad above the skyscraper's roof.
+      ctx.strokeStyle = this.purple ? '#8a63c9' : '#6b6880';
       ctx.lineWidth = Math.max(1, 6 * s);
       const tx1 = this.sx(-90);
       const tx2 = this.sx(90);
-      const top = this.sy(main.y - main.depth);
+      const top = main.y - main.depth;
+      const roof = top - HELIPAD_TOWER;
       ctx.beginPath();
-      ctx.moveTo(tx1, top);
-      ctx.lineTo(tx1, this.h + 40);
-      ctx.moveTo(tx2, top);
-      ctx.lineTo(tx2, this.h + 40);
-      for (let y = 0; y < 12; y++) {
-        const y1 = this.sy(main.y - main.depth - y * 90);
-        const y2 = this.sy(main.y - main.depth - (y + 1) * 90);
-        ctx.moveTo(tx1, y1);
-        ctx.lineTo(tx2, y2);
-        ctx.moveTo(tx2, y1);
-        ctx.lineTo(tx1, y2);
+      ctx.moveTo(tx1, this.sy(top));
+      ctx.lineTo(tx1, this.sy(roof));
+      ctx.moveTo(tx2, this.sy(top));
+      ctx.lineTo(tx2, this.sy(roof));
+      const bay = HELIPAD_TOWER / 2;
+      for (let y = top; y > roof + 1; y -= bay) {
+        ctx.moveTo(tx1, this.sy(y));
+        ctx.lineTo(tx2, this.sy(y - bay));
+        ctx.moveTo(tx2, this.sy(y));
+        ctx.lineTo(tx1, this.sy(y - bay));
       }
       ctx.stroke();
+      this.drawWindsock(230, roof);
     } else {
-      // Two crane towers holding the arms.
-      for (const side of [-1, 1]) {
-        const cx = side * 400;
-        ctx.strokeStyle = '#e8a21a';
-        ctx.lineWidth = Math.max(1, 5 * s);
-        const x1 = this.sx(cx - 20);
-        const x2 = this.sx(cx + 20);
-        ctx.beginPath();
-        ctx.moveTo(x1, this.sy(170));
-        ctx.lineTo(x1, this.h + 40);
-        ctx.moveTo(x2, this.sy(170));
-        ctx.lineTo(x2, this.h + 40);
-        for (let y = 170; y > -900; y -= 50) {
-          ctx.moveTo(x1, this.sy(y));
-          ctx.lineTo(x2, this.sy(y - 50));
+      // The deck sits on a stack of shipping containers.
+      const top = main.y - main.depth;
+      for (let row = 0; top - row * 52 > -1200; row++) {
+        for (let col = 0; col < 5; col++) {
+          const x = -250 + col * 100;
+          const y = top - row * 52;
+          if (this.sy(y - 52) < 0) continue;
+          this.box(x + 2, y - 50, 96, 50, containerColor(row * 2 + col * 3 + 1));
+          ctx.fillStyle = 'rgba(0,0,0,0.35)';
+          ctx.fillRect(this.sx(x + 2), this.sy(y), 96 * s, 50 * s);
+          ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (let rx = x + 14; rx < x + 96; rx += 12) {
+            ctx.moveTo(this.sx(rx), this.sy(y - 4));
+            ctx.lineTo(this.sx(rx), this.sy(y - 46));
+          }
+          ctx.stroke();
         }
-        ctx.stroke();
-        // Counterweight above.
-        this.box(cx - 30, 180, 60, 30, '#3a3e44');
       }
-      const top = this.sy(main.y - main.depth);
-      ctx.fillStyle = '#2b2f35';
-      ctx.fillRect(this.sx(-200), top, 400 * s, this.h - top + 40);
+      for (const side of [-1, 1]) this.drawTowerCrane(side);
     }
 
     for (const p of world.stage.platforms) this.drawPlatform(p, id);
+  }
+
+  /** The Helipad's skyscraper: glass with lit windows at sunset, warning lights on its roof corners. */
+  private drawSkyscraper(roof: number): void {
+    const ctx = this.ctx;
+    const s = this.scale;
+    const x1 = -270;
+    const x2 = 270;
+    const top = this.sy(roof);
+    if (top > this.h) return;
+    ctx.fillStyle = this.purple ? '#2e2050' : '#262838';
+    ctx.fillRect(this.sx(x1), top, (x2 - x1) * s, this.h - top + 40);
+    this.box(x1 - 10, roof - 14, x2 - x1 + 20, 14, this.purple ? '#3e2a66' : '#33354a');
+    const lit = this.purple ? 'rgba(255,214,255,0.35)' : 'rgba(255,206,120,0.55)';
+    const dark = 'rgba(120,140,190,0.18)';
+    for (let row = 0; ; row++) {
+      const y = roof - 40 - row * 40;
+      const sy = this.sy(y);
+      if (sy > this.h + 40) break;
+      for (let col = 0; col < 10; col++) {
+        const wx = x1 + 18 + col * 52;
+        ctx.fillStyle = ((row * 7 + col * 3) % 5) < 2 ? lit : dark;
+        ctx.fillRect(this.sx(wx), sy, 38 * s, 26 * s);
+      }
+    }
+    ctx.fillStyle = (this.time >> 5) % 2 ? '#ff3b30' : '#661814';
+    for (const cx of [x1 - 4, x2 + 4]) {
+      ctx.beginPath();
+      ctx.arc(this.sx(cx), this.sy(roof + 4), Math.max(2, 4 * s), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /** A windsock on a mast, flapping in the wind. */
+  private drawWindsock(x: number, y: number): void {
+    const ctx = this.ctx;
+    const s = this.scale;
+    const mastTop = y + 75;
+    ctx.strokeStyle = this.purple ? '#8a63c9' : '#6b6880';
+    ctx.lineWidth = Math.max(1, 3 * s);
+    ctx.beginPath();
+    ctx.moveTo(this.sx(x), this.sy(y));
+    ctx.lineTo(this.sx(x), this.sy(mastTop));
+    ctx.stroke();
+    // Five stripes, each a little narrower, drooping and waving at the tail.
+    for (let i = 0; i < 5; i++) {
+      const wave = Math.sin(this.time * 0.12 - i * 0.9) * (2 + i * 1.5);
+      const x0 = x + i * 14;
+      const h0 = 22 - i * 3;
+      ctx.fillStyle = i % 2 ? '#f4efe6' : PALETTE.orange;
+      ctx.beginPath();
+      ctx.moveTo(this.sx(x0), this.sy(mastTop - i * 1.5 + wave * 0.5));
+      ctx.lineTo(this.sx(x0 + 14), this.sy(mastTop - (i + 1) * 1.5 + wave));
+      ctx.lineTo(this.sx(x0 + 14), this.sy(mastTop - (i + 1) * 1.5 - h0 + 3 + wave));
+      ctx.lineTo(this.sx(x0), this.sy(mastTop - i * 1.5 - h0 + wave * 0.5));
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  /** A tower crane at one side of the Crane Yard: lattice mast, its jib is the high platform, counter-jib, ties and a hook. */
+  private drawTowerCrane(side: number): void {
+    const ctx = this.ctx;
+    const s = this.scale;
+    const yellow = this.purple ? '#c9a0ff' : '#e8a21a';
+    const mx = side * 400;
+    const jibY = 170;
+    const apex = 300;
+    const x = (wx: number) => this.sx(side * wx);
+    // Mast, from off the bottom of the screen up to the apex.
+    ctx.strokeStyle = yellow;
+    ctx.lineWidth = Math.max(1, 5 * s);
+    ctx.beginPath();
+    ctx.moveTo(x(382), this.sy(jibY));
+    ctx.lineTo(x(382), this.h + 40);
+    ctx.moveTo(x(418), this.sy(jibY));
+    ctx.lineTo(x(418), this.h + 40);
+    for (let y = jibY; y > -1200 && this.sy(y) < this.h + 40; y -= 50) {
+      ctx.moveTo(x(382), this.sy(y));
+      ctx.lineTo(x(418), this.sy(y - 50));
+    }
+    // The apex over the mast.
+    ctx.moveTo(x(386), this.sy(jibY + 10));
+    ctx.lineTo(this.sx(mx), this.sy(apex));
+    ctx.lineTo(x(414), this.sy(jibY + 10));
+    ctx.stroke();
+    // Ties from the apex to both ends.
+    ctx.strokeStyle = 'rgba(40,40,40,0.7)';
+    ctx.lineWidth = Math.max(1, 1.5 * s);
+    ctx.beginPath();
+    ctx.moveTo(this.sx(mx), this.sy(apex));
+    ctx.lineTo(x(236), this.sy(jibY + 9));
+    ctx.moveTo(this.sx(mx), this.sy(apex));
+    ctx.lineTo(x(540), this.sy(jibY + 6));
+    ctx.stroke();
+    // Counter-jib behind the mast (thinner, not a platform) and its counterweight.
+    ctx.strokeStyle = yellow;
+    ctx.lineWidth = Math.max(1, 3 * s);
+    ctx.beginPath();
+    ctx.moveTo(x(440), this.sy(jibY + 4));
+    ctx.lineTo(x(545), this.sy(jibY + 4));
+    ctx.stroke();
+    const cw1 = side > 0 ? 500 : -545;
+    this.box(cw1, jibY - 44, 45, 40, this.purple ? '#3e2a66' : '#4b5058');
+    // Operator's cab under the jib, beside the mast.
+    const cab = side > 0 ? 340 : -382;
+    this.box(cab, jibY - 40, 42, 36, this.purple ? '#5a4a8a' : '#d9d4c8');
+    ctx.fillStyle = 'rgba(120,180,220,0.8)';
+    ctx.fillRect(this.sx(cab + (side > 0 ? 4 : 18)), this.sy(jibY - 10), 20 * s, 16 * s);
+    // A hook on a swaying cable from the trolley near the jib's tip.
+    const sway = Math.sin(this.time * 0.03 + side) * 6;
+    const hx = side * 270;
+    const hy = 95;
+    this.box(hx - 14, jibY - 8, 28, 8, '#3a3e44');
+    ctx.strokeStyle = 'rgba(30,30,30,0.7)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(this.sx(hx), this.sy(jibY - 8));
+    ctx.lineTo(this.sx(hx + sway), this.sy(hy));
+    ctx.stroke();
+    ctx.strokeStyle = '#3a3e44';
+    ctx.lineWidth = Math.max(1, 3 * s);
+    ctx.beginPath();
+    ctx.arc(this.sx(hx + sway), this.sy(hy - 8), 7 * s, -Math.PI * 0.1, Math.PI * 1.1, false);
+    ctx.stroke();
+  }
+
+  /** The Harvest Farm's oak: a tapering trunk with roots, two branches out to the bough and a fall canopy. */
+  private drawOak(ground: number): void {
+    const ctx = this.ctx;
+    const bough = ground + 235;
+    ctx.fillStyle = '#5a3a24';
+    ctx.beginPath();
+    ctx.moveTo(this.sx(-46), this.sy(ground));
+    ctx.quadraticCurveTo(this.sx(-22), this.sy(ground + 20), this.sx(-18), this.sy(ground + 60));
+    ctx.lineTo(this.sx(-14), this.sy(bough - 30));
+    // Left branch up to the bough's end.
+    ctx.quadraticCurveTo(this.sx(-50), this.sy(bough - 22), this.sx(-96), this.sy(bough - 4));
+    ctx.lineTo(this.sx(-80), this.sy(bough + 2));
+    ctx.quadraticCurveTo(this.sx(-30), this.sy(bough - 6), this.sx(-4), this.sy(bough));
+    ctx.lineTo(this.sx(8), this.sy(bough));
+    ctx.quadraticCurveTo(this.sx(40), this.sy(bough - 6), this.sx(92), this.sy(bough + 2));
+    ctx.lineTo(this.sx(106), this.sy(bough - 4));
+    ctx.quadraticCurveTo(this.sx(54), this.sy(bough - 24), this.sx(16), this.sy(bough - 32));
+    ctx.lineTo(this.sx(20), this.sy(ground + 60));
+    ctx.quadraticCurveTo(this.sx(24), this.sy(ground + 20), this.sx(50), this.sy(ground));
+    ctx.closePath();
+    ctx.fill();
+    // Bark lines.
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = Math.max(1, 2 * this.scale);
+    ctx.beginPath();
+    for (const bx of [-8, 4, 12]) {
+      ctx.moveTo(this.sx(bx), this.sy(ground + 30 + (bx & 7) * 4));
+      ctx.lineTo(this.sx(bx + 2), this.sy(ground + 130 + (bx & 7) * 6));
+    }
+    ctx.stroke();
+    // The canopy over the bough, a few fall colors, drawn see-through so it never looks like something to stand on.
+    const leaves = this.purple ? ['#7a4ab0', '#8a63c9', '#6c4aa8'] : FALL.leaves;
+    ctx.globalAlpha = 0.85;
+    for (let i = 0; i < 13; i++) {
+      const lx = -140 + i * 23 + ((i * 29) % 17);
+      const ly = bough + 30 + ((i * 41) % 46);
+      ctx.fillStyle = leaves[i % leaves.length]!;
+      ctx.beginPath();
+      ctx.arc(this.sx(lx), this.sy(ly), (26 + ((i * 13) % 12)) * this.scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   private box(x: number, y: number, w: number, h: number, color: string): void {
@@ -952,6 +1272,9 @@ export class Renderer {
         ctx.fill();
       }
       ctx.restore();
+      // Yellow corner lights where you can be pulled up onto the stage.
+      ctx.fillStyle = '#ffd23f';
+      for (const cx of [x, x + w]) ctx.fillRect(cx - 3 * s, top - 2, 6 * s, 16 * s);
       if (stage === 'helipad') {
         ctx.strokeStyle = 'rgba(255,255,255,0.9)';
         ctx.lineWidth = Math.max(1, 3 * s);
@@ -974,6 +1297,7 @@ export class Renderer {
       ctx.fillRect(x, top + 3 * s, w, h - 6 * s);
       ctx.fillStyle = PALETTE.ink;
       for (let rx = p.x1 + 10; rx < p.x2; rx += 20) ctx.fillRect(this.sx(rx) - s, top + h * 0.5 - s, 2 * s, 2 * s);
+      if (stage !== 'rooftop') return;
       // Cables to the sky.
       ctx.strokeStyle = 'rgba(30,30,30,0.5)';
       ctx.lineWidth = 1;
