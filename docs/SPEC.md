@@ -9,9 +9,9 @@ A **side-view platform fighter** to play with friends: an original cast of ten f
 ## Players and platform
 
 - Desktop browsers (Chrome/Edge primary; Safari/Firefox best-effort), **keyboard only** (ADR-0070).
-- Up to **10 fighters** per match (ADR-0086; four panels shown until you add more): **one player per keyboard** (ADR-0071), CPUs (Easy, Normal, Hard) fill the rest. No local 2-player until online play.
-- Boot to a title screen and main menu (Fight, Online, Controls, Settings), then a **roster-grid character select** with four player panels (more on demand, ADR-0086); CPUs are tagged **CPU** with their level everywhere (ADR-0075). **Settings** sets your own **tag** (up to 4 letters or digits, over your fighter) and **color**, saved in the browser and shown to the room online (ADR-0083).
-- **Online** with friends by two-digit room code (ADR-0005) or invite link `?room=NN`: each player on their own computer picks and readies up in the room's lobby, the host sets the match on a **Match settings** screen when making the room (stage or Random, stocks, mode, stage pick and ban, ADR-0085) and CPUs, and starts. The **server runs the fight** and sends every frame's inputs to everyone; snapshots heal drift; late joiners watch; a leaver's fighter becomes a CPU (ADR-0076).
+- Up to **10 fighters** per match (ADR-0087; four panels shown until you add more): **one player per keyboard** (ADR-0071), CPUs (Easy, Normal, Hard) fill the rest. No local 2-player until online play.
+- Boot to a title screen and main menu (Fight, Online, Controls, Settings), then a **roster-grid character select** with four player panels (more on demand, ADR-0087); CPUs are tagged **CPU** with their level everywhere (ADR-0075). **Settings** sets your own **tag** (up to 4 letters or digits, over your fighter) and **color**, saved in the browser and shown to the room online (ADR-0083).
+- **Online** with friends by two-digit room code (ADR-0005) or invite link `?room=NN`: each player on their own computer picks and readies up in the room's lobby, the host sets the match on a **Match settings** screen when making the room (stage or Random, stocks, mode, stage pick and ban, ADR-0086) and CPUs, and starts. The **server runs the fight** and sends every frame's inputs to everyone; snapshots heal drift; late joiners watch; a leaver's fighter becomes a CPU (ADR-0076).
 
 ## Rules (ADR-0070)
 
@@ -41,6 +41,7 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 - **Defense:** shield (drains, breaks into a dizzy stun), **parry** by shielding just as a hit lands, rolls and spot dodge, one air dodge per jump (dashes if a direction is held).
 - **Launched:** press E just before hitting the floor to **tech**, or get knocked down (get up, roll or attack). Mash to escape grabs.
 - Super armor (Titan), counters (Brawler, Blade, Gunslinger), reflects (Chef), status effects (daze, swapped controls, slow, haste), stale moves (repeats get weaker), trades, a short input buffer.
+- **Special spam** (ADR-0085): the 3rd use in a row of the same special (each within 1 s of the last) does half damage, rounded down, with no knockback or hitstun.
 - Recovering near a stage corner (holding toward it, or during a recovery special) pulls you up onto it.
 
 ## Fighters (ADR-0072, ADR-0073; numbers in `shared/fighter/fighters.ts`)
@@ -68,7 +69,7 @@ Tap Space three times quickly on any menu to open the code box; type a code agai
 
 ## Stages
 
-Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Crane Yard (narrow deck, two high crane arms). Same blast zones on all. Pick a stage or Random; with **stage pick and ban** on (a match setting, off by default) a **stage screen** comes after character select where you **ban** the ones you don't want (saved in the browser); online everyone's bans apply and a banned or Random pick is drawn from the unbanned ones (ADR-0085). Seasonal: Harvest Farm (Thanksgiving) is **on the ground**: the floor runs past both sides, so KOs are only off the left, right and top (ADR-0082).
+Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Crane Yard (narrow deck, two high crane arms). Same blast zones on all. Pick a stage or Random; with **stage pick and ban** on (a match setting, off by default) a **stage screen** comes after character select where you **ban** the ones you don't want (saved in the browser); online everyone's bans apply and a banned or Random pick is drawn from the unbanned ones (ADR-0086). Seasonal: Harvest Farm (Thanksgiving) is **on the ground**: the floor runs past both sides, so KOs are only off the left, right and top (ADR-0082).
 
 ## Look and sound
 

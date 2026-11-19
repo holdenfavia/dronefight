@@ -2,7 +2,7 @@
 
 import { PROFILE_COLORS } from '../../shared/profile';
 
-/** One color per slot: orange and lime first (ADR-0026), then the rest of the ten for bigger fights (ADR-0086). */
+/** One color per slot: orange and lime first (ADR-0026), then the rest of the ten for bigger fights (ADR-0087). */
 export const SLOT_COLORS = PROFILE_COLORS;
 
 /** Team battles (ADR-0081): every fighter on a team wears its color instead of the slot's. */
@@ -28,10 +28,10 @@ export const MENU = {
   tileSize: 52,
   /** Roster columns when the layout can't be measured. */
   rosterColumns: 6,
-  /** Stage thumbnails (ADR-0085), drawn at this size and scaled by CSS. */
+  /** Stage thumbnails (ADR-0086), drawn at this size and scaled by CSS. */
   stageThumbWidth: 480,
   stageThumbHeight: 270,
-  /** Player panels shown before "Add a fighter" reveals more (ADR-0086). */
+  /** Player panels shown before "Add a fighter" reveals more (ADR-0087). */
   slotsShown: 4,
 } as const;
 

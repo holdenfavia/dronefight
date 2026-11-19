@@ -15,7 +15,7 @@ export type ClientMessage =
   | { t: 'join'; code: string; profile?: Profile }
   | { t: 'leave' }
   | { t: 'relay'; data: unknown }
-  /** Your fighter, Ready, team (ADR-0081) and stage bans (ADR-0085) in the lobby. */
+  /** Your fighter, Ready, team (ADR-0081) and stage bans (ADR-0086) in the lobby. */
   | { t: 'pick'; fighter: FighterId; ready: boolean; team?: number; bans?: StageId[] }
   /** Host only: stage, stocks, CPUs, mode and stage pick and ban. */
   | { t: 'settings'; settings: RoomSettings }
@@ -29,7 +29,7 @@ export interface RoomMember {
   fighter: FighterId;
   ready: boolean;
   team: number;
-  /** Stages they banned (ADR-0085). */
+  /** Stages they banned (ADR-0086). */
   bans: StageId[];
   /** Their personal tag and color (ADR-0083). */
   tag: string;

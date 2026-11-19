@@ -1,4 +1,4 @@
-// Stage thumbnails for the stage screen and match settings (ADR-0085): each stage drawn once by the real renderer,
+// Stage thumbnails for the stage screen and match settings (ADR-0086): each stage drawn once by the real renderer,
 // empty, at a small fixed size, and kept as an image.
 
 import { createWorld } from '../../shared/fighter/sim';

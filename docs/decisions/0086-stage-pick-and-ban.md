@@ -1,4 +1,4 @@
-# ADR-0085: Stage select screen with picks and bans
+# ADR-0086: Stage select screen with picks and bans
 
 - **Status:** Accepted
 - **Date:** 2026-11-19

@@ -76,7 +76,7 @@ describe('rooms', () => {
     rooms.handle(a, { t: 'start' });
     expect(last(a, 'error')?.code).toBe('not-ready');
     rooms.handle(b, { t: 'pick', fighter: 'titan', ready: true });
-    // Ten fighters at most (ADR-0086): the ninth CPU doesn't fit beside two people.
+    // Ten fighters at most (ADR-0087): the ninth CPU doesn't fit beside two people.
     rooms.handle(a, { t: 'settings', settings: { stage: 'helipad', stocks: 2, cpus: [1, 3, 2, 2, 2, 2, 2, 2, 1] } });
     expect(last(b, 'room')?.settings).toEqual({ stage: 'helipad', stocks: 2, cpus: [1, 3, 2, 2, 2, 2, 2, 2] });
     rooms.handle(a, { t: 'start' });
@@ -87,7 +87,7 @@ describe('rooms', () => {
     expect(last(a, 'room')?.playing).toBe(true);
   });
 
-  it('stage pick and ban: everyone\'s bans count only when the host turns it on (ADR-0085)', () => {
+  it('stage pick and ban: everyone\'s bans count only when the host turns it on (ADR-0086)', () => {
     const { rooms, a, b } = readyRoom();
     rooms.handle(b, parseClientMessage(JSON.stringify({ t: 'pick', fighter: 'titan', ready: true, bans: ['helipad', 'nowhere', 'helipad'] }))!);
     expect(last(a, 'room')!.members[1]!.bans).toEqual(['helipad']);
@@ -97,7 +97,7 @@ describe('rooms', () => {
     expect(last(a, 'match')!.start.stage).toBe('helipad');
   });
 
-  it('stage pick and ban on: a banned or Random stage is drawn from the open ones (ADR-0085)', () => {
+  it('stage pick and ban on: a banned or Random stage is drawn from the open ones (ADR-0086)', () => {
     // 0.42 of the way through the open stages; November, so the Harvest Farm is on offer.
     const rooms = new RoomManager(() => 0.42, () => new Date('2026-11-19T18:00:00Z'));
     const a = peer();

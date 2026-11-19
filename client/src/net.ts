@@ -187,7 +187,7 @@ export class NetClient {
           // The server hands each newcomer a fighter nobody else has, and a team (ADR-0081).
           const mine = msg.members.find((m) => m.id === msg.you);
           this.me = { fighter: mine?.fighter ?? this.me.fighter, ready: false, team: mine?.team ?? 0, bans: stageBans() };
-          // Share your saved stage bans with the room (ADR-0085).
+          // Share your saved stage bans with the room (ADR-0086).
           if (this.me.bans.length) this.sharePick();
         }
         this.changed();

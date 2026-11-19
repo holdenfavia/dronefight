@@ -142,6 +142,7 @@ export class Renderer {
           if (e.dmg >= 10) this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 10, max: 10, size: 14 + e.dmg, color: '#fff6c9', kind: 'star', grow: 1 });
           this.flashes.set(e.target, 1);
           if (e.armored) this.popup(world.fighters[e.target]!, 'ARMOR', '#ffb36b');
+          if (e.spam) this.popup(world.fighters[e.attacker]!, 'SPAM', '#c8c8c8');
           if (e.tip) {
             // A clean sword-tip hit: a bright white star and a ring.
             this.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 14, max: 14, size: 16 + e.dmg, color: ATTACK_COLORS.tip, kind: 'star', grow: 2.5 });

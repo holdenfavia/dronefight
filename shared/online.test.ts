@@ -39,7 +39,7 @@ describe('online fights', () => {
     const old = parseClientMessage(JSON.stringify({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [] } }));
     expect(old).toEqual({ t: 'settings', settings: { stage: 'rooftop', stagePick: false, stocks: 3, cpus: [], rules: { moonJump: false, oneHit: false }, teams: false, friendlyFire: false, cpuTeams: [] } });
   });
-  it('draws the stage: the pick unless banned or Random, then an open one (ADR-0085)', () => {
+  it('draws the stage: the pick unless banned or Random, then an open one (ADR-0086)', () => {
     const offered = ['rooftop', 'helipad', 'cranes'] as const;
     expect(drawStage('helipad', offered, [], () => 0.9)).toBe('helipad');
     expect(drawStage('helipad', offered, ['helipad'], () => 0)).toBe('rooftop');

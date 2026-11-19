@@ -1,4 +1,4 @@
-# ADR-0086: Up to ten fighters per match
+# ADR-0087: Up to ten fighters per match
 
 - **Status:** Accepted
 - **Date:** 2026-11-19

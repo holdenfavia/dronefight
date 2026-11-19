@@ -24,7 +24,7 @@ interface Member {
   ready: boolean;
   /** Team for team battles (ADR-0081). */
   team: number;
-  /** Stages they banned (ADR-0085). */
+  /** Stages they banned (ADR-0086). */
   bans: StageId[];
   /** Personal tag and color (ADR-0083). */
   profile: Profile;
@@ -182,7 +182,7 @@ export class RoomManager {
       fighters.push({ fighter: pool[Math.floor(this.random() * pool.length)]!, member: -1, level, team: teams ? (s.cpuTeams?.[i] ?? 0) : -1 });
     });
     const rules = { ...s.rules, friendlyFire: teams && !!s.friendlyFire };
-    // Stage pick and ban (ADR-0085): with it on, a stage anyone banned is never played; Random draws from the
+    // Stage pick and ban (ADR-0086): with it on, a stage anyone banned is never played; Random draws from the
     // stages on offer today.
     const bans = s.stagePick ? [...new Set([...room.members.values()].flatMap((m) => m.bans))] : [];
     const stage = drawStage(s.stage, availableStages(seasons), bans, this.random);

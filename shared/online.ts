@@ -38,7 +38,7 @@ export interface MemberPick {
   ready: boolean;
   /** Team for team battles (ADR-0081), 0 to TEAM_COUNT - 1. */
   team: number;
-  /** Stages this player banned (ADR-0085); they count when the host turns on stage pick and ban. */
+  /** Stages this player banned (ADR-0086); they count when the host turns on stage pick and ban. */
   bans: StageId[];
 }
 
@@ -61,7 +61,7 @@ export function sideCount(teams: readonly number[]): number {
   return new Set(teams.map((t, i) => (t >= 0 ? `t${t}` : `s${i}`))).size;
 }
 
-/** A stage, or Random: one is drawn when the fight starts (ADR-0085). */
+/** A stage, or Random: one is drawn when the fight starts (ADR-0086). */
 export type StagePick = StageId | 'random';
 
 export function isStagePick(v: unknown): v is StagePick {
@@ -75,7 +75,7 @@ export function parseBans(v: unknown): StageId[] {
 }
 
 /**
- * The stage a fight is played on (ADR-0085): the pick, unless it's Random or banned; then one drawn from the stages
+ * The stage a fight is played on (ADR-0086): the pick, unless it's Random or banned; then one drawn from the stages
  * on offer that nobody banned (from all of them if the bans leave none). Called on the menus or the room server,
  * never in the sim (Hard rule 2).
  */
@@ -89,7 +89,7 @@ export function drawStage(pick: StagePick, offered: readonly StageId[], bans: re
 /** The host's match settings. Each CPU is one entry: its level. */
 export interface RoomSettings {
   stage: StagePick;
-  /** Stage pick and ban (ADR-0085): everyone's bans count. Off by default. */
+  /** Stage pick and ban (ADR-0086): everyone's bans count. Off by default. */
   stagePick?: boolean;
   stocks: number;
   cpus: BotLevel[];

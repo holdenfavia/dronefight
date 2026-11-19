@@ -33,11 +33,11 @@ export interface SlotSetup {
 }
 
 export interface MatchSetup {
-  /** Every slot, up to MATCH.maxFighters (ADR-0086); the select screen shows the first few until more are added. */
+  /** Every slot, up to MATCH.maxFighters (ADR-0087); the select screen shows the first few until more are added. */
   slots: SlotSetup[];
-  /** A stage or Random (ADR-0085). */
+  /** A stage or Random (ADR-0086). */
   stage: StagePick;
-  /** Stage pick and ban (ADR-0085): Fight! opens the stage screen, your bans count. Off by default. */
+  /** Stage pick and ban (ADR-0086): Fight! opens the stage screen, your bans count. Off by default. */
   stagePick: boolean;
   stocks: number;
   /** Team battle instead of a free-for-all (ADR-0081). */
@@ -54,7 +54,7 @@ const FEEDBACK_URL = '/api/feedback';
 /** Longest note the form allows (matches the server's FEEDBACK_MAX_TEXT). */
 const FEEDBACK_MAX_TEXT = 1000;
 
-/** Fighters the slots past the first four start on (ADR-0086). */
+/** Fighters the slots past the first four start on (ADR-0087). */
 const EXTRA_SLOT_FIGHTERS: FighterId[] = ['ninja', 'gunslinger', 'chef', 'ghost', 'yoyo', 'bard'];
 
 export function defaultSetup(): MatchSetup {
@@ -81,7 +81,7 @@ export function loadSetup(): MatchSetup {
     const s = JSON.parse(raw) as MatchSetup;
     const d = defaultSetup();
     if (!Array.isArray(s.slots) || s.slots.length < 2 || s.slots.length > MATCH.maxFighters || !isStagePick(s.stage)) return d;
-    // Setups saved before bigger fights (ADR-0086) have four slots: the rest start off.
+    // Setups saved before bigger fights (ADR-0087) have four slots: the rest start off.
     s.slots = [...s.slots, ...d.slots.slice(s.slots.length)];
     for (const slot of s.slots) {
       if (!ALL_FIGHTER_IDS.includes(slot.fighter) || !['p1', 'bot', 'off'].includes(slot.kind) || ![1, 2, 3].includes(slot.level)) return d;
@@ -199,13 +199,13 @@ function stageLabel(id: StagePick): string {
   return `Stage: ${stageName(id)}${id !== 'random' && seasonOfStage(id) ? ' · Seasonal' : ''}`;
 }
 
-/** The next stage on offer here after this one, then Random (ADR-0085). */
+/** The next stage on offer here after this one, then Random (ADR-0086). */
 function nextStage(id: StagePick): StagePick {
   const list: StagePick[] = [...stageIds(), 'random'];
   return list[(list.indexOf(id) + 1) % list.length]!;
 }
 
-/** How many player panels the select screen shows: four, or up to the last one in use (ADR-0086). */
+/** How many player panels the select screen shows: four, or up to the last one in use (ADR-0087). */
 function shownSlots(slots: readonly SlotSetup[]): number {
   let last = -1;
   slots.forEach((x, i) => { if (x.kind !== 'off') last = i; });
@@ -287,9 +287,9 @@ export class Ui {
   private feedbackForm: HTMLElement | null = null;
   /** The open cheat code box, if any (ADR-0077). */
   private cheatBox: HTMLElement | null = null;
-  /** The stage screen is the online room's (ADR-0085), not this keyboard's. */
+  /** The stage screen is the online room's (ADR-0086), not this keyboard's. */
   private stagesOnline = false;
-  /** Made a room and waiting for it: its Match settings screen opens first (ADR-0085). */
+  /** Made a room and waiting for it: its Match settings screen opens first (ADR-0086). */
   private madeRoom = false;
   /** A line under the stage cards ("Leave at least one stage open"). */
   private stageNote = '';
@@ -814,7 +814,7 @@ export class Ui {
       }
       panels.appendChild(card);
     });
-    // Bigger fights (ADR-0086): one more panel at a time, as a Normal CPU.
+    // Bigger fights (ADR-0087): one more panel at a time, as a Normal CPU.
     if (shown < s.slots.length) {
       const add = this.button('slot add-slot', '', () => {
         // Fill the first empty panel, or open the next one.
@@ -986,7 +986,7 @@ export class Ui {
   // ------------------------------------------------------------------------------------- Stage pick and ban
 
   /**
-   * The stage screen (ADR-0085): a card per stage on offer and Random. Pick one to fight there; ban the ones you
+   * The stage screen (ADR-0086): a card per stage on offer and Random. Pick one to fight there; ban the ones you
    * never want. Online, everyone bans here and the host picks.
    */
   showStages(online: boolean): void {
@@ -1076,7 +1076,7 @@ export class Ui {
     this.show('stages', page, focus, at);
   }
 
-  /** The room's Match settings (ADR-0085): opens when you make a room, and from the lobby. Host only. */
+  /** The room's Match settings (ADR-0086): opens when you make a room, and from the lobby. Host only. */
   showMatchSettings(): void {
     const room = this.net.room;
     if (!room || !this.net.isHost) return this.showOnline();
@@ -1199,7 +1199,7 @@ export class Ui {
     // The host's rule cheats (MOONJUMP, ONEHIT) are the room's rules (ADR-0077).
     if (isHost && !room.playing && !sameRules(settings.rules, cheatRules())) net.setSettings({ ...settings, rules: cheatRules() });
     const setCpus = (cpus: BotLevel[], teams = cpuTeams) => net.setSettings({ ...settings, cpus, cpuTeams: teams.slice(0, cpus.length) });
-    // Four panels, or as many as are in use plus one open (ADR-0086).
+    // Four panels, or as many as are in use plus one open (ADR-0087).
     const shown = Math.min(MATCH.maxFighters, Math.max(MENU.slotsShown, members.length + settings.cpus.length + 1));
     const panels = el('div', `slots ${shown > MENU.slotsShown ? 'many' : ''}`);
     for (let i = 0; i < shown; i++) {
@@ -1263,7 +1263,7 @@ export class Ui {
     const start = this.button('fight', 'Start', () => net.start());
     start.disabled = !canStart;
     start.title = canStart ? 'Start the fight' : fighters < 2 ? 'Add a CPU or wait for a friend' : oneTeam ? 'Everyone is on one team: put someone on another' : 'Waiting for everyone to be ready';
-    // The match itself is set on the host's Match settings screen (ADR-0085); everyone sees a summary.
+    // The match itself is set on the host's Match settings screen (ADR-0086); everyone sees a summary.
     const summary = [stageLabel(settings.stage), `Stocks: ${settings.stocks}`, teamOn ? 'Teams' : 'Free-for-all'];
     if (teamOn) summary.push(`Friendly fire ${settings.friendlyFire ? 'on' : 'off'}`);
     if (settings.stagePick) summary.push('Stage pick & ban');
@@ -1405,7 +1405,7 @@ export class Ui {
     this.cards = [];
     const bar = this.hud.querySelector('.cards') ?? this.hud.appendChild(el('div', 'cards'));
     bar.replaceChildren();
-    // Bigger fights (ADR-0086): smaller cards that wrap.
+    // Bigger fights (ADR-0087): smaller cards that wrap.
     bar.classList.toggle('many', world.fighters.length > MENU.slotsShown);
     for (const f of world.fighters) {
       const card = el('div', `card ${cpu[f.slot] ? 'cpu' : ''}`);

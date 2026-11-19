@@ -3,7 +3,7 @@
 
 import {
   AIRDODGE, CHEAT_RULES, SIGNATURE, DODGE, DROP_HOLD_FRAMES, DT, GRAB, HITLAG, KNOCKBACK, KNOCKDOWN, LEDGE, MATCH, MOVEMENT, PARRY, SHIELD,
-  REFLECT, REWIND_HISTORY_FRAMES, SHIELD_DROP_FRAMES, STATUS, STALE, TECH, UP_SPECIAL_JUMP_REFUND,
+  REFLECT, REWIND_HISTORY_FRAMES, SHIELD_DROP_FRAMES, SPECIAL_SPAM, STATUS, STALE, TECH, UP_SPECIAL_JUMP_REFUND,
 } from './config.js';
 import { FIGHTERS, type FighterDef, type FighterId, type Hitbox, type HitStats, type MoveDef, type MoveId, type ProjectileDef } from './fighters.js';
 import { nextRandom } from './rng.js';
@@ -89,6 +89,12 @@ export interface Fighter {
   chargeMult: number;
   /** The current move already counted toward staleness. */
   staleCounted: boolean;
+  /** Special spam (ADR-0085): the last special used, how many times in a row, the last frame it was in use. */
+  spamKey: MoveId | null;
+  spamCount: number;
+  spamFrame: number;
+  /** The current move is spammed: weak hits, no launch. */
+  moveSpam: boolean;
   percent: number;
   stocks: number;
   airJumpsLeft: number;
@@ -197,10 +203,12 @@ export interface Projectile {
   rehit: number;
   look: string;
   move: MoveId;
+  /** Thrown by a spammed special (ADR-0085). */
+  spam: boolean;
 }
 
 export type GameEvent =
-  | { type: 'hit'; x: number; y: number; dmg: number; kb: number; attacker: number; target: number; armored?: boolean; move?: MoveId; sig?: string; tip?: boolean }
+  | { type: 'hit'; x: number; y: number; dmg: number; kb: number; attacker: number; target: number; armored?: boolean; move?: MoveId; sig?: string; tip?: boolean; spam?: boolean }
   | { type: 'signature'; slot: number; kind: SignatureKind; target: number }
   | { type: 'warp'; slot: number; fromX: number; fromY: number; x: number; y: number }
   | { type: 'reflect'; x: number; y: number; slot: number }
@@ -258,7 +266,7 @@ export interface World {
 
 /**
  * Where a fighter starts: the stage's own spot for the first few slots, then spread along the main platform for
- * bigger fights (up to MATCH.maxFighters, ADR-0086).
+ * bigger fights (up to MATCH.maxFighters, ADR-0087).
  */
 export function spawnPoint(stage: StageDef, slot: number): { x: number; y: number } {
   const own = stage.spawns[slot];
@@ -296,6 +304,10 @@ export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: nu
       charge: 0,
       chargeMult: 1,
       staleCounted: false,
+      spamKey: null,
+      spamCount: 0,
+      spamFrame: -9999,
+      moveSpam: false,
       percent: 0,
       stocks,
       airJumpsLeft: def.airJumps,
@@ -536,7 +548,13 @@ function setAction(f: Fighter, action: Action, duration = 0): void {
   }
 }
 
-function startMove(world: World, f: Fighter, wanted: MoveId, button: 'attack' | 'special' | null): void {
+/**
+ * startMove: `followUp` marks a move the current one leads into (a slam's landing, a grab's
+ * carry, a counter's strike), which keeps the current move's spam flag.
+ */
+function startMove(world: World, f: Fighter, wanted: MoveId, button: 'attack' | 'special' | null, followUp = false): void {
+  if (button === 'special') trackSpam(world, f, wanted);
+  else if (!followUp) f.moveSpam = false;
   // A full signature meter can turn the move into its signature version (ADR-0079).
   const move = beginMove(world, f, wanted);
   setAction(f, 'attack');
@@ -549,6 +567,18 @@ function startMove(world: World, f: Fighter, wanted: MoveId, button: 'attack' | 
   f.tumbling = false;
   f.hovering = false;
   world.events.push({ type: 'swing', slot: f.slot, move });
+}
+
+/** Count uses of the same special in a row (ADR-0085). Air and ground versions are one special. */
+function trackSpam(world: World, f: Fighter, wanted: MoveId): void {
+  const key = wanted.replace(/Air$/, '') as MoveId;
+  // A six-shooter is already limited by its ammo.
+  if (key === 'reload' || (key === 'nspecial' && fighterDef(f).ammo !== undefined)) { f.moveSpam = false; return; }
+  const inRow = key === f.spamKey && world.frame - f.spamFrame <= SPECIAL_SPAM.windowFrames;
+  f.spamKey = key;
+  f.spamCount = inRow ? f.spamCount + 1 : 1;
+  f.spamFrame = world.frame;
+  f.moveSpam = f.spamCount >= SPECIAL_SPAM.fromUse;
 }
 
 function refreshAirOptions(f: Fighter): void {
@@ -583,6 +613,8 @@ function speedMult(f: Fighter): number {
 function updateFighter(world: World, f: Fighter, rawInput: Input): void {
   if (f.action === 'out') return;
   tickSignature(world, f);
+  // Still using a special: the spam window runs from when it ends.
+  if (f.action === 'attack' && f.moveButton === 'special') f.spamFrame = world.frame;
   const input = f.cursed > 0 ? swapSides(rawInput) : rawInput;
   const press = pressedEdges(input, f.cursed > 0 ? swapSides(f.prev) : f.prev);
   if (f.cursed > 0) f.cursed--;
@@ -1181,7 +1213,7 @@ function endMove(f: Fighter, m: MoveDef): void {
 }
 
 function finishSlam(world: World, f: Fighter, m: MoveDef): void {
-  if (m.slam?.landMove) startMove(world, f, m.slam.landMove, null);
+  if (m.slam?.landMove) startMove(world, f, m.slam.landMove, null, true);
   else setAction(f, 'land', m.landLag ?? 10);
   world.events.push({ type: 'land', slot: f.slot, hard: true });
 }
@@ -1220,6 +1252,7 @@ function spawnProjectile(world: World, f: Fighter, p: ProjectileDef, charge: num
     rehit: p.rehit ?? 0,
     look,
     move: f.move!,
+    spam: f.moveSpam,
   });
   world.events.push({ type: 'shot', slot: f.slot, kind: p.kind, look });
 }
@@ -1487,7 +1520,7 @@ function startHold(world: World, a: Fighter, v: Fighter, grabMove: MoveId | unde
   v.tumbling = false;
   v.lastHitBy = a.slot;
   v.lastHitFrame = world.frame;
-  if (grabMove) startMove(world, a, grabMove, null);
+  if (grabMove) startMove(world, a, grabMove, null, true);
   else setAction(a, 'holding');
   world.events.push({ type: 'grab', slot: a.slot, target: v.slot });
 }
@@ -1538,7 +1571,7 @@ function throwHit(world: World, f: Fighter, t: NonNullable<MoveDef['throwHit']>)
   if (t.behind) v.x = f.x - f.facing * (fighterDef(f).halfW + fighterDef(v).halfW) * GRAB.holdOverlap;
   setAction(v, v.grounded ? 'idle' : 'air');
   world.events.push({ type: 'throw', slot: f.slot, target: v.slot });
-  strike(world, f, v, t.hit, f.facing, v.x, centerY(v), { melee: true, isThrow: true, move: f.move ?? undefined });
+  strike(world, f, v, t.hit, f.facing, v.x, centerY(v), { melee: true, isThrow: true, spam: f.moveSpam, move: f.move ?? undefined });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1605,6 +1638,7 @@ function updateProjectiles(world: World): void {
         const fm = f.action === 'attack' && f.move ? moveOf(f) : null;
         if (fm?.reflect && inRange(f.frame, fm.reflect) && (p.kind === 'shot' || p.kind === 'bomb') && !p.returning) {
           p.owner = f.slot;
+          p.spam = false;
           owner = f;
           p.vx = -p.vx * REFLECT.speedMult;
           if (p.kind === 'bomb') p.vy = Math.abs(p.vy) * 0.6 + 200;
@@ -1634,19 +1668,19 @@ function updateProjectiles(world: World): void {
           // Burns whoever stands in it, every so often.
           if (f.invincible > 0 || world.frame - (p.lastHit[f.slot] ?? -9999) < p.rehit) continue;
           p.lastHit[f.slot] = world.frame;
-          strike(world, owner, f, p.hit, dx >= 0 ? 1 : -1, p.x, p.y, { melee: false, move: p.move });
+          strike(world, owner, f, p.hit, dx >= 0 ? 1 : -1, p.x, p.y, { melee: false, spam: p.spam, move: p.move });
           continue;
         }
         if (p.returns) {
           // Yo-yos hit each fighter once, then head home.
           if (p.hitSlots.includes(f.slot)) continue;
           p.hitSlots.push(f.slot);
-          if (f.invincible <= 0) strike(world, owner, f, p.hit, p.vx >= 0 ? 1 : -1, p.x, p.y, { melee: false, move: p.move });
+          if (f.invincible <= 0) strike(world, owner, f, p.hit, p.vx >= 0 ? 1 : -1, p.x, p.y, { melee: false, spam: p.spam, move: p.move });
           startReturn(p);
           continue;
         }
         if (p.kind === 'shot') {
-          if (f.invincible <= 0) strike(world, owner, f, p.hit, p.vx >= 0 ? 1 : -1, p.x, p.y, { melee: false, move: p.move, sig: shotSig(p.look) });
+          if (f.invincible <= 0) strike(world, owner, f, p.hit, p.vx >= 0 ? 1 : -1, p.x, p.y, { melee: false, spam: p.spam, move: p.move, sig: shotSig(p.look) });
         }
         touched = true;
         gone = true;
@@ -1701,7 +1735,7 @@ function explode(world: World, p: Projectile): void {
     const dy = centerY(f) - p.y;
     const reach = fighterDef(f).hurtR + p.blastR;
     if (dx * dx + dy * dy > reach * reach) continue;
-    strike(world, owner, f, p.hit, dx >= 0 ? 1 : -1, p.x, p.y, { melee: false, move: p.move });
+    strike(world, owner, f, p.hit, dx >= 0 ? 1 : -1, p.x, p.y, { melee: false, spam: p.spam, move: p.move });
   }
 }
 
@@ -1735,7 +1769,7 @@ function resolveHits(world: World): void {
         }
         a.moveHits.push(t.slot);
         const stats: HitStats = box.hb.counter ? { ...box.hb, dmg: a.counterDmg } : box.hb;
-        strike(world, a, t, stats, a.facing, (box.x + t.x) / 2, (box.y + centerY(t)) / 2, { melee: true, move: a.move ?? undefined, tip: box.hb.tip, pierce: box.hb.pierce });
+        strike(world, a, t, stats, a.facing, (box.x + t.x) / 2, (box.y + centerY(t)) / 2, { melee: true, spam: a.moveSpam, move: a.move ?? undefined, tip: box.hb.tip, pierce: box.hb.pierce });
         break;
       }
     }
@@ -1762,6 +1796,8 @@ interface StrikeOpts {
   pierce?: boolean;
   /** A signature shot (the golden bullet). */
   sig?: string;
+  /** From a spammed special (ADR-0085): half damage, no launch, no hitstun. */
+  spam?: boolean;
 }
 
 function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats, facing: 1 | -1, x: number, y: number, opts: StrikeOpts): void {
@@ -1773,7 +1809,7 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
     if (tm?.counter && inRange(target.frame, tm.counter)) {
       target.counterDmg = Math.max(6, hit.dmg * tm.counter.mult);
       target.facing = (opts.melee ? attacker.x : x) >= target.x ? 1 : -1;
-      startMove(world, target, tm.counter.move, null);
+      startMove(world, target, tm.counter.move, null, true);
       target.invincible = Math.max(target.invincible, 14);
       if (opts.melee) attacker.hitlag = baseLag + 10;
       world.events.push({ type: 'counter', x, y, slot: target.slot });
@@ -1801,6 +1837,22 @@ function strike(world: World, attacker: Fighter, target: Fighter, hit: HitStats,
   if (opts.move && (!opts.melee || !attacker.staleCounted)) {
     pushStale(attacker, opts.move);
     if (opts.melee) attacker.staleCounted = true;
+  }
+  if (opts.spam) {
+    // Spammed special (ADR-0085): half damage rounded down, no knockback, no hitstun,
+    // and no signature effects or meters.
+    const base = hit.dmg * stale * (opts.melee && !opts.isThrow ? attacker.chargeMult : 1);
+    const full = opts.melee && !opts.isThrow && attacker.moveSig === 'fizzle' ? fizzleDamage(base) : base;
+    const weak = Math.floor(full * SPECIAL_SPAM.dmgMult);
+    target.percent = Math.min(999, target.percent + weak);
+    attacker.stats.damageDealt += weak;
+    target.lastHitBy = attacker.slot;
+    target.lastHitFrame = world.frame;
+    const spamLag = Math.min(HITLAG.max, Math.floor(HITLAG.base + weak * HITLAG.perDamage));
+    target.hitlag = spamLag;
+    if (opts.melee) attacker.hitlag = spamLag;
+    world.events.push({ type: 'hit', x, y, dmg: weak, kb: 0, attacker: attacker.slot, target: target.slot, move: opts.move, spam: true });
+    return;
   }
   // Signature mechanics (ADR-0079): edge, combos, marks, payback, recipes...
   const sig = strikeMods(world, attacker, target, opts);

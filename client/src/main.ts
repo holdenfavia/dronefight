@@ -1,4 +1,4 @@
-// dronefight: a side-view platform fighter (ADR-0070, ADR-0071, ADR-0072). Up to ten fighters (ADR-0086): you on the keyboard plus CPUs,
+// dronefight: a side-view platform fighter (ADR-0070, ADR-0071, ADR-0072). Up to ten fighters (ADR-0087): you on the keyboard plus CPUs,
 // or friends on their own computers in an online room (ADR-0076).
 
 import './styles.css';
@@ -112,7 +112,7 @@ function startMatch(setup: MatchSetup): void {
   const seed = (Math.random() * 1e9) | 0;
   // Team battles (ADR-0081): each fighter brings its team; friendly fire is a rule of the fight.
   const rules = { ...cheatRules(), friendlyFire: setup.teams && setup.friendlyFire };
-  // Random, or a stage you banned since (ADR-0085): drawn from the open stages, here on the client too.
+  // Random, or a stage you banned since (ADR-0086): drawn from the open stages, here on the client too.
   const stage = drawStage(setup.stage, stageIds(), setup.stagePick ? stageBans() : [], Math.random);
   world = createWorld(stage, active.map((s) => ({ id: s.fighter, team: setup.teams ? s.team : -1 })), setup.stocks, seed, rules);
   bots = active.map((s, i) => (s.kind === 'bot' ? createBot(i, s.level, seed) : null));

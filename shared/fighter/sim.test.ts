@@ -130,7 +130,7 @@ describe('fighter sim', () => {
     }
   });
 
-  it('ten bots start apart on every stage and finish the match (ADR-0086)', () => {
+  it('ten bots start apart on every stage and finish the match (ADR-0087)', () => {
     for (const stage of STAGE_IDS) {
       const w = createWorld(stage, FIGHTER_IDS.slice(0, MATCH.maxFighters).map((id) => ({ id })), 1, 11);
       expect(w.fighters).toHaveLength(10);

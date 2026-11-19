@@ -1,4 +1,4 @@
-// Your stage bans (ADR-0085), saved in this browser. They count offline when stage pick and ban is on, and online
+// Your stage bans (ADR-0086), saved in this browser. They count offline when stage pick and ban is on, and online
 // they're shared with the room (the host decides whether the room uses them).
 
 import type { StageId } from '../../shared/fighter/stages';
