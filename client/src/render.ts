@@ -1728,6 +1728,7 @@ export class Renderer {
       rage: koFraction(f),
       meter,
       ready: gauge?.ready ?? false,
+      sisters: f.id === 'firstlight' ? f.meter : undefined,
       phase: this.time * (0.9 + thrust * 0.8) + f.slot,
       blink: this.blinkAmount(f.slot) + (f.action === 'hitstun' || f.action === 'shieldbreak' ? 1 : 0),
       flash: this.flashes.get(f.slot) ?? 0,
