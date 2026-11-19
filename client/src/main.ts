@@ -53,6 +53,10 @@ let onlineQueue: QueuedFrame[] = [];
 let onlineYou = -1;
 /** Waiting for a few frames to arrive before stepping, so network jitter doesn't stutter the fight. */
 let onlineBuffering = true;
+/** Fewest frames waiting this drain window, ticks into it, and frames left to step off (ADR-0088). */
+let onlineFewest = Infinity;
+let onlineWindowTicks = 0;
+let onlineDrain = 0;
 /** The Esc menu is open over an online fight. */
 let onlineMenu = false;
 let desyncs = 0;
@@ -142,6 +146,9 @@ function startOnline(start: MatchStart, you: number): void {
   onlineYou = you;
   onlineQueue = [];
   onlineBuffering = true;
+  onlineFewest = Infinity;
+  onlineWindowTicks = 0;
+  onlineDrain = 0;
   onlineMenu = false;
   onlineResults = true;
   // Each player's own tag and color (ADR-0083), the same on every screen in the room.
@@ -179,7 +186,16 @@ function tickOnline(): void {
   }
   // Fell far behind (a hidden tab, a long stall): jump ahead quietly. A bit behind: step two to catch up.
   const quiet = waiting > ONLINE.jumpFrames;
-  let steps = quiet ? waiting - ONLINE.bufferFrames : waiting > ONLINE.catchUpFrames ? 2 : 1;
+  // Frames that sat unused for a whole window are extra lag: step them off (ADR-0088).
+  onlineFewest = Math.min(onlineFewest, waiting);
+  if (++onlineWindowTicks >= ONLINE.drainWindowTicks) {
+    onlineDrain = Math.max(0, onlineFewest - 1 - ONLINE.spareFrames);
+    onlineFewest = Infinity;
+    onlineWindowTicks = 0;
+  }
+  const drain = onlineDrain > 0 && waiting > 1 + ONLINE.spareFrames;
+  if (drain) onlineDrain--;
+  let steps = quiet ? waiting - ONLINE.bufferFrames : drain || waiting > ONLINE.catchUpFrames ? 2 : 1;
   while (steps > 0 && onlineQueue.length) {
     const q = onlineQueue.shift()!;
     if (q.kind === 'snap') {

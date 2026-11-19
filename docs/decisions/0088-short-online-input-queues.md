@@ -16,9 +16,11 @@ missed. The owner picked "drain the queues, then add prediction" on 2026-11-19.
 ## Decision
 - **Server:** each player's input queue keeps at most one frame of backlog. When more is waiting at a step, the
   oldest inputs are merged into the next one, which keeps any key newly pressed in them, so a tap is never lost.
-- **Client:** keeps about 2 frames in hand (`ONLINE.bufferFrames`) and steps two frames per tick whenever more than
-  that are waiting (`ONLINE.catchUpFrames` = 2), so a burst drains in a few ticks. Jumping ahead after a hidden tab
-  is unchanged.
+- **Client:** still waits for 2 frames before stepping, but every half second (`ONLINE.drainWindowTicks`) it looks
+  at the fewest frames that were waiting; anything beyond one spare frame (`ONLINE.spareFrames`) was never needed,
+  so it steps those off two per tick. A burst drains within about a second instead of staying. Stepping two per tick
+  past 6 waiting, and jumping ahead after a hidden tab, are unchanged. (Stepping two whenever more than 2 waited was
+  tried first: it drained, but jitter then emptied the buffer several times a second, a visible stutter.)
 - **Keyboard:** a key pressed and released between two ticks still counts as held for one tick (offline too).
 - Prediction for your own fighter is a separate, later decision.
 
@@ -30,5 +32,7 @@ missed. The owner picked "drain the queues, then add prediction" on 2026-11-19.
 ## Consequences
 - `server/src/match.ts` merges backlog (`MAX_QUEUED_INPUTS` = 1 in `shared/online.ts`), `client/src/main.ts`
   and `client/src/config.ts` drain the frame queue, `client/src/input.ts` latches taps.
+- Measured on a 30 ms round trip: press to the client's sim about 65 ms (was 70–100), and about 85 ms after a
+  150 ms hitch (was 150 for the rest of the match).
 - The client steps two frames in one tick a little more often (a burst, or a server clock slightly faster than the
   browser's); that shows as an occasional one-frame skip instead of lasting lag.
