@@ -3,7 +3,7 @@
 
 import { botInput, createBot, type Bot, type BotLevel } from '../../shared/fighter/bot.js';
 import { createWorld, NO_INPUT, step, type World } from '../../shared/fighter/sim.js';
-import { decodeInput, encodeInput, INPUT_HOLD_FRAMES, MATCH_END_FRAMES, MAX_QUEUED_INPUTS, type MatchStart } from '../../shared/online.js';
+import { decodeInput, encodeInput, INPUT_HOLD_FRAMES, MATCH_END_FRAMES, MAX_QUEUED_INPUTS, mergeInputs, type MatchStart } from '../../shared/online.js';
 
 interface Slot {
   /** Room member playing this fighter, or -1 for a CPU. */
@@ -40,8 +40,6 @@ export class OnlineMatch {
     const s = this.slots.find((x) => x.member === member);
     if (!s) return;
     s.queue.push(bits);
-    // A burst after a stall: keep only the newest few, so the fighter never lags behind its player.
-    if (s.queue.length > MAX_QUEUED_INPUTS) s.queue.splice(0, s.queue.length - MAX_QUEUED_INPUTS);
   }
 
   /** The member left: a CPU takes over their fighter. Returns its slot, or -1. */
@@ -68,6 +66,13 @@ export class OnlineMatch {
   step(): number[] {
     const bits = this.slots.map((s) => {
       if (s.bot) return encodeInput(botInput(s.bot, this.world));
+      // A backlog (a burst after a stall, or a player's clock running a little fast) would add lag that never
+      // drains: fold the oldest inputs into the next one, keeping keys newly pressed in them (ADR-0088).
+      while (s.queue.length > MAX_QUEUED_INPUTS + 1) {
+        const older = s.queue.shift()!;
+        s.queue[0] = mergeInputs(s.last, older, s.queue[0]!);
+        s.last = older;
+      }
       const next = s.queue.shift();
       if (next !== undefined) {
         s.last = next;

@@ -35,6 +35,9 @@ export class Keyboard {
   primed = false;
   /** Arrow keys held as specials (pressed with Space held or primed); the rest are attacks. */
   private specialArrows = new Set<string>();
+  /** Keys pressed since the last read: a tap that starts and ends between two ticks still counts once (ADR-0088). */
+  private tapped = new Set<string>();
+  private tappedSpecials = new Set<string>();
 
   constructor(target: Window = window) {
     target.addEventListener('keydown', (e) => {
@@ -46,6 +49,8 @@ export class Keyboard {
           if (this.primed || this.down.has(SPECIAL_KEY)) this.specialArrows.add(e.code);
           this.primed = false;
         }
+        this.tapped.add(e.code);
+        if (this.specialArrows.has(e.code)) this.tappedSpecials.add(e.code);
       }
       this.down.add(e.code);
     });
@@ -71,6 +76,13 @@ export class Keyboard {
   reset(): void {
     this.primed = false;
     this.specialArrows.clear();
+    this.clearTaps();
+  }
+
+  /** Forget taps not yet read (keys pressed in a menu shouldn't reach the fight). */
+  clearTaps(): void {
+    this.tapped.clear();
+    this.tappedSpecials.clear();
   }
 
   /** Swap left and right (the MIRROR cheat flips the screen, so keys follow what you see). */
@@ -79,16 +91,18 @@ export class Keyboard {
   /** The player's input this frame. */
   read(): Input {
     const input: Input = { ...NO_INPUT };
-    for (const [k, code] of Object.entries(MOVE) as [keyof typeof MOVE, string][]) input[k] = this.down.has(code);
+    const held = (code: string) => this.down.has(code) || this.tapped.has(code);
+    for (const [k, code] of Object.entries(MOVE) as [keyof typeof MOVE, string][]) input[k] = held(code);
     for (const [k, code] of Object.entries(AIM) as [keyof typeof AIM, string][]) {
-      if (!this.down.has(code)) continue;
+      if (!held(code)) continue;
       input[k] = true;
-      if (this.specialArrows.has(code)) input.special = true;
+      if (this.specialArrows.has(code) || this.tappedSpecials.has(code)) input.special = true;
       else input.attack = true;
     }
-    input.grab = this.down.has(GRAB_KEY);
-    input.shield = this.down.has(SHIELD_KEY);
-    input.smash = SMASH_KEYS.some((code) => this.down.has(code));
+    input.grab = held(GRAB_KEY);
+    input.shield = held(SHIELD_KEY);
+    input.smash = SMASH_KEYS.some(held);
+    this.clearTaps();
     if (this.mirrored) {
       [input.left, input.right] = [input.right, input.left];
       [input.aimLeft, input.aimRight] = [input.aimRight, input.aimLeft];
