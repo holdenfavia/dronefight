@@ -256,10 +256,27 @@ export interface World {
   rules: MatchRules;
 }
 
+/**
+ * Where a fighter starts: the stage's own spot for the first few slots, then spread along the main platform for
+ * bigger fights (up to MATCH.maxFighters, ADR-0086).
+ */
+export function spawnPoint(stage: StageDef, slot: number): { x: number; y: number } {
+  const own = stage.spawns[slot];
+  if (own) return own;
+  const main = stage.platforms[0]!;
+  const span = stage.view ?? main;
+  const k = slot - stage.spawns.length;
+  // Outside in, alternating sides: 0.12, 0.88, 0.3, 0.7, 0.42, 0.58 of the way across.
+  const steps = [0.12, 0.3, 0.42];
+  const step = steps[Math.floor(k / 2) % steps.length]!;
+  const t = k % 2 === 0 ? step : 1 - step;
+  return { x: span.x1 + (span.x2 - span.x1) * t, y: main.y };
+}
+
 export function createWorld(stageId: StageId, setups: FighterSetup[], stocks: number = MATCH.defaultStocks, seed = 1, rules: MatchRules = {}): World {
   const stage = STAGES[stageId];
   const fighters = setups.map((setup, slot): Fighter => {
-    const spawn = stage.spawns[slot % stage.spawns.length]!;
+    const spawn = spawnPoint(stage, slot);
     const def = FIGHTERS[setup.id];
     return {
       slot,

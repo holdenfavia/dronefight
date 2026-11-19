@@ -4,11 +4,12 @@
 import type { BotLevel } from '../../shared/fighter/bot.js';
 import { MATCH } from '../../shared/fighter/config.js';
 import { FIGHTER_IDS, type FighterId } from '../../shared/fighter/fighters.js';
-import { defaultRoomSettings, serializeWorld, sideCount, SNAPSHOT_EVERY_FRAMES, startingTeam, type MatchFighter, type RoomSettings } from '../../shared/online.js';
+import { defaultRoomSettings, drawStage, serializeWorld, sideCount, SNAPSHOT_EVERY_FRAMES, startingTeam, type MatchFighter, type RoomSettings } from '../../shared/online.js';
 import { MAX_ROOM_MEMBERS, type ClientMessage, type RoomMember, type ServerMessage } from '../../shared/protocol.js';
 import { OnlineMatch } from './match.js';
 import { defaultProfile, type Profile } from '../../shared/profile.js';
-import { activeSeasons, randomPool } from '../../shared/seasons.js';
+import { activeSeasons, availableStages, randomPool } from '../../shared/seasons.js';
+import type { StageId } from '../../shared/fighter/stages.js';
 
 export interface Peer {
   send(data: string): void;
@@ -23,6 +24,8 @@ interface Member {
   ready: boolean;
   /** Team for team battles (ADR-0081). */
   team: number;
+  /** Stages they banned (ADR-0085). */
+  bans: StageId[];
   /** Personal tag and color (ADR-0083). */
   profile: Profile;
 }
@@ -82,6 +85,7 @@ export class RoomManager {
         m.fighter = msg.fighter;
         m.ready = msg.ready;
         if (msg.team !== undefined) m.team = msg.team;
+        if (msg.bans) m.bans = msg.bans;
         this.broadcastRoom(at.room);
         return;
       }
@@ -171,13 +175,18 @@ export class RoomManager {
     const teams = !!s.teams;
     const fighters: MatchFighter[] = [...room.members.entries()].map(([id, m]) => ({ fighter: m.fighter, member: id, level: 0, team: teams ? m.team : -1, tag: m.profile.tag, color: m.profile.color }));
     // CPUs are drawn from the everyday cast plus the fighters of the seasonal events on today (ADR-0082).
-    const pool = randomPool(activeSeasons(this.now()));
+    const seasons = activeSeasons(this.now());
+    const pool = randomPool(seasons);
     s.cpus.forEach((level, i) => {
       if (fighters.length >= MATCH.maxFighters) return;
       fighters.push({ fighter: pool[Math.floor(this.random() * pool.length)]!, member: -1, level, team: teams ? (s.cpuTeams?.[i] ?? 0) : -1 });
     });
     const rules = { ...s.rules, friendlyFire: teams && !!s.friendlyFire };
-    const start = { stage: s.stage, stocks: s.stocks, seed: Math.floor(this.random() * 1e9), fighters, rules };
+    // Stage pick and ban (ADR-0085): with it on, a stage anyone banned is never played; Random draws from the
+    // stages on offer today.
+    const bans = s.stagePick ? [...new Set([...room.members.values()].flatMap((m) => m.bans))] : [];
+    const stage = drawStage(s.stage, availableStages(seasons), bans, this.random);
+    const start = { stage, stocks: s.stocks, seed: Math.floor(this.random() * 1e9), fighters, rules };
     room.match = new OnlineMatch(start);
     room.pending = [];
     for (const [id, m] of room.members) send(m.peer, { t: 'match', start, you: room.match.slotOf(id) });
@@ -198,7 +207,7 @@ export class RoomManager {
     const taken = new Set([...room.members.values()].map((m) => m.fighter));
     const fighter = FIGHTER_IDS.find((f) => !taken.has(f)) ?? FIGHTER_IDS[0]!;
     const team = startingTeam([...room.members.values()].map((m) => m.team));
-    room.members.set(id, { peer, fighter, ready: false, team, profile });
+    room.members.set(id, { peer, fighter, ready: false, team, bans: [], profile });
     this.peerRoom.set(peer, { room, id });
     trimCpus(room);
     this.broadcastRoom(room);
@@ -212,7 +221,7 @@ export class RoomManager {
   }
 
   private broadcastRoom(room: Room): void {
-    const members: RoomMember[] = [...room.members.entries()].map(([id, m]) => ({ id, fighter: m.fighter, ready: m.ready, team: m.team, tag: m.profile.tag, color: m.profile.color }));
+    const members: RoomMember[] = [...room.members.entries()].map(([id, m]) => ({ id, fighter: m.fighter, ready: m.ready, team: m.team, bans: m.bans, tag: m.profile.tag, color: m.profile.color }));
     const host = hostOf(room);
     for (const [id, m] of room.members) {
       send(m.peer, { t: 'room', code: room.code, you: id, members, host, settings: room.settings, playing: !!room.match });

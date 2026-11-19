@@ -68,7 +68,7 @@ export function resolveColors(wanted: readonly number[]): string[] {
   });
   return out.map((c, i) => {
     if (c) return c;
-    const slot = PROFILE_COLORS[i % 4]!;
+    const slot = PROFILE_COLORS[i % PROFILE_COLORS.length]!;
     const color = !taken.has(slot) ? slot : PROFILE_COLORS.find((x) => !taken.has(x)) ?? slot;
     taken.add(color);
     return color;

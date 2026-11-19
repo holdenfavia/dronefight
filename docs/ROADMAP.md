@@ -48,6 +48,8 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 
 - [x] Seasonal events framework; Thanksgiving: Turkey, Pilgrim, Chief, Harvest Farm (ADR-0082)
 - [ ] Christmas event: fighters and a winter stage (add a `SEASONS` entry, ADR-0082)
+- [x] Stage pick and ban (match setting, off by default) and a Match settings screen when making a room (ADR-0085)
+- [x] Up to 10 fighters per match, four panels shown first (ADR-0086)
 - [ ] More fighters, more stages, items
 - [ ] Gamepad support
 - [x] Team battles: Free-for-all or Teams, friendly fire toggle, last team standing (ADR-0081)

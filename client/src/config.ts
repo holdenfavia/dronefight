@@ -1,7 +1,9 @@
 // Client look and feel (ADR-0070). Simulation tuning lives in shared/fighter/config.ts.
 
-/** One color per slot: orange and lime first (ADR-0026). */
-export const SLOT_COLORS = ['#ff6a13', '#9be22d', '#2ec5ff', '#ff4fa3'] as const;
+import { PROFILE_COLORS } from '../../shared/profile';
+
+/** One color per slot: orange and lime first (ADR-0026), then the rest of the ten for bigger fights (ADR-0086). */
+export const SLOT_COLORS = PROFILE_COLORS;
 
 /** Team battles (ADR-0081): every fighter on a team wears its color instead of the slot's. */
 export const TEAM_COLORS = ['#ff3b30', '#2f7bff', '#36d15a', '#ffd21f'] as const;
@@ -26,6 +28,11 @@ export const MENU = {
   tileSize: 52,
   /** Roster columns when the layout can't be measured. */
   rosterColumns: 6,
+  /** Stage thumbnails (ADR-0085), drawn at this size and scaled by CSS. */
+  stageThumbWidth: 480,
+  stageThumbHeight: 270,
+  /** Player panels shown before "Add a fighter" reveals more (ADR-0086). */
+  slotsShown: 4,
 } as const;
 
 /** CPU tag over a CPU's head (ADR-0075): muted so people stand out. */

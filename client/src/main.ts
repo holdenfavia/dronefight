@@ -1,15 +1,16 @@
-// dronefight: a side-view platform fighter (ADR-0070, ADR-0071, ADR-0072). Up to four fighters: you on the keyboard plus CPUs,
+// dronefight: a side-view platform fighter (ADR-0070, ADR-0071, ADR-0072). Up to ten fighters (ADR-0086): you on the keyboard plus CPUs,
 // or friends on their own computers in an online room (ADR-0076).
 
 import './styles.css';
 import { botInput, createBot, type Bot } from '../../shared/fighter/bot';
 import { DT } from '../../shared/fighter/config';
-import { decodeInput, describeDrift, deserializeWorld, encodeInput, serializeWorld, type MatchStart } from '../../shared/online';
+import { decodeInput, describeDrift, deserializeWorld, drawStage, encodeInput, serializeWorld, type MatchStart } from '../../shared/online';
 import { FIGHTERS } from '../../shared/fighter/fighters';
 import { createWorld, NO_INPUT, step, type GameEvent, type Input, type World } from '../../shared/fighter/sim';
 import { Sfx } from './audio';
 import { Keyboard } from './input';
-import { cheatOn, cheatRules, onCheatsChange, randomFighters, TripleTap } from './cheats';
+import { cheatOn, cheatRules, onCheatsChange, randomFighters, stageIds, TripleTap } from './cheats';
+import { stageBans } from './stageBans';
 import { CHEAT_LOOKS, ONLINE, setFightColors } from './config';
 import { resolveColors } from '../../shared/profile';
 import { Renderer, type Prev } from './render';
@@ -111,7 +112,9 @@ function startMatch(setup: MatchSetup): void {
   const seed = (Math.random() * 1e9) | 0;
   // Team battles (ADR-0081): each fighter brings its team; friendly fire is a rule of the fight.
   const rules = { ...cheatRules(), friendlyFire: setup.teams && setup.friendlyFire };
-  world = createWorld(setup.stage, active.map((s) => ({ id: s.fighter, team: setup.teams ? s.team : -1 })), setup.stocks, seed, rules);
+  // Random, or a stage you banned since (ADR-0085): drawn from the open stages, here on the client too.
+  const stage = drawStage(setup.stage, stageIds(), setup.stagePick ? stageBans() : [], Math.random);
+  world = createWorld(stage, active.map((s) => ({ id: s.fighter, team: setup.teams ? s.team : -1 })), setup.stocks, seed, rules);
   bots = active.map((s, i) => (s.kind === 'bot' ? createBot(i, s.level, seed) : null));
   human = active.map((s) => s.kind === 'p1');
   // Your own tag and color (ADR-0083); CPUs keep theirs.
@@ -218,7 +221,7 @@ function resume(): void {
 }
 
 /** Back to the menus with CPUs fighting behind them; `screen` picks which menu. */
-function toMenu(screen: 'select' | 'main' | 'online' = 'main'): void {
+function toMenu(screen: 'select' | 'main' | 'online' | 'stages' = 'main'): void {
   mode = 'menu';
   onlineMenu = false;
   onlineQueue = [];
@@ -230,6 +233,7 @@ function toMenu(screen: 'select' | 'main' | 'online' = 'main'): void {
   renderer.reset(world);
   renderer.setTags(world.fighters.map(() => ({ text: 'CPU', cpu: true })));
   if (screen === 'select') ui.showSelect();
+  else if (screen === 'stages') ui.showStages(false);
   else if (screen === 'online') ui.showOnline();
   else ui.showMain();
 }
@@ -244,7 +248,7 @@ function showResults(): void {
     ui.showOnlineResults(world, names, () => toMenu('online'), () => { net.leave(); toMenu('online'); });
     return;
   }
-  ui.showResults(world, names, () => matchSetup && startMatch(matchSetup), () => toMenu('select'), () => toMenu('main'));
+  ui.showResults(world, names, () => matchSetup && startMatch(matchSetup), () => toMenu('select'), () => toMenu('main'), matchSetup?.stagePick ? () => toMenu('stages') : undefined);
 }
 
 function pan(x: number): number {

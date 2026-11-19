@@ -633,3 +633,120 @@ kbd {
 .swatch:hover { border-color: rgba(255, 255, 255, 0.6); }
 .swatch.on { border-color: var(--paper); box-shadow: 0 0 0 2px var(--ink), 0 0 12px var(--swatch, var(--orange)); }
 .swatch.focus { outline: 3px solid var(--orange); outline-offset: 2px; }
+
+/* ---------- Bigger fights (ADR-0086): up to ten panels, compact past four ---------- */
+.slots.many { grid-template-columns: repeat(5, minmax(120px, 190px)); }
+@media (max-width: 760px) { .slots.many { grid-template-columns: repeat(2, minmax(120px, 1fr)); } }
+.slots.many .slot .preview { width: 112px !important; height: 70px !important; }
+.slots.many .panel-art { width: 112px; height: 70px; font-size: 56px; }
+.slots.many .blurb, .slots.many .hint { display: none; }
+.add-slot {
+  --slot: rgba(255, 255, 255, 0.25);
+  border-style: dashed;
+  border-top-width: 2px;
+  color: var(--muted);
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  min-height: 120px;
+}
+.add-slot:hover, .add-slot.focus { --slot: var(--orange); color: var(--paper); }
+.add-plus { font-size: 48px; font-weight: 900; line-height: 1; }
+.add-label { font-size: 20px; font-weight: 900; text-transform: uppercase; }
+.add-sub { font-size: 14px; }
+.cards.many { flex-wrap: wrap; gap: 6px; bottom: 8px; }
+.cards.many .card { min-width: 0; padding-right: 8px; }
+.cards.many .card .preview { width: 44px !important; height: 28px !important; }
+.cards.many .percent { font-size: 28px; }
+.cards.many .name { font-size: 12px; }
+
+/* ---------- Stage pick and ban (ADR-0085) ---------- */
+.stage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  width: min(1000px, 100%);
+}
+.stage-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 8px 8px 10px;
+  background: linear-gradient(180deg, rgba(40, 42, 46, 0.92), rgba(16, 17, 19, 0.92));
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+}
+.stage-card:hover { border-color: rgba(255, 255, 255, 0.5); }
+.stage-card.focus { border-color: var(--orange); box-shadow: 0 0 0 2px var(--orange), 0 0 22px rgba(255, 106, 19, 0.5); }
+.stage-card.picked .stage-name { color: var(--orange); }
+.stage-art {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #1d2a3a;
+}
+.stage-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.stage-random { width: 100%; height: 100%; font-size: 90px; background: radial-gradient(circle, rgba(255, 106, 19, 0.25), transparent 70%); }
+.stage-name { font-size: 26px; font-weight: 900; font-style: italic; text-transform: uppercase; line-height: 1; margin-top: 4px; }
+.stage-card .stage-blurb { max-width: none; font-size: 15px; }
+.stage-card.banned .stage-art img { filter: grayscale(1) brightness(0.45); }
+.stage-card.banned .stage-name { color: var(--muted); text-decoration: line-through; }
+.ban-stamp {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #ff3b4f;
+  text-shadow: 0 2px 0 #000;
+  transform: rotate(-12deg);
+}
+.banned-by { font-size: 14px; color: #ff7b8a; font-weight: 700; }
+.picked-tag {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  background: var(--orange);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+.ban-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: rgba(16, 17, 19, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  padding: 2px 12px;
+  font-size: 15px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.ban-btn:hover { border-color: #ff3b4f; color: #ff7b8a; }
+.ban-btn.on { background: #ff3b4f; border-color: #ff3b4f; color: #fff; }
+.stage-card .season-tag.corner { top: auto; bottom: 10px; right: 10px; left: auto; }
+
+/* Match settings (ADR-0085): opens when you make a room. */
+.match-settings { width: min(460px, 100%); }
+.stage-art.small { width: 100%; }
+.match-summary { width: 100%; text-align: center; color: var(--muted); font-size: 17px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.slots.many .slot { padding: 6px; gap: 2px; min-height: 170px; }
+.slots.many .fighter-name { font-size: 22px; }
+.slots.many .add-slot { min-height: 100px; }
+/* The meters are on the fighters' bodies too (ADR-0084): ten cards keep to the percent, name and stocks. */
+.cards.many .sig, .cards.many .team-name { display: none; }
+.cards.many .card { padding: 2px 8px 2px 2px; border-bottom-width: 4px; }
