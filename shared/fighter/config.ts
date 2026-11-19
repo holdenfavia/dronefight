@@ -147,6 +147,20 @@ export const STALE = {
   min: 0.6,
 } as const;
 
+/**
+ * Special spam (ADR-0085): the same special used again and again in quick succession
+ * stops launching. From the `fromUse`th use in a row, its hits do half damage (rounded
+ * down), no knockback and no hitstun, and fill no signature meter.
+ */
+export const SPECIAL_SPAM = {
+  /** Uses in a row before it counts as spam (the 3rd use on). */
+  fromUse: 3,
+  /** A use counts as "in a row" if it starts within this many frames of the last one ending (1 s). */
+  windowFrames: 60,
+  /** Damage kept, then rounded down. */
+  dmgMult: 0.5,
+} as const;
+
 /** Parry: shield on the exact frames a hit lands. */
 export const PARRY = {
   /** The first frames of a shield. */

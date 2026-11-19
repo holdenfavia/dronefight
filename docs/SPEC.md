@@ -41,6 +41,7 @@ Esc pauses, M mutes, F fullscreen (menus), Enter starts or rematches. Physical k
 - **Defense:** shield (drains, breaks into a dizzy stun), **parry** by shielding just as a hit lands, rolls and spot dodge, one air dodge per jump (dashes if a direction is held).
 - **Launched:** press E just before hitting the floor to **tech**, or get knocked down (get up, roll or attack). Mash to escape grabs.
 - Super armor (Titan), counters (Brawler, Blade, Gunslinger), reflects (Chef), status effects (daze, swapped controls, slow, haste), stale moves (repeats get weaker), trades, a short input buffer.
+- **Special spam** (ADR-0085): the 3rd use in a row of the same special (each within 1 s of the last) does half damage, rounded down, with no knockback or hitstun.
 - Recovering near a stage corner (holding toward it, or during a recovery special) pulls you up onto it.
 
 ## Fighters (ADR-0072, ADR-0073; numbers in `shared/fighter/fighters.ts`)

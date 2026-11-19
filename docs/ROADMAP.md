@@ -32,6 +32,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Settings menu: your own tag and color, shown to friends online (ADR-0083)
 - [x] Cheat codes (three quick Space taps) and the secret fighter River (ADR-0077); River reworked as a glass cannon (ADR-0078)
 - [x] A signature mechanic and HUD meter per fighter; more varied forward smashes and tilts (ADR-0079)
+- [x] Spamming the same special stops it launching: half damage, no knockback or hitstun from the 3rd use in a row (ADR-0085)
 - [ ] Teach CPUs to play around the signature mechanics (cash in marks, cook on purpose, attack on the beat)
 
 ## Phase 2 — Online with friends
