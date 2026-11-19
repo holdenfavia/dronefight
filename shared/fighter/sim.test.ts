@@ -130,6 +130,21 @@ describe('fighter sim', () => {
     }
   });
 
+  it('ten bots start apart on every stage and finish the match (ADR-0087)', () => {
+    for (const stage of STAGE_IDS) {
+      const w = createWorld(stage, FIGHTER_IDS.slice(0, MATCH.maxFighters).map((id) => ({ id })), 1, 11);
+      expect(w.fighters).toHaveLength(10);
+      expect(new Set(w.fighters.map((f) => `${f.x},${f.y}`)).size, stage).toBe(10);
+      const bots = w.fighters.map((f) => createBot(f.slot, 3, 11));
+      let frames = 0;
+      while (!w.over && frames < 60 * 60 * 6) {
+        step(w, bots.map((b) => botInput(b, w)));
+        frames++;
+      }
+      expect(w.over, `${stage}: no winner after ${frames} frames`).toBe(true);
+    }
+  });
+
   it('is deterministic: the same inputs give the same match', () => {
     const play = () => {
       const w = createWorld('rooftop', [{ id: 'brawler' }, { id: 'titan' }], 3, 42);

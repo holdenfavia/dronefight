@@ -3,6 +3,7 @@
 // sends your keys every frame and hands the frames it gets back to the game loop (main.ts).
 
 import { PROTOCOL_VERSION } from '../../shared/constants';
+import { stageBans } from './stageBans';
 import type { BotLevel } from '../../shared/fighter/bot';
 import type { FighterId } from '../../shared/fighter/fighters';
 import type { MatchStart, MemberPick, RoomSettings } from '../../shared/online';
@@ -57,7 +58,7 @@ export class NetClient {
   private pending: ClientMessage[] = [];
 
   constructor(fighter: FighterId) {
-    this.me = { fighter, ready: false, team: 0 };
+    this.me = { fighter, ready: false, team: 0, bans: stageBans() };
   }
 
   get isHost(): boolean {
@@ -100,7 +101,7 @@ export class NetClient {
     this.changed();
   }
 
-  /** Host only: stage, stocks, CPUs. */
+  /** Host only: stage, stocks, CPUs, mode, stage pick and ban. */
   setSettings(settings: RoomSettings): void {
     if (!this.room || !this.isHost) return;
     this.room.settings = settings;
@@ -119,7 +120,7 @@ export class NetClient {
   }
 
   private sharePick(): void {
-    if (this.room) this.send({ t: 'pick', fighter: this.me.fighter, ready: this.me.ready, team: this.me.team });
+    if (this.room) this.send({ t: 'pick', fighter: this.me.fighter, ready: this.me.ready, team: this.me.team, bans: this.me.bans });
   }
 
   private send(msg: ClientMessage): void {
@@ -185,7 +186,9 @@ export class NetClient {
         if (joined) {
           // The server hands each newcomer a fighter nobody else has, and a team (ADR-0081).
           const mine = msg.members.find((m) => m.id === msg.you);
-          this.me = { fighter: mine?.fighter ?? this.me.fighter, ready: false, team: mine?.team ?? 0 };
+          this.me = { fighter: mine?.fighter ?? this.me.fighter, ready: false, team: mine?.team ?? 0, bans: stageBans() };
+          // Share your saved stage bans with the room (ADR-0086).
+          if (this.me.bans.length) this.sharePick();
         }
         this.changed();
         return;

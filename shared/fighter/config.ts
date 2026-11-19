@@ -8,7 +8,7 @@ export const MATCH = {
   /** 3-2-1-GO before anyone can move. */
   countdownFrames: 180,
   defaultStocks: 3,
-  maxFighters: 4,
+  maxFighters: 10,
   /** Frames between a KO and the respawn platform appearing. */
   respawnDelayFrames: 60,
   /** Longest a fighter may wait on the respawn platform before it drops them. */

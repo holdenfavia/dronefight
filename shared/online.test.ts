@@ -3,7 +3,7 @@ import { botInput, createBot } from './fighter/bot.js';
 import { FIGHTER_IDS } from './fighter/fighters.js';
 import { createWorld, NO_INPUT, step, type Input } from './fighter/sim.js';
 import { parseClientMessage } from './protocol.js';
-import { decodeInput, deserializeWorld, encodeInput, serializeWorld } from './online.js';
+import { decodeInput, deserializeWorld, drawStage, encodeInput, parseBans, serializeWorld } from './online.js';
 
 describe('online fights', () => {
   it('packs every key into input bits and back', () => {
@@ -35,8 +35,17 @@ describe('online fights', () => {
   it('accepts the secret fighter as a pick and the host\'s rule cheats in settings (ADR-0077)', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'pick', fighter: 'river', ready: true }))).toEqual({ t: 'pick', fighter: 'river', ready: true });
     const msg = parseClientMessage(JSON.stringify({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [], rules: { oneHit: true, nonsense: 1 } } }));
-    expect(msg).toEqual({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [], rules: { moonJump: false, oneHit: true }, teams: false, friendlyFire: false, cpuTeams: [] } });
+    expect(msg).toEqual({ t: 'settings', settings: { stage: 'rooftop', stagePick: false, stocks: 3, cpus: [], rules: { moonJump: false, oneHit: true }, teams: false, friendlyFire: false, cpuTeams: [] } });
     const old = parseClientMessage(JSON.stringify({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [] } }));
-    expect(old).toEqual({ t: 'settings', settings: { stage: 'rooftop', stocks: 3, cpus: [], rules: { moonJump: false, oneHit: false }, teams: false, friendlyFire: false, cpuTeams: [] } });
+    expect(old).toEqual({ t: 'settings', settings: { stage: 'rooftop', stagePick: false, stocks: 3, cpus: [], rules: { moonJump: false, oneHit: false }, teams: false, friendlyFire: false, cpuTeams: [] } });
+  });
+  it('draws the stage: the pick unless banned or Random, then an open one (ADR-0086)', () => {
+    const offered = ['rooftop', 'helipad', 'cranes'] as const;
+    expect(drawStage('helipad', offered, [], () => 0.9)).toBe('helipad');
+    expect(drawStage('helipad', offered, ['helipad'], () => 0)).toBe('rooftop');
+    expect(drawStage('random', offered, ['rooftop'], () => 0.99)).toBe('cranes');
+    // Everything banned: any stage on offer.
+    expect(drawStage('random', offered, [...offered], () => 0.5)).toBe('helipad');
+    expect(parseBans(['cranes', 'moon', 'cranes', 3])).toEqual(['cranes']);
   });
 });

@@ -4,7 +4,8 @@
 
 import type { BotLevel } from './fighter/bot.js';
 import type { FighterId } from './fighter/fighters.js';
-import { isBotLevel, isFighterId, isInputBits, isStageId, isTeam, type MatchStart, type RoomSettings } from './online.js';
+import type { StageId } from './fighter/stages.js';
+import { isBotLevel, isFighterId, isInputBits, isStagePick, isTeam, parseBans, type MatchStart, type RoomSettings } from './online.js';
 import { MATCH } from './fighter/config.js';
 import { parseProfile, type Profile } from './profile.js';
 
@@ -14,9 +15,9 @@ export type ClientMessage =
   | { t: 'join'; code: string; profile?: Profile }
   | { t: 'leave' }
   | { t: 'relay'; data: unknown }
-  /** Your fighter, Ready and team (ADR-0081) in the lobby. */
-  | { t: 'pick'; fighter: FighterId; ready: boolean; team?: number }
-  /** Host only: stage, stocks and CPUs. */
+  /** Your fighter, Ready, team (ADR-0081) and stage bans (ADR-0086) in the lobby. */
+  | { t: 'pick'; fighter: FighterId; ready: boolean; team?: number; bans?: StageId[] }
+  /** Host only: stage, stocks, CPUs, mode and stage pick and ban. */
   | { t: 'settings'; settings: RoomSettings }
   /** Host only: start the fight (everyone ready). */
   | { t: 'start' }
@@ -28,6 +29,8 @@ export interface RoomMember {
   fighter: FighterId;
   ready: boolean;
   team: number;
+  /** Stages they banned (ADR-0086). */
+  bans: StageId[];
   /** Their personal tag and color (ADR-0083). */
   tag: string;
   color: number;
@@ -50,12 +53,12 @@ export type ServerMessage =
   | { t: 'error'; code: 'bad-message' | 'no-room' | 'room-full' | 'no-codes' | 'not-host' | 'not-ready'; message: string };
 
 export const ROOM_CODE_DIGITS = 2;
-export const MAX_ROOM_MEMBERS = 4;
+export const MAX_ROOM_MEMBERS = 10;
 
 function parseSettings(v: unknown): RoomSettings | null {
   if (!v || typeof v !== 'object') return null;
   const s = v as Record<string, unknown>;
-  if (!isStageId(s.stage)) return null;
+  if (!isStagePick(s.stage)) return null;
   if (typeof s.stocks !== 'number' || !Number.isInteger(s.stocks) || s.stocks < 1 || s.stocks > 5) return null;
   if (!Array.isArray(s.cpus) || s.cpus.length > MATCH.maxFighters - 1 || !s.cpus.every(isBotLevel)) return null;
   const r = s.rules && typeof s.rules === 'object' ? (s.rules as Record<string, unknown>) : {};
@@ -63,6 +66,7 @@ function parseSettings(v: unknown): RoomSettings | null {
   if (!cpuTeams.every(isTeam)) return null;
   return {
     stage: s.stage,
+    stagePick: s.stagePick === true,
     stocks: s.stocks,
     cpus: [...s.cpus],
     rules: { moonJump: r.moonJump === true, oneHit: r.oneHit === true },
@@ -94,8 +98,13 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case 'relay':
       return 'data' in msg ? { t: 'relay', data: msg.data } : null;
     case 'pick':
+    {
       if (!isFighterId(msg.fighter) || typeof msg.ready !== 'boolean') return null;
-      return isTeam(msg.team) ? { t: 'pick', fighter: msg.fighter, ready: msg.ready, team: msg.team } : { t: 'pick', fighter: msg.fighter, ready: msg.ready };
+      const pick: ClientMessage = { t: 'pick', fighter: msg.fighter, ready: msg.ready };
+      if (isTeam(msg.team)) pick.team = msg.team;
+      if ('bans' in msg) pick.bans = parseBans(msg.bans);
+      return pick;
+    }
     case 'settings': {
       const settings = parseSettings(msg.settings);
       return settings ? { t: 'settings', settings } : null;

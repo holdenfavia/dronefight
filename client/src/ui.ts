@@ -8,11 +8,13 @@ import type { MatchRules, World } from '../../shared/fighter/sim';
 import { INGREDIENTS, signatureGauge, type SignatureGauge } from '../../shared/fighter/signature';
 import { activeCheats, cheatRules, CHEATS, enterCode, onCheatsChange, randomFighters, rosterIds, seasonsNow, stageIds } from './cheats';
 import { seasonOfFighter, seasonOfStage, type SeasonDef } from '../../shared/seasons';
-import { STAGE_IDS, STAGES, type StageId } from '../../shared/fighter/stages';
+import { STAGES, type StageId } from '../../shared/fighter/stages';
 import { MENU, SLOT_COLORS, TEAM_COLORS, TEAM_NAMES, fighterColor } from './config';
 import { PROFILE_COLOR_NAMES, PROFILE_COLORS, TAG_MAX, cleanTag, resolveColors } from '../../shared/profile';
 import { profile, setProfile } from './profile';
-import { isTeam, sideCount, startingTeam, TEAM_COUNT } from '../../shared/online';
+import { isStagePick, isTeam, sideCount, startingTeam, TEAM_COUNT, type RoomSettings, type StagePick } from '../../shared/online';
+import { stageBans, toggleBan } from './stageBans';
+import { stageThumb } from './stageThumbs';
 import { drawFighterFigure } from './figures';
 import { KEY_LABELS } from './input';
 import type { NetClient } from './net';
@@ -31,8 +33,12 @@ export interface SlotSetup {
 }
 
 export interface MatchSetup {
+  /** Every slot, up to MATCH.maxFighters (ADR-0087); the select screen shows the first few until more are added. */
   slots: SlotSetup[];
-  stage: StageId;
+  /** A stage or Random (ADR-0086). */
+  stage: StagePick;
+  /** Stage pick and ban (ADR-0086): Fight! opens the stage screen, your bans count. Off by default. */
+  stagePick: boolean;
   stocks: number;
   /** Team battle instead of a free-for-all (ADR-0081). */
   teams: boolean;
@@ -48,6 +54,9 @@ const FEEDBACK_URL = '/api/feedback';
 /** Longest note the form allows (matches the server's FEEDBACK_MAX_TEXT). */
 const FEEDBACK_MAX_TEXT = 1000;
 
+/** Fighters the slots past the first four start on (ADR-0087). */
+const EXTRA_SLOT_FIGHTERS: FighterId[] = ['ninja', 'gunslinger', 'chef', 'ghost', 'yoyo', 'bard'];
+
 export function defaultSetup(): MatchSetup {
   return {
     slots: [
@@ -55,8 +64,10 @@ export function defaultSetup(): MatchSetup {
       { kind: 'bot', fighter: 'blade', level: 2, team: 1 },
       { kind: 'off', fighter: 'spark', level: 2, team: 0 },
       { kind: 'off', fighter: 'titan', level: 2, team: 1 },
+      ...EXTRA_SLOT_FIGHTERS.map((fighter, i): SlotSetup => ({ kind: 'off', fighter, level: 2, team: i % 2 })),
     ],
     stage: 'rooftop',
+    stagePick: false,
     stocks: MATCH.defaultStocks,
     teams: false,
     friendlyFire: false,
@@ -69,7 +80,9 @@ export function loadSetup(): MatchSetup {
     if (!raw) return defaultSetup();
     const s = JSON.parse(raw) as MatchSetup;
     const d = defaultSetup();
-    if (!Array.isArray(s.slots) || s.slots.length !== 4 || !STAGE_IDS.includes(s.stage)) return d;
+    if (!Array.isArray(s.slots) || s.slots.length < 2 || s.slots.length > MATCH.maxFighters || !isStagePick(s.stage)) return d;
+    // Setups saved before bigger fights (ADR-0087) have four slots: the rest start off.
+    s.slots = [...s.slots, ...d.slots.slice(s.slots.length)];
     for (const slot of s.slots) {
       if (!ALL_FIGHTER_IDS.includes(slot.fighter) || !['p1', 'bot', 'off'].includes(slot.kind) || ![1, 2, 3].includes(slot.level)) return d;
       slot.random = slot.random === true;
@@ -78,11 +91,12 @@ export function loadSetup(): MatchSetup {
     s.slots.forEach((slot, i) => { if (!isTeam(slot.team)) slot.team = i % 2; });
     s.teams = s.teams === true;
     s.friendlyFire = s.friendlyFire === true;
+    s.stagePick = s.stagePick === true;
     s.stocks = Math.max(1, Math.min(5, Math.round(s.stocks) || d.stocks));
     // A seasonal fighter or stage saved during its event, after the event is over (ADR-0082).
     const roster = rosterIds();
     for (const slot of s.slots) if (!roster.includes(slot.fighter)) slot.fighter = 'brawler';
-    if (!stageIds().includes(s.stage)) s.stage = 'rooftop';
+    if (s.stage !== 'random' && !stageIds().includes(s.stage)) s.stage = 'rooftop';
     return s;
   } catch {
     return defaultSetup();
@@ -175,15 +189,27 @@ function seasonTag(season: SeasonDef, cls = 'season-tag'): HTMLElement {
   return tag;
 }
 
-/** "Stage: Harvest Farm · Seasonal". */
-function stageLabel(id: StageId): string {
-  return `Stage: ${STAGES[id].name}${seasonOfStage(id) ? ' · Seasonal' : ''}`;
+/** "Harvest Farm", or "Random". */
+function stageName(id: StagePick): string {
+  return id === 'random' ? 'Random' : STAGES[id].name;
 }
 
-/** The next stage on offer here after this one. */
-function nextStage(id: StageId): StageId {
-  const list = stageIds();
+/** "Stage: Harvest Farm · Seasonal". */
+function stageLabel(id: StagePick): string {
+  return `Stage: ${stageName(id)}${id !== 'random' && seasonOfStage(id) ? ' · Seasonal' : ''}`;
+}
+
+/** The next stage on offer here after this one, then Random (ADR-0086). */
+function nextStage(id: StagePick): StagePick {
+  const list: StagePick[] = [...stageIds(), 'random'];
   return list[(list.indexOf(id) + 1) % list.length]!;
+}
+
+/** How many player panels the select screen shows: four, or up to the last one in use (ADR-0087). */
+function shownSlots(slots: readonly SlotSetup[]): number {
+  let last = -1;
+  slots.forEach((x, i) => { if (x.kind !== 'off') last = i; });
+  return Math.max(MENU.slotsShown, last + 1);
 }
 
 /** The main menu's banner for each seasonal event on now. */
@@ -207,7 +233,7 @@ export interface MenuHandlers {
   onClick(): void;
 }
 
-type ScreenId = 'title' | 'main' | 'select' | 'online' | 'controls' | 'settings' | 'pause' | 'results';
+type ScreenId = 'title' | 'main' | 'select' | 'online' | 'controls' | 'settings' | 'pause' | 'results' | 'stages' | 'match-settings';
 
 /** "Seasonal · Thanksgiving" under a seasonal fighter's name (nothing for the everyday cast). */
 function seasonLine(id: FighterId | null): HTMLElement[] {
@@ -261,6 +287,12 @@ export class Ui {
   private feedbackForm: HTMLElement | null = null;
   /** The open cheat code box, if any (ADR-0077). */
   private cheatBox: HTMLElement | null = null;
+  /** The stage screen is the online room's (ADR-0086), not this keyboard's. */
+  private stagesOnline = false;
+  /** Made a room and waiting for it: its Match settings screen opens first (ADR-0086). */
+  private madeRoom = false;
+  /** A line under the stage cards ("Leave at least one stage open"). */
+  private stageNote = '';
 
   constructor(menuRoot: HTMLElement, hudRoot: HTMLElement, private handlers: MenuHandlers, private net: NetClient) {
     this.root = menuRoot;
@@ -275,7 +307,20 @@ export class Ui {
     this.root.appendChild(this.feedbackButton);
     this.setup = loadSetup();
     this.net.onChange = () => {
+      const room = this.net.room;
+      if (this.madeRoom && room) {
+        // Making a room opens its Match settings first.
+        this.madeRoom = false;
+        if (this.net.isHost && (this.screenId === 'online' || this.screenId === null)) return this.showMatchSettings();
+      }
+      if (this.net.error) this.madeRoom = false;
       if (this.screenId === 'online') this.showOnline();
+      else if (this.screenId === 'match-settings' || (this.screenId === 'stages' && this.stagesOnline)) {
+        // Left the room, lost the connection, or stopped being host: back to the Online screen.
+        if (!room || (this.screenId === 'match-settings' && !this.net.isHost) || (this.screenId === 'stages' && !room.settings.stagePick)) this.showOnline();
+        else if (this.screenId === 'stages') this.showStages(true);
+        else this.showMatchSettings();
+      }
     };
     onCheatsChange(() => this.cheatsChanged());
   }
@@ -364,6 +409,12 @@ export class Ui {
         this.controlsBack();
         return true;
       }
+      if (id === 'stages' || id === 'match-settings') {
+        this.handlers.onClick();
+        if (id === 'stages' && !this.stagesOnline) this.showSelect();
+        else this.showOnline();
+        return true;
+      }
       if (id === 'main') {
         this.handlers.onClick();
         this.showTitle();
@@ -383,6 +434,10 @@ export class Ui {
         return true;
       }
       return false;
+    }
+    if (id === 'stages' && code === 'KeyB') {
+      this.focusList[this.focusIndex]?.dispatchEvent(new CustomEvent('ban'));
+      return true;
     }
     if (!this.focusList.length) return false;
     if (up || down || left || right) {
@@ -573,9 +628,10 @@ export class Ui {
   private cheatsChanged(): void {
     const roster = rosterIds();
     for (const slot of this.setup.slots) if (!roster.includes(slot.fighter)) slot.fighter = 'brawler';
-    if (!stageIds().includes(this.setup.stage)) this.setup.stage = 'rooftop';
+    if (this.setup.stage !== 'random' && !stageIds().includes(this.setup.stage)) this.setup.stage = 'rooftop';
     saveSetup(this.setup);
     if (this.screenId === 'select') this.showSelect();
+    if (this.screenId === 'stages') this.showStages(this.stagesOnline);
     if (this.screenId === 'online') this.showOnline();
   }
 
@@ -716,9 +772,10 @@ export class Ui {
       (i) => this.slotColors()[i]!,
     ));
 
-    const panels = el('div', 'slots');
+    const shown = shownSlots(s.slots);
+    const panels = el('div', `slots ${shown >= MENU.slotsShown + 1 ? 'many' : ''}`);
     const colors = this.slotColors();
-    s.slots.forEach((slot, i) => {
+    s.slots.slice(0, shown).forEach((slot, i) => {
       const color = colors[i]!;
       const card = el('div', `slot ${slot.kind === 'off' ? 'off' : ''} ${slot.kind === 'bot' ? 'cpu' : ''} ${i === this.editSlot && slot.kind !== 'off' ? 'editing' : ''}`);
       card.style.setProperty('--slot', color);
@@ -757,6 +814,20 @@ export class Ui {
       }
       panels.appendChild(card);
     });
+    // Bigger fights (ADR-0087): one more panel at a time, as a Normal CPU.
+    if (shown < s.slots.length) {
+      const add = this.button('slot add-slot', '', () => {
+        // Fill the first empty panel, or open the next one.
+        const at = s.slots.findIndex((x) => x.kind === 'off');
+        const slot = s.slots[at]!;
+        slot.kind = 'bot';
+        slot.level = 2;
+        this.editSlot = at;
+        this.commit();
+      });
+      add.append(el('span', 'add-plus', '+'), el('span', 'add-label', 'Add a fighter'), el('span', 'add-sub', `Up to ${MATCH.maxFighters}`));
+      panels.appendChild(add);
+    }
     page.appendChild(panels);
 
     const options = el('div', 'options');
@@ -778,16 +849,22 @@ export class Ui {
       this.commit();
     });
     ffBtn.title = 'Whether your hits land on your own teammates';
-    const fight = el('button', 'fight', 'Fight!');
+    const pickBtn = this.button(`option ${s.stagePick ? 'on' : ''}`, `Stage pick & ban: ${s.stagePick ? 'On' : 'Off'}`, () => {
+      s.stagePick = !s.stagePick;
+      this.commit();
+    });
+    pickBtn.title = 'On: pick the stage on a stage screen after this one, and ban the stages you never want';
+    const fight = el('button', 'fight', s.stagePick ? 'Pick a stage ›' : 'Fight!');
     const problem = setupProblem(s);
     fight.disabled = !!problem;
     fight.title = problem ?? 'Enter';
     fight.onclick = () => this.fight();
-    options.append(stageBtn, el('div', 'stage-blurb', STAGES[s.stage].blurb), stocksBtn, modeBtn);
+    if (!s.stagePick) options.append(stageBtn, el('div', 'stage-blurb', s.stage === 'random' ? 'Any stage you haven\'t banned' : STAGES[s.stage].blurb));
+    options.append(stocksBtn, modeBtn);
     if (s.teams) options.appendChild(ffBtn);
-    options.appendChild(fight);
+    options.append(pickBtn, fight);
     page.appendChild(options);
-    page.appendChild(el('div', 'menu-hint', 'Enter to fight · Esc back · Controls are in the main menu and the pause screen'));
+    page.appendChild(el('div', 'menu-hint', `${s.stagePick ? 'Enter to pick a stage' : 'Enter to fight'} · Esc back · Controls are in the main menu and the pause screen`));
     this.show('select', page);
   }
 
@@ -902,7 +979,133 @@ export class Ui {
   fight(): void {
     if (setupProblem(this.setup)) return;
     saveSetup(this.setup);
-    this.handlers.onFight(this.setup);
+    if (this.setup.stagePick) this.showStages(false);
+    else this.handlers.onFight(this.setup);
+  }
+
+  // ------------------------------------------------------------------------------------- Stage pick and ban
+
+  /**
+   * The stage screen (ADR-0086): a card per stage on offer and Random. Pick one to fight there; ban the ones you
+   * never want. Online, everyone bans here and the host picks.
+   */
+  showStages(online: boolean): void {
+    this.stagesOnline = online;
+    const room = online ? this.net.room : null;
+    if (online && !room) return this.showOnline();
+    const isHost = !online || this.net.isHost;
+    const offered = stageIds();
+    const mine = stageBans();
+    const picked: StagePick = online ? room!.settings.stage : this.setup.stage;
+    // Online: who banned what (your own bans as you've set them, everyone else's from the room).
+    const bannedBy = (id: StageId): string[] => {
+      if (!room) return mine.includes(id) ? ['You'] : [];
+      return room.members.flatMap((m, i) => {
+        const bans = m.id === room.you ? mine : m.bans;
+        return bans.includes(id) ? [m.id === room.you ? 'You' : m.tag || `P${i + 1}`] : [];
+      });
+    };
+    const page = el('div', 'screen select stages');
+    const top = el('div', 'select-top');
+    top.append(this.button('back', '‹ Back', () => (online ? this.showOnline() : this.showSelect())), el('h2', 'select-title', isHost ? 'Pick a stage' : 'Ban stages'));
+    page.appendChild(top);
+
+    const grid = el('div', 'stage-grid');
+    const focus: HTMLButtonElement[] = [];
+    const pick = (id: StagePick) => {
+      if (online) {
+        this.net.setSettings({ ...room!.settings, stage: id });
+        this.showOnline();
+        return;
+      }
+      this.setup.stage = id;
+      saveSetup(this.setup);
+      this.handlers.onFight(this.setup);
+    };
+    const ban = (id: StageId) => {
+      if (!toggleBan(id, offered)) {
+        this.stageNote = 'Leave at least one stage open';
+        return this.showStages(online);
+      }
+      this.stageNote = '';
+      if (online) this.net.setPick({ bans: stageBans() });
+      else this.showStages(online);
+    };
+    for (const id of [...offered, 'random' as const]) {
+      const banners = id === 'random' ? [] : bannedBy(id);
+      const banned = banners.length > 0;
+      const card = this.button(`stage-card ${banned ? 'banned' : ''} ${picked === id ? 'picked' : ''}`, '', () => {
+        if (!isHost) return id !== 'random' && ban(id);
+        if (!banned || online) pick(id);
+      });
+      const art = el('div', 'stage-art');
+      if (id === 'random') art.append(randomArt('stage-random'));
+      else {
+        const img = el('img');
+        img.src = stageThumb(id);
+        img.alt = STAGES[id].name;
+        art.append(img);
+      }
+      if (banned) art.append(el('div', 'ban-stamp', 'Banned'));
+      card.append(art, el('div', 'stage-name', stageName(id)));
+      const season = id === 'random' ? null : seasonOfStage(id);
+      if (season) card.appendChild(seasonTag(season, 'season-tag corner'));
+      card.append(el('div', 'stage-blurb', id === 'random' ? 'Any stage nobody banned' : STAGES[id].blurb));
+      if (online && banned) card.append(el('div', 'banned-by', `Banned by ${banners.join(', ')}`));
+      if (picked === id) card.append(el('div', 'picked-tag', online ? 'Host\'s pick' : 'Last pick'));
+      if (id !== 'random') {
+        const mineBanned = mine.includes(id);
+        const banBtn = this.button(`ban-btn ${mineBanned ? 'on' : ''}`, mineBanned ? 'Unban' : 'Ban', () => ban(id));
+        banBtn.title = 'B';
+        banBtn.addEventListener('click', (e) => e.stopPropagation());
+        card.append(banBtn);
+        card.addEventListener('ban', () => ban(id));
+      }
+      if (!online && banned) card.title = 'Banned: unban it to play here';
+      grid.appendChild(card);
+      focus.push(card);
+    }
+    page.appendChild(grid);
+    if (this.stageNote) page.appendChild(el('div', 'net-error', this.stageNote));
+    page.appendChild(el('div', 'menu-hint', online
+      ? isHost
+        ? 'Click a stage to pick it · B bans · A stage anyone banned is swapped for a random open one · Esc back'
+        : 'B or click to ban · The host picks; a stage anyone banned is swapped for a random open one · Esc back'
+      : '← → to choose · Enter to fight · B to ban · Random never draws a banned stage · Esc back'));
+    const at = Math.max(0, focus.findIndex((_b, i) => [...offered, 'random'][i] === picked));
+    this.show('stages', page, focus, at);
+  }
+
+  /** The room's Match settings (ADR-0086): opens when you make a room, and from the lobby. Host only. */
+  showMatchSettings(): void {
+    const room = this.net.room;
+    if (!room || !this.net.isHost) return this.showOnline();
+    const settings = room.settings;
+    const set = (patch: Partial<RoomSettings>) => this.net.setSettings({ ...settings, ...patch });
+    const page = el('div', 'screen modal');
+    const panel = el('div', 'panel match-settings');
+    panel.append(el('h2', '', 'Match settings'), el('div', 'tips', `Room ${room.code}. You can change these from the lobby until the fight starts.`));
+    const art = el('div', 'stage-art small');
+    if (settings.stage === 'random') art.append(randomArt('stage-random'));
+    else {
+      const img = el('img');
+      img.src = stageThumb(settings.stage);
+      img.alt = STAGES[settings.stage].name;
+      art.append(img);
+    }
+    const stage = this.button('option', stageLabel(settings.stage), () => set({ stage: nextStage(settings.stage) }));
+    const stocks = this.button('option', `Stocks: ${settings.stocks}`, () => set({ stocks: (settings.stocks % 5) + 1 }));
+    const mode = this.button('option', settings.teams ? 'Mode: Teams' : 'Mode: Free-for-all', () => set({ teams: !settings.teams }));
+    const ff = this.button(`option ${settings.friendlyFire ? 'on' : ''}`, `Friendly fire: ${settings.friendlyFire ? 'On' : 'Off'}`, () => set({ friendlyFire: !settings.friendlyFire }));
+    const pickBan = this.button(`option ${settings.stagePick ? 'on' : ''}`, `Stage pick & ban: ${settings.stagePick ? 'On' : 'Off'}`, () => set({ stagePick: !settings.stagePick }));
+    pickBan.title = 'On: everyone can ban stages from the lobby, and a banned stage is never played';
+    const done = this.button('fight', 'Open the lobby', () => this.showOnline());
+    const buttons = [stage, stocks, mode, ...(settings.teams ? [ff] : []), pickBan, done];
+    panel.append(art, ...buttons.slice(0, -1), el('div', 'tips', settings.stagePick
+      ? 'Everyone bans stages in the lobby. If anyone bans your stage, or it\'s Random, one nobody banned is drawn.'
+      : 'Add CPUs in the lobby\'s open slots.'), done);
+    page.appendChild(panel);
+    this.show('match-settings', page, buttons, buttons.length - 1);
   }
 
   // ------------------------------------------------------------------------------------------- Online lobby
@@ -918,7 +1121,7 @@ export class Ui {
 
     if (!net.room) {
       const panel = el('div', 'panel join-panel');
-      const create = this.button('fight', 'Make a room', () => net.create());
+      const create = this.button('fight', 'Make a room', () => { this.madeRoom = true; net.create(); });
       const row = el('div', 'join-row');
       const input = el('input', 'code-input');
       input.inputMode = 'numeric';
@@ -944,7 +1147,7 @@ export class Ui {
       );
       if (net.status === 'connecting') panel.appendChild(el('div', 'net-status', 'Connecting…'));
       if (net.error) panel.appendChild(el('div', 'net-error', net.error));
-      panel.appendChild(el('div', 'tips', 'Rooms have a two-digit code. Read it out on a call, or send the invite link. Up to four players per room.'));
+      panel.appendChild(el('div', 'tips', 'Rooms have a two-digit code. Read it out on a call, or send the invite link. Up to ten players per room.'));
       page.appendChild(panel);
       focus.push(create);
       this.show('online', page, focus);
@@ -996,8 +1199,10 @@ export class Ui {
     // The host's rule cheats (MOONJUMP, ONEHIT) are the room's rules (ADR-0077).
     if (isHost && !room.playing && !sameRules(settings.rules, cheatRules())) net.setSettings({ ...settings, rules: cheatRules() });
     const setCpus = (cpus: BotLevel[], teams = cpuTeams) => net.setSettings({ ...settings, cpus, cpuTeams: teams.slice(0, cpus.length) });
-    const panels = el('div', 'slots');
-    for (let i = 0; i < MATCH.maxFighters; i++) {
+    // Four panels, or as many as are in use plus one open (ADR-0087).
+    const shown = Math.min(MATCH.maxFighters, Math.max(MENU.slotsShown, members.length + settings.cpus.length + 1));
+    const panels = el('div', `slots ${shown > MENU.slotsShown ? 'many' : ''}`);
+    for (let i = 0; i < shown; i++) {
       const cpuIndex = i - members.length;
       const cpu = cpuIndex >= 0 ? settings.cpus[cpuIndex] : undefined;
       const color = colorAt(i);
@@ -1055,25 +1260,18 @@ export class Ui {
     const fighters = members.length + settings.cpus.length;
     const oneTeam = teamOn && sideCount([...members.map((_m, i) => pickOf(i).team), ...cpuTeams]) < 2;
     const canStart = everyone && fighters >= 2 && !oneTeam && !room.playing;
-    const stage = isHost
-      ? this.button('option', stageLabel(settings.stage), () => net.setSettings({ ...settings, stage: nextStage(settings.stage) }))
-      : el('div', 'option static', stageLabel(settings.stage));
-    const stocks = isHost
-      ? this.button('option', `Stocks: ${settings.stocks}`, () => net.setSettings({ ...settings, stocks: (settings.stocks % 5) + 1 }))
-      : el('div', 'option static', `Stocks: ${settings.stocks}`);
     const start = this.button('fight', 'Start', () => net.start());
     start.disabled = !canStart;
     start.title = canStart ? 'Start the fight' : fighters < 2 ? 'Add a CPU or wait for a friend' : oneTeam ? 'Everyone is on one team: put someone on another' : 'Waiting for everyone to be ready';
-    const modeText = teamOn ? 'Mode: Teams' : 'Mode: Free-for-all';
-    const mode = isHost
-      ? this.button('option', modeText, () => net.setSettings({ ...settings, teams: !teamOn, cpuTeams }))
-      : el('div', 'option static', modeText);
-    const ffText = `Friendly fire: ${settings.friendlyFire ? 'On' : 'Off'}`;
-    const ff = isHost
-      ? this.button(`option ${settings.friendlyFire ? 'on' : ''}`, ffText, () => net.setSettings({ ...settings, friendlyFire: !settings.friendlyFire }))
-      : el('div', 'option static', ffText);
-    options.append(stage, stocks, mode);
-    if (teamOn) options.appendChild(ff);
+    // The match itself is set on the host's Match settings screen (ADR-0086); everyone sees a summary.
+    const summary = [stageLabel(settings.stage), `Stocks: ${settings.stocks}`, teamOn ? 'Teams' : 'Free-for-all'];
+    if (teamOn) summary.push(`Friendly fire ${settings.friendlyFire ? 'on' : 'off'}`);
+    if (settings.stagePick) summary.push('Stage pick & ban');
+    options.appendChild(el('div', 'match-summary', summary.join(' · ')));
+    const matchBtn = isHost ? this.button('option', 'Match settings', () => this.showMatchSettings()) : null;
+    if (matchBtn) options.appendChild(matchBtn);
+    const stagesBtn = settings.stagePick ? this.button('option', isHost ? 'Stages & bans' : 'Ban stages', () => this.showStages(true)) : null;
+    if (stagesBtn) options.appendChild(stagesBtn);
     options.append(ready, isHost ? start : el('span', ''), leave);
     page.appendChild(options);
     const rules = rulesText(settings.rules);
@@ -1083,9 +1281,16 @@ export class Ui {
       : isHost
         ? (canStart ? 'Everyone is ready: press Start.' : 'Pick a fighter and press Ready. Add CPUs in the open slots. You start the fight once everyone is ready.')
         : 'Pick a fighter and press Ready. The host starts the fight.'));
+    // Stage pick and ban: the host's stage is banned, so one nobody banned will be drawn.
+    if (settings.stagePick && settings.stage !== 'random') {
+      const by = members.filter((m) => (m.id === room.you ? net.me.bans : m.bans).includes(settings.stage as StageId));
+      if (by.length) page.appendChild(el('div', 'net-status', `${STAGES[settings.stage].name} is banned by ${by.map((m) => (m.id === room.you ? 'you' : m.tag || 'a player')).join(', ')}: a random open stage will be played.`));
+    }
     if (net.error) page.appendChild(el('div', 'net-error', net.error));
     focus.push(ready);
     if (isHost) focus.push(start);
+    if (matchBtn) focus.push(matchBtn);
+    if (stagesBtn) focus.push(stagesBtn);
     focus.push(leave);
     this.show('online', page, focus);
   }
@@ -1131,8 +1336,9 @@ export class Ui {
     this.show('pause', page, [resume, quit]);
   }
 
-  showResults(world: World, names: string[], onRematch: () => void, onSelect: () => void, onMenu: () => void): void {
-    this.results(world, names, [['fight', 'Rematch', onRematch], ['option', 'Change fighters', onSelect], ['option', 'Main menu', onMenu]]);
+  showResults(world: World, names: string[], onRematch: () => void, onSelect: () => void, onMenu: () => void, onStage?: () => void): void {
+    const stage: [string, string, () => void][] = onStage ? [['option', 'Change stage', onStage]] : [];
+    this.results(world, names, [['fight', 'Rematch', onRematch], ...stage, ['option', 'Change fighters', onSelect], ['option', 'Main menu', onMenu]]);
   }
 
   /** Results of an online fight: back to the room's lobby, or leave it (ADR-0076). */
@@ -1199,6 +1405,8 @@ export class Ui {
     this.cards = [];
     const bar = this.hud.querySelector('.cards') ?? this.hud.appendChild(el('div', 'cards'));
     bar.replaceChildren();
+    // Bigger fights (ADR-0087): smaller cards that wrap.
+    bar.classList.toggle('many', world.fighters.length > MENU.slotsShown);
     for (const f of world.fighters) {
       const card = el('div', `card ${cpu[f.slot] ? 'cpu' : ''}`);
       card.style.setProperty('--slot', fighterColor(f));

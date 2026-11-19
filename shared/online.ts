@@ -38,6 +38,8 @@ export interface MemberPick {
   ready: boolean;
   /** Team for team battles (ADR-0081), 0 to TEAM_COUNT - 1. */
   team: number;
+  /** Stages this player banned (ADR-0086); they count when the host turns on stage pick and ban. */
+  bans: StageId[];
 }
 
 /** Team battles (ADR-0081): up to four teams, one color each. */
@@ -59,9 +61,36 @@ export function sideCount(teams: readonly number[]): number {
   return new Set(teams.map((t, i) => (t >= 0 ? `t${t}` : `s${i}`))).size;
 }
 
+/** A stage, or Random: one is drawn when the fight starts (ADR-0086). */
+export type StagePick = StageId | 'random';
+
+export function isStagePick(v: unknown): v is StagePick {
+  return v === 'random' || isStageId(v);
+}
+
+/** A list of banned stages from the wire or storage: known stages only, each once. */
+export function parseBans(v: unknown): StageId[] {
+  if (!Array.isArray(v)) return [];
+  return STAGE_IDS.filter((id) => v.includes(id));
+}
+
+/**
+ * The stage a fight is played on (ADR-0086): the pick, unless it's Random or banned; then one drawn from the stages
+ * on offer that nobody banned (from all of them if the bans leave none). Called on the menus or the room server,
+ * never in the sim (Hard rule 2).
+ */
+export function drawStage(pick: StagePick, offered: readonly StageId[], bans: readonly StageId[], random: () => number): StageId {
+  if (pick !== 'random' && !bans.includes(pick)) return pick;
+  const open = offered.filter((id) => !bans.includes(id));
+  const pool = open.length ? open : offered.length ? offered : STAGE_IDS;
+  return pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))]!;
+}
+
 /** The host's match settings. Each CPU is one entry: its level. */
 export interface RoomSettings {
-  stage: StageId;
+  stage: StagePick;
+  /** Stage pick and ban (ADR-0086): everyone's bans count. Off by default. */
+  stagePick?: boolean;
   stocks: number;
   cpus: BotLevel[];
   /** The host's rule cheats (ADR-0077), used by the whole room. Unset = none. */
@@ -75,7 +104,7 @@ export interface RoomSettings {
 }
 
 export function defaultRoomSettings(): RoomSettings {
-  return { stage: 'rooftop', stocks: MATCH.defaultStocks, cpus: [], rules: {}, teams: false, friendlyFire: false, cpuTeams: [] };
+  return { stage: 'rooftop', stagePick: false, stocks: MATCH.defaultStocks, cpus: [], rules: {}, teams: false, friendlyFire: false, cpuTeams: [] };
 }
 
 export function isFighterId(v: unknown): v is FighterId {

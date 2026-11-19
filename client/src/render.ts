@@ -78,14 +78,15 @@ export class Renderer {
   private platforms: Platform[] = [];
   private lastWorld: World | null = null;
 
-  constructor(parent: HTMLElement) {
+  /** `size`: draw at this fixed size (CSS pixels, at 1x) instead of filling the window, e.g. for stage thumbnails. */
+  constructor(parent: HTMLElement, private size: { w: number; h: number } | null = null) {
     this.canvas = document.createElement('canvas');
     parent.appendChild(this.canvas);
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas 2D is not available');
     this.ctx = ctx;
     this.resize();
-    window.addEventListener('resize', () => this.resize());
+    if (!size) window.addEventListener('resize', () => this.resize());
     let seed = 7;
     const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let x = -2600; x < 2600; ) {
@@ -101,9 +102,9 @@ export class Renderer {
   }
 
   resize(): void {
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
-    this.w = window.innerWidth;
-    this.h = window.innerHeight;
+    this.dpr = this.size ? 1 : Math.min(2, window.devicePixelRatio || 1);
+    this.w = this.size?.w ?? window.innerWidth;
+    this.h = this.size?.h ?? window.innerHeight;
     this.canvas.width = Math.round(this.w * this.dpr);
     this.canvas.height = Math.round(this.h * this.dpr);
     this.canvas.style.width = `${this.w}px`;
