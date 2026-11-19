@@ -12,6 +12,7 @@ import { drawFighterFigure } from './figures';
 import { cheatOn } from './cheats';
 import { isPurpleSkyTime } from './purpleSky';
 import * as detail from './stageDetail';
+import { blend, box3, contactShadow, cylinder, frontRect, glow, haze, project, rgbOf, sphere, tone, toHex, type BoxStyle, type Eye } from './shade';
 
 interface Particle {
   x: number;
@@ -32,6 +33,10 @@ interface Building {
   w: number;
   h: number;
   windows: boolean;
+  /** How deep it runs back, for its side and roof in perspective. */
+  d: number;
+  /** 0..1, picks what stands on its roof. */
+  roof: number;
 }
 
 /** Previous positions for smooth drawing between sim frames. */
@@ -42,6 +47,30 @@ export interface Prev {
 
 /** How far the Helipad's truss tower lifts the pad above its skyscraper's roof. */
 const HELIPAD_TOWER = 120;
+
+/** The sky (gradient, sun, light shafts) is painted into a cache this much bigger than the screen on each side, and repainted this often. */
+const SKY_CACHE = { pad: 40, everyFrames: 20 } as const;
+
+/** Depths of the stage's solid parts (world units; the fighters stand at depth 0, positive is away from you). */
+const STAGE_DEPTH = {
+  /** The main platform's front face sits a little in front of the fighters, its back well behind them. */
+  slabFront: -30,
+  slabBack: 150,
+  /** Half the depth of a pass-through girder. */
+  beam: 16,
+  /** Where the eye sits, as a fraction of the screen height: above the middle, so you look down onto the stage. */
+  eyeHeight: 0.3,
+} as const;
+
+/** "r,g,b" as "#rrggbb". */
+function rgbHex(rgb: string): string {
+  return '#' + rgb.split(',').map((v) => Number(v).toString(16).padStart(2, '0')).join('');
+}
+
+/** A building color seen through the horizon haze, as one flat color. */
+function blendHaze(color: string, hazeRgb: string, alpha: number): string {
+  return blend(tone(color, -0.25), rgbHex(hazeRgb), alpha);
+}
 
 /** A shipping container color, for any whole number. */
 function containerColor(n: number): string {
@@ -91,12 +120,12 @@ export class Renderer {
     const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let x = -2600; x < 2600; ) {
       const w = 60 + rand() * 120;
-      this.far.push({ x, w, h: 160 + rand() * 360, windows: false });
+      this.far.push({ x, w, h: 160 + rand() * 360, windows: false, d: 40 + rand() * 60, roof: rand() });
       x += w + rand() * 20;
     }
     for (let x = -2200; x < 2200; ) {
       const w = 80 + rand() * 140;
-      this.near.push({ x, w, h: 120 + rand() * 420, windows: true });
+      this.near.push({ x, w, h: 120 + rand() * 420, windows: true, d: 50 + rand() * 80, roof: rand() });
       x += w + 10 + rand() * 50;
     }
   }
@@ -453,6 +482,28 @@ export class Renderer {
     return this.h / 2 - (y - this.cam.y) * this.scale;
   }
 
+  /** +1 when the stage's sun is to the right, -1 when to the left. */
+  private light(): 1 | -1 {
+    return (this.fall || this.purple ? CITY_LOOKS.rooftop : this.look).sunX >= 0.5 ? 1 : -1;
+  }
+
+  /** The eye for the stage itself: the camera's center, at the stage's scale. */
+  private eye(): Eye {
+    return { vx: this.w / 2, vy: this.h * STAGE_DEPTH.eyeHeight, s: this.scale, light: this.light() };
+  }
+
+  /** The scenery view set back to depth z (positive is away from you), so flat scenery sits in perspective. */
+  private viewAt(z: number): detail.View {
+    const e = this.eye();
+    const f = 1500 / (1500 + z * this.scale);
+    return {
+      ...this.view(),
+      sx: (x) => e.vx + (this.sx(x) - e.vx) * f,
+      sy: (y) => e.vy + (this.sy(y) - e.vy) * f,
+      s: this.scale * f,
+    };
+  }
+
   /** What the stage scenery (stageDetail.ts) needs, for this frame. */
   private view(): detail.View {
     return {
@@ -554,36 +605,97 @@ export class Renderer {
     this.drawOffscreen(world);
   }
 
+  /** The sky behind everything: gradient, sun and light shafts, painted into a cache and redrawn every few frames. */
+  private skyCache: { canvas: HTMLCanvasElement; key: string; frame: number } | null = null;
+
   private drawSky(): void {
     const ctx = this.ctx;
-    const g = ctx.createLinearGradient(0, 0, 0, this.h);
     const fall = this.fall && !this.purple;
     const L = this.fall || this.purple ? CITY_LOOKS.rooftop : this.look;
+    // The sun drifts a hair with the camera; the cache is a little bigger than the screen so it can slide.
+    const pad = SKY_CACHE.pad;
+    const key = `${this.w}x${this.h}:${this.dpr}:${this.stageId}:${this.purple}`;
+    if (!this.skyCache || this.skyCache.key !== key || this.time - this.skyCache.frame >= SKY_CACHE.everyFrames || this.time < this.skyCache.frame) {
+      const canvas = this.skyCache?.canvas ?? document.createElement('canvas');
+      canvas.width = Math.round((this.w + pad * 2) * this.dpr);
+      canvas.height = Math.round((this.h + pad * 2) * this.dpr);
+      const c = canvas.getContext('2d')!;
+      c.setTransform(this.dpr, 0, 0, this.dpr, pad * this.dpr, pad * this.dpr);
+      this.paintSky(c, L, fall);
+      this.skyCache = { canvas, key, frame: this.time };
+    }
+    const ox = -this.cam.x * 0.03;
+    const oy = this.cam.y * 0.02;
+    const cx = Math.round(Math.max(-pad, Math.min(pad, ox)));
+    const cy = Math.round(Math.max(-pad, Math.min(pad, oy)));
+    ctx.drawImage(this.skyCache.canvas, cx - pad, cy - pad, this.w + pad * 2, this.h + pad * 2);
+    this.drawClouds(L, fall);
+  }
+
+  private paintSky(ctx: CanvasRenderingContext2D, L: CityLook, fall: boolean): void {
+    const pad = SKY_CACHE.pad;
+    const g = ctx.createLinearGradient(0, -pad, 0, this.h + pad);
     g.addColorStop(0, this.purple ? PALETTE.purpleTop : fall ? FALL.skyTop : L.skyTop);
     g.addColorStop(0.75, this.purple ? PALETTE.purpleHorizon : fall ? FALL.skyHorizon : L.skyHorizon);
     g.addColorStop(1, this.purple ? '#f0dcff' : fall ? FALL.skyBottom : L.skyBottom);
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, this.w, this.h);
-    // Sun glow, barely moving with the camera.
-    const sunX = this.w * L.sunX - this.cam.x * 0.03;
-    const sunY = this.h * L.sunY + this.cam.y * 0.02;
+    ctx.fillRect(-pad, -pad, this.w + pad * 2, this.h + pad * 2);
+    const sunX = this.w * L.sunX;
+    const sunY = this.h * L.sunY;
     const r = this.h * L.sunSize;
     const sg = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, r);
     sg.addColorStop(0, L.sunCore);
     sg.addColorStop(0.08, L.sunGlow);
     sg.addColorStop(1, 'rgba(255,200,140,0)');
     ctx.fillStyle = sg;
-    ctx.fillRect(0, 0, this.w, this.h);
-    // Drifting clouds.
-    ctx.fillStyle = this.purple || this.fall ? 'rgba(255,255,255,0.55)' : L.clouds;
+    ctx.fillRect(-pad, -pad, this.w + pad * 2, this.h + pad * 2);
+    // Light shafts fanning out from the sun, turning very slowly.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const rays = 9;
+    for (let i = 0; i < rays; i++) {
+      const a = (i / rays) * Math.PI * 2 + this.time * 0.0008 + Math.sin(i * 3.1) * 0.2;
+      const wdt = 0.05 + (i % 3) * 0.025;
+      const len = this.h * (0.9 + (i % 2) * 0.4);
+      const rg = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, len);
+      rg.addColorStop(0, 'rgba(255,236,200,0.10)');
+      rg.addColorStop(1, 'rgba(255,236,200,0)');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.moveTo(sunX, sunY);
+      ctx.arc(sunX, sunY, len, a - wdt, a + wdt);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private drawClouds(L: CityLook, fall: boolean): void {
+    const ctx = this.ctx;
+    // Drifting clouds: a shaded underside, a sunlit top, a soft edge.
+    const base = this.purple ? '#b48ae0' : fall ? '#f7c99a' : toHex(L.clouds);
     for (let i = 0; i < 6; i++) {
       const cx = ((i * 397 + this.time * (0.15 + i * 0.03) - this.cam.x * 0.08) % (this.w + 400) + this.w + 400) % (this.w + 400) - 200;
       const cy = this.h * (0.12 + (i % 3) * 0.09) + this.cam.y * 0.05;
-      const s = this.h * (0.05 + (i % 2) * 0.02);
+      const sz = this.h * (0.05 + (i % 2) * 0.02);
+      const puffs: [number, number, number][] = [[-1.6, 0.2, 1.0], [-0.5, -0.35, 1.25], [0.8, -0.2, 1.1], [1.9, 0.25, 0.85], [0.2, 0.3, 1.2]];
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = tone(base, -0.18);
       ctx.beginPath();
-      ctx.ellipse(cx, cy, s * 3, s, 0, 0, Math.PI * 2);
-      ctx.ellipse(cx + s * 1.5, cy - s * 0.5, s * 1.8, s * 0.9, 0, 0, Math.PI * 2);
+      for (const [px, py, pr] of puffs) {
+        ctx.moveTo(cx + px * sz + pr * sz, cy + py * sz + sz * 0.15);
+        ctx.arc(cx + px * sz, cy + py * sz + sz * 0.15, pr * sz, 0, Math.PI * 2);
+      }
       ctx.fill();
+      ctx.fillStyle = tone(base, 0.25);
+      ctx.beginPath();
+      for (const [px, py, pr] of puffs) {
+        const ox = (L.sunX > 0.5 ? 1 : -1) * sz * 0.12;
+        ctx.moveTo(cx + px * sz + ox + pr * sz * 0.8, cy + py * sz - sz * 0.12);
+        ctx.arc(cx + px * sz + ox, cy + py * sz - sz * 0.12, pr * sz * 0.8, 0, Math.PI * 2);
+      }
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -603,9 +715,17 @@ export class Renderer {
     };
     if (this.fall) { this.drawCountryside(layer); return; }
     const look = this.look;
-    // Hills.
+    const horizonRgb = rgbOf(this.purple ? PALETTE.purpleHorizon : look.skyHorizon);
+    const light = this.light();
+    // Hills, lit along their ridges, sinking into haze.
     const hills = layer(0.05, 0.5, 0.78);
-    ctx.fillStyle = this.purple ? '#8a63c9' : look.hills;
+    const hillColor = this.purple ? '#8a63c9' : look.hills;
+    // Haze is baked into the gradient: thicker toward the horizon at the hills' foot.
+    const hazeHex = rgbHex(horizonRgb);
+    const hg = ctx.createLinearGradient(0, hills.y(260), 0, hills.y(0));
+    hg.addColorStop(0, blend(tone(hillColor, 0.12), hazeHex, 0.15));
+    hg.addColorStop(1, blend(tone(hillColor, -0.15), hazeHex, 0.45));
+    ctx.fillStyle = hg;
     ctx.beginPath();
     ctx.moveTo(0, this.h);
     for (let px = 0; px <= this.w + 20; px += 20) {
@@ -616,33 +736,110 @@ export class Renderer {
     ctx.lineTo(this.w, this.h);
     ctx.fill();
 
-    const city = (list: Building[], parallax: number, zoomK: number, horizon: number, color: string, windowColor: string) => {
+    /**
+     * A row of buildings in perspective: each shows its sunlit or shaded side and its roof (when below the eye), with
+     * a rim of sunlight on the sunny edge, roof clutter, windows on a fixed grid, and haze over the whole row.
+     */
+    /**
+     * A row of buildings, painted once into a cache (at the sharpest zoom) and slid and scaled with the camera every
+     * frame: parallax in x, zoom, and the camera's height, exactly as the layer() mapping does.
+     */
+    const city = (name: string, list: Building[], parallax: number, zoomK: number, horizon: number, color: string, windowColor: string, hazeAlpha: number) => {
       const L = layer(parallax, zoomK, horizon);
-      ctx.fillStyle = color;
-      for (const b of list) {
-        const x = L.x(b.x);
-        const w = b.w * L.s;
-        if (x + w < 0 || x > this.w) continue;
-        const top = L.y(b.h);
-        ctx.fillRect(x, top, w, this.h - top + 2);
-        if (b.windows) {
-          ctx.fillStyle = windowColor;
-          const step = 22 * L.s;
-          for (let wy = top + step * 0.6; wy < this.h; wy += step) {
-            for (let wx = x + step * 0.4; wx < x + w - step * 0.4; wx += step) {
-              if (((((wx * 13 + wy * 7) | 0) % 20) + 20) % 20 >= look.litWindows * 20) continue;
-              ctx.fillRect(wx, wy, step * 0.45, step * 0.5);
-            }
-          }
-          ctx.fillStyle = color;
-        }
+      const k = this.h / CAMERA.baseHeight;
+      const s0 = (0.5 + CAMERA.maxZoom * 0.5) * zoomK * k;
+      const key = `${name}:${this.stageId}:${this.purple}:${Math.round(this.h)}:${light}`;
+      let cache = this.cityCache.get(name);
+      if (!cache || cache.key !== key) {
+        const x0 = Math.min(...list.map((b) => b.x)) - 80;
+        const x1 = Math.max(...list.map((b) => b.x + b.w)) + 80;
+        const yTop = 700;
+        const yBottom = -260;
+        const canvas = cache?.canvas ?? document.createElement('canvas');
+        canvas.width = Math.ceil((x1 - x0) * s0);
+        canvas.height = Math.ceil((yTop - yBottom) * s0);
+        const c = canvas.getContext('2d')!;
+        c.clearRect(0, 0, canvas.width, canvas.height);
+        const C = { x: (x: number) => (x - x0) * s0, y: (y: number) => (yTop - y) * s0, s: s0 };
+        this.paintCity(c, list, C, canvas.width, canvas.height, color, windowColor, hazeAlpha, light, horizonRgb);
+        cache = { canvas, key, x0, yTop, s0 };
+        this.cityCache.set(name, cache);
+      }
+      const z = L.s / cache.s0;
+      ctx.drawImage(cache.canvas, L.x(cache.x0), L.y(cache.yTop), cache.canvas.width * z, cache.canvas.height * z);
+      // Below the cache's bottom, the buildings carry on in the hazy base color.
+      const bottom = L.y(cache.yTop) + cache.canvas.height * z;
+      if (bottom < this.h) {
+        ctx.fillStyle = blendHaze(color, horizonRgb, hazeAlpha);
+        ctx.fillRect(0, bottom - 1, this.w, this.h - bottom + 1);
       }
     };
-    city(this.far, 0.15, 0.55, 0.92, this.purple ? '#6c4aa8' : look.far, '');
+    city('far', this.far, 0.15, 0.55, 0.92, this.purple ? '#6c4aa8' : look.far, '', 0.4);
     if (this.stageId !== 'rooftop') detail.drawBeacons(this.view(), layer(0.15, 0.55, 0.92), this.far, 400);
     if (this.stageId === 'cranes') { this.drawHarbor(layer); return; }
     if (this.stageId === 'helipad') this.drawHelicopterFlyby(layer(0.12, 0.55, 0.9));
-    city(this.near, 0.3, 0.7, 1.02, this.purple ? '#3e2a66' : look.near, this.purple ? 'rgba(255,214,255,0.25)' : look.windows);
+    city('near', this.near, 0.3, 0.7, 1.02, this.purple ? '#3e2a66' : look.near, this.purple ? 'rgba(255,214,255,0.25)' : look.windows, 0.18);
+  }
+
+  /** Cached rows of city (see drawBackdrop). */
+  private cityCache = new Map<string, { canvas: HTMLCanvasElement; key: string; x0: number; yTop: number; s0: number }>();
+
+  /**
+   * Paint a row of buildings in perspective: each shows its sunlit or shaded side and its roof, a rim of sunlight on
+   * the sunny edge, roof clutter and windows on a fixed grid, with haze over the whole row.
+   */
+  private paintCity(ctx: CanvasRenderingContext2D, list: readonly Building[], L: { x: (x: number) => number; y: (y: number) => number; s: number }, width: number, height: number, color: string, windowColor: string, hazeAlpha: number, light: 1 | -1, horizonRgb: string): void {
+    const e: Eye = { vx: width / 2, vy: L.y(320), s: L.s, light };
+    const front = ctx.createLinearGradient(0, L.y(560), 0, L.y(0));
+    front.addColorStop(0, tone(color, 0.1));
+    front.addColorStop(1, tone(color, -0.25));
+    const roofColor = tone(color, 0.18);
+    const rimColor = this.purple ? 'rgba(255,214,255,0.35)' : 'rgba(255,232,190,0.4)';
+    // Outside in, so the nearer sides overlap correctly.
+    const order = [...list].sort((a, b) => Math.abs(L.x(b.x + b.w / 2) - e.vx) - Math.abs(L.x(a.x + a.w / 2) - e.vx));
+    for (const b of order) {
+      const x = L.x(b.x);
+      const w = b.w * L.s;
+      const top = L.y(b.h);
+      box3(ctx, e, x, top, x + w, height + 4, 0, b.d, { color, front, top: roofColor });
+      ctx.fillStyle = rimColor;
+      ctx.fillRect(light > 0 ? x + w - 2 : x, top, 2, height - top);
+      ctx.fillStyle = tone(color, 0.25);
+      ctx.fillRect(x, top, w, Math.max(1, 3 * L.s));
+      // Roof clutter: a water tank, a little hut, or an antenna.
+      if (b.roof > 0.7) {
+        const tw = Math.min(w * 0.35, 26 * L.s);
+        const tx = x + w * (0.2 + (b.roof - 0.7) * 1.5);
+        cylinder(ctx, e, tx, top - tw * 1.1, tx + tw, top - tw * 0.2, roofColor);
+        ctx.fillStyle = tone(color, -0.1);
+        ctx.fillRect(tx + tw * 0.15, top - tw * 0.2, Math.max(1, 2 * L.s), tw * 0.2);
+        ctx.fillRect(tx + tw * 0.8, top - tw * 0.2, Math.max(1, 2 * L.s), tw * 0.2);
+      } else if (b.roof > 0.45) {
+        box3(ctx, e, x + w * 0.55, top - 16 * L.s, x + w * 0.85, top, 10, 40, { color: tone(color, 0.05) });
+      } else if (b.roof < 0.15) {
+        ctx.fillStyle = tone(color, -0.2);
+        ctx.fillRect(x + w * 0.5, top - 60 * L.s, Math.max(1, 2 * L.s), 60 * L.s);
+      }
+      if (b.windows) {
+        const step = 22 * L.s;
+        const cols = Math.floor((b.w - 10) / 22);
+        const x0 = x + (w - cols * step) / 2 + step * 0.25;
+        for (let r = 0; ; r++) {
+          const wy = top + step * 0.6 + r * step;
+          if (wy > height) break;
+          for (let c = 0; c < cols; c++) {
+            const hsh = ((b.x * 7 + r * 131 + c * 37) | 0) % 97;
+            const lit = ((hsh + 97) % 97) / 97 < this.look.litWindows;
+            ctx.fillStyle = lit ? windowColor : 'rgba(0,0,0,0.18)';
+            ctx.fillRect(x0 + c * step, wy, step * 0.5, step * 0.55);
+          }
+        }
+      }
+    }
+    haze(ctx, width, L.y(600), L.y(0), horizonRgb, hazeAlpha);
+    // Below the horizon the haze stays at full strength.
+    ctx.fillStyle = `rgba(${horizonRgb},${hazeAlpha})`;
+    ctx.fillRect(0, L.y(0), width, height - L.y(0));
   }
 
   /** The Crane Yard's backdrop: the bay at dusk, ships going by, and a quay of containers and gantry cranes. */
@@ -777,8 +974,20 @@ export class Renderer {
   /** The Harvest Farm's backdrop: autumn hills, a barn and a silo, rows of fall trees. */
   private drawCountryside(layer: (parallax: number, zoomK: number, horizon: number) => { x: (x: number) => number; y: (y: number) => number; s: number }): void {
     const ctx = this.ctx;
-    const hillsAt = (L: ReturnType<typeof layer>, color: string, base: number, amp: number, freq: number, shift: number, parallax: number) => {
-      ctx.fillStyle = color;
+    const purple = this.purple;
+    const hazeRgb = rgbOf(purple ? PALETTE.purpleHorizon : FALL.skyHorizon);
+    const light = this.light();
+    const hillY = (L: ReturnType<typeof layer>, base: number, amp: number, freq: number, shift: number, parallax: number, layerParallax: number) => (x: number) => {
+      const wx = x + this.cam.x * (parallax - layerParallax);
+      return L.y(base + Math.sin(wx * freq + shift) * amp + Math.sin(wx * freq * 2.7 + shift * 2) * amp * 0.35);
+    };
+    // Rolling hills lit along their crests, darker in the folds.
+    const hazeHex = rgbHex(hazeRgb);
+    const hillsAt = (L: ReturnType<typeof layer>, color: string, base: number, amp: number, freq: number, shift: number, parallax: number, hazeK = 0) => {
+      const g = ctx.createLinearGradient(0, L.y(base + amp * 1.4), 0, L.y(base - amp));
+      g.addColorStop(0, blend(tone(color, 0.15), hazeHex, hazeK * 0.4));
+      g.addColorStop(1, blend(tone(color, -0.2), hazeHex, hazeK));
+      ctx.fillStyle = g;
       ctx.beginPath();
       ctx.moveTo(0, this.h);
       for (let px = 0; px <= this.w + 20; px += 20) {
@@ -789,58 +998,71 @@ export class Renderer {
       ctx.fill();
     };
     const far = layer(0.05, 0.5, 0.62);
-    hillsAt(far, this.purple ? '#8a63c9' : FALL.hillFar, 140, 70, 0.004, 1, 0.08);
+    hillsAt(far, purple ? '#8a63c9' : FALL.hillFar, 140, 70, 0.004, 1, 0.08, 0.45);
     const mid = layer(0.15, 0.6, 0.7);
-    hillsAt(mid, this.purple ? '#6c4aa8' : FALL.hillMid, 90, 40, 0.006, 3, 0.2);
-    // The hills' screen height at a layer x (hillsAt drifts at its own parallax, not the layer's).
-    const hillAt = (L: ReturnType<typeof layer>, layerParallax: number, base: number, amp: number, freq: number, shift: number, parallax: number) => (x: number) => {
-      const wx = x + this.cam.x * (parallax - layerParallax);
-      return L.y(base + Math.sin(wx * freq + shift) * amp + Math.sin(wx * freq * 2.7 + shift * 2) * amp * 0.35);
-    };
-    detail.drawWindpump(this.view(), mid, hillAt(mid, 0.15, 90, 40, 0.006, 3, 0.2));
-    // A red barn and a silo on the middle hills.
+    hillsAt(mid, purple ? '#6c4aa8' : FALL.hillMid, 90, 40, 0.006, 3, 0.2, 0.25);
+    const midHill = hillY(mid, 90, 40, 0.006, 3, 0.2, 0.15);
+    detail.drawWindpump(this.view(), mid, midHill);
+    // A red barn with a gable roof and a silo, in perspective on the middle hills.
+    const e: Eye = { vx: this.w / 2, vy: this.h * 0.35, s: mid.s, light };
     const bx = mid.x(520);
-    const by = mid.y(110);
-    const bs = mid.s;
-    ctx.fillStyle = this.purple ? '#4a2f7a' : FALL.barn;
-    ctx.fillRect(bx, by - 90 * bs, 130 * bs, 90 * bs + 2);
-    ctx.beginPath();
-    ctx.moveTo(bx - 10 * bs, by - 90 * bs);
-    ctx.lineTo(bx + 65 * bs, by - 140 * bs);
-    ctx.lineTo(bx + 140 * bs, by - 90 * bs);
-    ctx.fill();
+    const by = Math.min(midHill(520), midHill(650)) + 6 * mid.s;
+    const k = mid.s;
+    const barn = purple ? '#4a2f7a' : FALL.barn;
+    box3(ctx, e, bx, by - 90 * k, bx + 130 * k, by, 0, 120, { color: barn });
+    // Roof: the slope running back, then the gable end in front.
+    const [r1x, r1y] = project(e, bx - 10 * k, by - 90 * k, 0);
+    const [r2x, r2y] = project(e, bx + 65 * k, by - 140 * k, 0);
+    const [r3x, r3y] = project(e, bx + 65 * k, by - 140 * k, 120);
+    const [r4x, r4y] = project(e, bx - 10 * k, by - 90 * k, 120);
+    const [r5x, r5y] = project(e, bx + 140 * k, by - 90 * k, 0);
+    const [r6x, r6y] = project(e, bx + 140 * k, by - 90 * k, 120);
+    ctx.fillStyle = tone(purple ? '#3e2a66' : '#5a3a30', light < 0 ? 0.1 : -0.2);
+    ctx.beginPath(); ctx.moveTo(r1x, r1y); ctx.lineTo(r2x, r2y); ctx.lineTo(r3x, r3y); ctx.lineTo(r4x, r4y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = tone(purple ? '#3e2a66' : '#5a3a30', light > 0 ? 0.1 : -0.2);
+    ctx.beginPath(); ctx.moveTo(r5x, r5y); ctx.lineTo(r2x, r2y); ctx.lineTo(r3x, r3y); ctx.lineTo(r6x, r6y); ctx.closePath(); ctx.fill();
+    const gable = ctx.createLinearGradient(0, r2y, 0, by);
+    gable.addColorStop(0, tone(barn, 0.1));
+    gable.addColorStop(1, tone(barn, -0.25));
+    ctx.fillStyle = gable;
+    ctx.beginPath(); ctx.moveTo(r1x, r1y); ctx.lineTo(r2x, r2y); ctx.lineTo(r5x, r5y); ctx.closePath(); ctx.fill();
+    ctx.fillRect(bx, by - 90 * k, 130 * k, 90 * k);
     ctx.strokeStyle = '#f4efe6';
-    ctx.lineWidth = Math.max(1, 3 * bs);
-    ctx.strokeRect(bx + 40 * bs, by - 60 * bs, 50 * bs, 60 * bs);
+    ctx.lineWidth = Math.max(1, 3 * k);
+    ctx.strokeRect(bx + 40 * k, by - 60 * k, 50 * k, 60 * k);
     ctx.beginPath();
-    ctx.moveTo(bx + 40 * bs, by - 60 * bs);
-    ctx.lineTo(bx + 90 * bs, by);
-    ctx.moveTo(bx + 90 * bs, by - 60 * bs);
-    ctx.lineTo(bx + 40 * bs, by);
+    ctx.moveTo(bx + 40 * k, by - 60 * k);
+    ctx.lineTo(bx + 90 * k, by);
+    ctx.moveTo(bx + 90 * k, by - 60 * k);
+    ctx.lineTo(bx + 40 * k, by);
     ctx.stroke();
-    ctx.fillStyle = this.purple ? '#5a4a8a' : '#b9b2a6';
-    ctx.fillRect(bx + 150 * bs, by - 160 * bs, 44 * bs, 160 * bs + 2);
-    ctx.beginPath();
-    ctx.arc(bx + 172 * bs, by - 160 * bs, 22 * bs, Math.PI, 0);
-    ctx.fill();
-    // Rows of fall trees on the near hills.
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(bx + 55 * k, by - 120 * k, 20 * k, 16 * k);
+    // The silo: a lit cylinder with a domed cap.
+    const silo = purple ? '#5a4a8a' : '#b9b2a6';
+    cylinder(ctx, e, bx + 150 * k, by - 160 * k, bx + 194 * k, by, silo);
+    sphere(ctx, e, bx + 172 * k, by - 160 * k, 22 * k, 18 * k, silo);
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    for (let r = 1; r < 6; r++) ctx.fillRect(bx + 150 * k, by - r * 28 * k, 44 * k, Math.max(1, 1.5 * k));
+    // Rows of fall trees on the near hills, round and lit from the sun.
     const near = layer(0.3, 0.7, 0.78);
-    hillsAt(near, this.purple ? '#3e2a66' : FALL.hillNear, 40, 18, 0.008, 5, 0.35);
-    detail.drawCornShocks(this.view(), near, hillAt(near, 0.3, 40, 18, 0.008, 5, 0.35));
+    hillsAt(near, purple ? '#3e2a66' : FALL.hillNear, 40, 18, 0.008, 5, 0.35);
+    const nearHill = hillY(near, 40, 18, 0.008, 5, 0.35, 0.3);
+    detail.drawCornShocks(this.view(), near, nearHill);
+    const te: Eye = { vx: this.w / 2, vy: this.h * 0.35, s: near.s, light };
     for (let i = -14; i <= 14; i++) {
       const tx = i * 150 + ((i * 53) % 40);
       const x = near.x(tx);
       if (x < -80 || x > this.w + 80) continue;
-      const ty = near.y(40 + Math.sin(tx * 0.008 + 5) * 18);
+      const ty = nearHill(tx) + 4;
       const r = (34 + ((i * 17) & 15)) * near.s;
-      ctx.fillStyle = '#4a3020';
-      ctx.fillRect(x - 4 * near.s, ty - r * 1.4, 8 * near.s, r * 1.4 + 4);
-      ctx.fillStyle = this.purple ? '#7a4ab0' : FALL.leaves[(i + 20) % FALL.leaves.length]!;
-      ctx.beginPath();
-      ctx.arc(x, ty - r * 1.6, r, 0, Math.PI * 2);
-      ctx.arc(x - r * 0.6, ty - r * 1.2, r * 0.7, 0, Math.PI * 2);
-      ctx.arc(x + r * 0.6, ty - r * 1.25, r * 0.7, 0, Math.PI * 2);
-      ctx.fill();
+      contactShadow(ctx, x + light * -r * 0.4, ty, r * 1.1, r * 0.25, 0.3);
+      const [t1, t2] = [x - 4 * near.s, x + 4 * near.s];
+      cylinder(ctx, te, t1, ty - r * 1.4, t2, ty + 2, '#4a3020');
+      const leaf = purple ? '#7a4ab0' : FALL.leaves[(i + 20) % FALL.leaves.length]!;
+      sphere(ctx, te, x - r * 0.6, ty - r * 1.2, r * 0.7, r * 0.65, tone(leaf, -0.1));
+      sphere(ctx, te, x + r * 0.6, ty - r * 1.25, r * 0.7, r * 0.65, tone(leaf, -0.05));
+      sphere(ctx, te, x, ty - r * 1.65, r, r * 0.9, leaf);
     }
   }
 
@@ -869,98 +1091,61 @@ export class Renderer {
     const main = world.stage.platforms[0]!;
     // What holds the main platform up.
     if (id === 'rooftop') {
-      // The building under the roof, all the way down.
-      const x = this.sx(main.x1 + 20);
-      const w = (main.x2 - main.x1 - 40) * s;
-      const top = this.sy(main.y - main.depth);
-      ctx.fillStyle = '#2b2f35';
-      ctx.fillRect(x, top, w, this.h - top + 40);
-      ctx.fillStyle = 'rgba(255,236,200,0.28)';
-      const step = 34 * s;
-      for (let wy = top + step * 0.5; wy < this.h + 40; wy += step) {
-        for (let wx = x + step * 0.3; wx < x + w - step * 0.5; wx += step) ctx.fillRect(wx, wy, step * 0.5, step * 0.55);
-      }
-      detail.drawRooftopDetail(this.view(), main.y, main.x1 + 20, main.x2 - 20, main.y - main.depth);
-      // Rooftop clutter, set back behind the edge and faded so it reads as scenery, not something to stand on.
-      ctx.globalAlpha = 0.5;
-      this.box(-300, main.y, 70, 30, '#6a737d');
-      ctx.strokeStyle = '#3b4047';
-      ctx.lineWidth = Math.max(1, 2 * s);
-      ctx.beginPath();
-      ctx.arc(this.sx(-265), this.sy(main.y + 15), 10 * s, 0, Math.PI * 2);
-      ctx.stroke();
-      this.box(230, main.y, 46, 44, '#6a737d');
-      this.box(236, main.y + 44, 34, 6, '#7d868f');
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = '#26282b';
-      ctx.lineWidth = Math.max(1, 3 * s);
-      ctx.beginPath();
-      ctx.moveTo(this.sx(330), this.sy(main.y));
-      ctx.lineTo(this.sx(330), this.sy(main.y + 150));
-      ctx.stroke();
-      ctx.fillStyle = (this.time >> 5) % 2 ? '#ff3b30' : '#661814';
-      ctx.beginPath();
-      ctx.arc(this.sx(330), this.sy(main.y + 152), Math.max(2, 5 * s), 0, Math.PI * 2);
-      ctx.fill();
+      // The building under the roof, all the way down, with recessed windows.
+      const f = this.block(main.x1 + 20, main.x2 - 20, main.y - main.depth, this.bottomY(), -10, 520, { color: '#363a42' });
+      this.windowGrid(f, 34, 'rgba(255,236,200,0.32)', 0.75, 3);
+      detail.drawRooftopDetail(this.view(), main.x1 + 20, main.x2 - 20, main.y - main.depth);
     } else if (id === 'harvest') {
-      // Solid ground: the field runs off both sides of the screen. A scarecrow and pumpkins on it.
+      // Solid ground: the field runs off both sides of the screen (drawn with the platforms).
       const top = this.sy(main.y - main.depth);
-      ctx.fillStyle = '#4a3020';
+      ctx.fillStyle = '#3a2416';
       ctx.fillRect(0, top, this.w, this.h - top + 40);
-      detail.drawFarmDetail(this.view(), main.y, main.depth);
-      this.drawScarecrow(-420, main.y);
-      for (const [px, pr] of [[-360, 16], [-330, 11], [380, 18], [410, 12], [600, 15]] as const) this.drawPumpkin(px, main.y, pr);
-      this.drawOak(main.y);
     } else if (id === 'helipad') {
-      this.drawSkyscraper(main.y - main.depth - HELIPAD_TOWER);
-      detail.drawSkyscraperDetail(this.view(), main.y - main.depth - HELIPAD_TOWER, -270, 270);
-      // A truss tower holding the pad above the skyscraper's roof.
-      ctx.strokeStyle = this.purple ? '#8a63c9' : '#6b6880';
-      ctx.lineWidth = Math.max(1, 6 * s);
-      const tx1 = this.sx(-90);
-      const tx2 = this.sx(90);
+      const roof = main.y - main.depth - HELIPAD_TOWER;
+      this.drawSkyscraper(roof);
+      detail.drawSkyscraperDetail(this.view(), roof, -270, 270);
+      // A truss tower holding the pad above the skyscraper's roof: the back frame in shadow, the front one lit.
       const top = main.y - main.depth;
-      const roof = top - HELIPAD_TOWER;
-      ctx.beginPath();
-      ctx.moveTo(tx1, this.sy(top));
-      ctx.lineTo(tx1, this.sy(roof));
-      ctx.moveTo(tx2, this.sy(top));
-      ctx.lineTo(tx2, this.sy(roof));
       const bay = HELIPAD_TOWER / 2;
-      for (let y = top; y > roof + 1; y -= bay) {
-        ctx.moveTo(tx1, this.sy(y));
-        ctx.lineTo(tx2, this.sy(y - bay));
-        ctx.moveTo(tx2, this.sy(y));
-        ctx.lineTo(tx1, this.sy(y - bay));
+      for (const [z, k] of [[110, -0.35], [10, 0.1]] as const) {
+        const steel = tone(this.purple ? '#8a63c9' : '#6b6880', k);
+        for (const x of [-90, 90]) this.strut(x, top, z, x, roof, z, 9, steel);
+        for (let y = top; y > roof + 1; y -= bay) {
+          this.strut(-90, y, z, 90, y - bay, z, 5, steel);
+          this.strut(90, y, z, -90, y - bay, z, 5, steel);
+        }
       }
-      ctx.stroke();
+      for (const x of [-90, 90]) this.strut(x, top, 10, x, top, 110, 6, tone('#6b6880', -0.15));
       this.drawWindsock(230, roof);
     } else {
-      // The deck sits on a stack of shipping containers.
+      // The deck sits on a stack of shipping containers, bottom row first so each one sits on the one below.
       const top = main.y - main.depth;
-      for (let row = 0; top - row * 52 > -1200; row++) {
+      let rows = 0;
+      while (top - rows * 52 > -1400 && this.sy(top - rows * 52) < this.h + 60) rows++;
+      for (let row = rows - 1; row >= 0; row--) {
         for (let col = 0; col < 5; col++) {
           const x = -250 + col * 100;
           const y = top - row * 52;
-          if (this.sy(y - 52) < 0) continue;
-          this.box(x + 2, y - 50, 96, 50, containerColor(row * 2 + col * 3 + 1));
-          ctx.fillStyle = 'rgba(0,0,0,0.35)';
-          ctx.fillRect(this.sx(x + 2), this.sy(y), 96 * s, 50 * s);
-          ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          for (let rx = x + 14; rx < x + 96; rx += 12) {
-            ctx.moveTo(this.sx(rx), this.sy(y - 4));
-            ctx.lineTo(this.sx(rx), this.sy(y - 46));
+          const color = this.purple ? '#5a4a8a' : containerColor(row * 2 + col * 3 + 1);
+          const f = this.block(x + 2, x + 98, y, y - 50, -20, 120, { color: tone(color, -0.15) });
+          // Corrugation: alternating lit and shaded ribs.
+          for (let r = 0; r < 8; r++) {
+            const rx = f.x + (f.w * (r + 0.5)) / 8;
+            ctx.fillStyle = 'rgba(255,255,255,0.08)';
+            ctx.fillRect(rx - f.w / 32, f.y + 3 * s, f.w / 32, f.h - 6 * s);
+            ctx.fillStyle = 'rgba(0,0,0,0.18)';
+            ctx.fillRect(rx, f.y + 3 * s, f.w / 32, f.h - 6 * s);
           }
-          ctx.stroke();
           detail.drawContainerDoors(this.view(), x + 2, y - 50, 96, 50, row * 5 + col);
         }
       }
       for (const side of [-1, 1]) this.drawTowerCrane(side);
     }
 
-    for (const p of world.stage.platforms) this.drawPlatform(p, id);
+    for (const p of world.stage.platforms) if (p.solid) this.drawPlatform(p, id);
+    if (id === 'rooftop') this.drawRooftopProps(main.y);
+    if (id === 'harvest') this.drawFarmProps(main.y);
+    for (const p of world.stage.platforms) if (!p.solid) this.drawPlatform(p, id);
     // Scenery in front of the platforms' faces.
     const v = this.view();
     if (id === 'rooftop') {
@@ -971,6 +1156,7 @@ export class Renderer {
     else if (id === 'harvest') {
       const wagon = world.stage.platforms.find((p) => !p.solid && p.x1 > 0 && p.y < 200);
       if (wagon) detail.drawLantern(v, wagon.x1 + 10, wagon.y);
+      detail.drawFarmFront(v, main.y, main.depth);
     }
   }
 
@@ -987,29 +1173,28 @@ export class Renderer {
   private drawSkyscraper(roof: number): void {
     const ctx = this.ctx;
     const s = this.scale;
-    const x1 = -270;
-    const x2 = 270;
-    const top = this.sy(roof);
-    if (top > this.h) return;
-    ctx.fillStyle = this.purple ? '#2e2050' : '#262838';
-    ctx.fillRect(this.sx(x1), top, (x2 - x1) * s, this.h - top + 40);
-    this.box(x1 - 10, roof - 14, x2 - x1 + 20, 14, this.purple ? '#3e2a66' : '#33354a');
-    const lit = this.purple ? 'rgba(255,214,255,0.35)' : 'rgba(255,206,120,0.55)';
-    const dark = 'rgba(120,140,190,0.18)';
-    for (let row = 0; ; row++) {
-      const y = roof - 40 - row * 40;
-      const sy = this.sy(y);
-      if (sy > this.h + 40) break;
-      for (let col = 0; col < 10; col++) {
-        const wx = x1 + 18 + col * 52;
-        ctx.fillStyle = ((row * 7 + col * 3) % 5) < 2 ? lit : dark;
-        ctx.fillRect(this.sx(wx), sy, 38 * s, 26 * s);
-      }
+    if (this.sy(roof) > this.h) return;
+    const glass = this.purple ? '#2e2050' : '#2a2c3e';
+    const f = this.block(-270, 270, roof, this.bottomY(), -20, 460, { color: glass });
+    this.block(-280, 280, roof, roof - 14, -26, 466, { color: this.purple ? '#3e2a66' : '#3a3c52', rim: true });
+    this.windowGrid(f, 46, this.purple ? 'rgba(255,214,255,0.4)' : 'rgba(255,206,120,0.6)', 0.4, 6);
+    // HVAC units and a stair hut on the roof.
+    for (const [x1, x2, h, z1, z2] of [[-250, -190, 28, 60, 140], [-180, -140, 40, 180, 240], [150, 200, 34, 80, 160]] as const) {
+      const u = this.block(x1, x2, roof + h, roof, z1, z2, { color: this.purple ? '#4a3a7a' : '#4a4c62', rim: true });
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      for (let k = 1; k < 4; k++) ctx.fillRect(u.x + 3, u.y + (u.h * k) / 4, u.w - 6, Math.max(1, s));
     }
+    // The sunset reflected in the glass, strongest high up.
+    const rg = ctx.createLinearGradient(f.x, f.y, f.x + f.w, f.y + f.h * 0.6);
+    rg.addColorStop(0, 'rgba(255,150,90,0.18)');
+    rg.addColorStop(0.5, 'rgba(255,150,90,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(f.x, f.y, f.w, Math.min(f.h, this.h - f.y));
     ctx.fillStyle = (this.time >> 5) % 2 ? '#ff3b30' : '#661814';
-    for (const cx of [x1 - 4, x2 + 4]) {
+    for (const cx of [-284, 284]) {
+      const [lx, ly] = this.at(cx, roof + 4, -26);
       ctx.beginPath();
-      ctx.arc(this.sx(cx), this.sy(roof + 4), Math.max(2, 4 * s), 0, Math.PI * 2);
+      ctx.arc(lx, ly, Math.max(2, 4 * s), 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -1046,311 +1231,539 @@ export class Renderer {
     const ctx = this.ctx;
     const s = this.scale;
     const yellow = this.purple ? '#c9a0ff' : '#e8a21a';
-    const mx = side * 400;
     const jibY = 170;
     const apex = 300;
-    const x = (wx: number) => this.sx(side * wx);
-    // Mast, from off the bottom of the screen up to the apex.
-    ctx.strokeStyle = yellow;
-    ctx.lineWidth = Math.max(1, 5 * s);
-    ctx.beginPath();
-    ctx.moveTo(x(382), this.sy(jibY));
-    ctx.lineTo(x(382), this.h + 40);
-    ctx.moveTo(x(418), this.sy(jibY));
-    ctx.lineTo(x(418), this.h + 40);
-    for (let y = jibY; y > -1200 && this.sy(y) < this.h + 40; y -= 50) {
-      ctx.moveTo(x(382), this.sy(y));
-      ctx.lineTo(x(418), this.sy(y - 50));
+    const X = (wx: number) => side * wx;
+    const low = Math.min(this.bottomY(), jibY - 100);
+    // The mast and apex as two lattice frames, the back one in shadow; braces between them.
+    for (const [z, k] of [[22, -0.4], [-22, 0.08]] as const) {
+      const c = tone(yellow, k);
+      this.strut(X(382), jibY, z, X(382), low, z, 6, c);
+      this.strut(X(418), jibY, z, X(418), low, z, 6, c);
+      for (let y = jibY; y > low; y -= 50) this.strut(X(382), y, z, X(418), y - 50, z, 3, c);
+      this.strut(X(386), jibY + 10, z, X(400), apex, z, 5, c);
+      this.strut(X(414), jibY + 10, z, X(400), apex, z, 5, c);
+      // Counter-jib out the back.
+      this.strut(X(440), jibY + 4, z, X(545), jibY + 4, z, 4, c);
     }
-    // The apex over the mast.
-    ctx.moveTo(x(386), this.sy(jibY + 10));
-    ctx.lineTo(this.sx(mx), this.sy(apex));
-    ctx.lineTo(x(414), this.sy(jibY + 10));
-    ctx.stroke();
     // Ties from the apex to both ends.
     ctx.strokeStyle = 'rgba(40,40,40,0.7)';
     ctx.lineWidth = Math.max(1, 1.5 * s);
     ctx.beginPath();
-    ctx.moveTo(this.sx(mx), this.sy(apex));
-    ctx.lineTo(x(236), this.sy(jibY + 9));
-    ctx.moveTo(this.sx(mx), this.sy(apex));
-    ctx.lineTo(x(540), this.sy(jibY + 6));
+    const [ax, ay] = this.at(X(400), apex, 0);
+    const [t1x, t1y] = this.at(X(236), jibY + 9, 0);
+    const [t2x, t2y] = this.at(X(540), jibY + 6, 0);
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(t1x, t1y);
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(t2x, t2y);
     ctx.stroke();
-    // Counter-jib behind the mast (thinner, not a platform) and its counterweight.
-    ctx.strokeStyle = yellow;
-    ctx.lineWidth = Math.max(1, 3 * s);
-    ctx.beginPath();
-    ctx.moveTo(x(440), this.sy(jibY + 4));
-    ctx.lineTo(x(545), this.sy(jibY + 4));
-    ctx.stroke();
-    const cw1 = side > 0 ? 500 : -545;
-    this.box(cw1, jibY - 44, 45, 40, this.purple ? '#3e2a66' : '#4b5058');
-    // Operator's cab under the jib, beside the mast.
+    // Counterweight and the operator's cab, solid blocks.
+    const cw = side > 0 ? 500 : -545;
+    this.block(cw, cw + 45, jibY, jibY - 44, -26, 26, { color: this.purple ? '#3e2a66' : '#555a62', rim: true });
     const cab = side > 0 ? 340 : -382;
-    this.box(cab, jibY - 40, 42, 36, this.purple ? '#5a4a8a' : '#d9d4c8');
-    ctx.fillStyle = 'rgba(120,180,220,0.8)';
-    ctx.fillRect(this.sx(cab + (side > 0 ? 4 : 18)), this.sy(jibY - 10), 20 * s, 16 * s);
+    const cf = this.block(cab, cab + 42, jibY - 4, jibY - 40, -24, 20, { color: this.purple ? '#5a4a8a' : '#d9d4c8', rim: true });
+    const wg = ctx.createLinearGradient(0, cf.y, 0, cf.y + cf.h);
+    wg.addColorStop(0, 'rgba(190,225,255,0.9)');
+    wg.addColorStop(1, 'rgba(80,120,160,0.9)');
+    ctx.fillStyle = wg;
+    ctx.fillRect(cf.x + cf.w * 0.15, cf.y + cf.h * 0.15, cf.w * 0.7, cf.h * 0.45);
     // A hook on a swaying cable from the trolley near the jib's tip.
     const sway = Math.sin(this.time * 0.03 + side) * 6;
     const hx = side * 270;
     const hy = 95;
-    this.box(hx - 14, jibY - 8, 28, 8, '#3a3e44');
+    this.block(hx - 14, hx + 14, jibY - 2, jibY - 10, -12, 12, { color: '#3a3e44' });
+    const [c1x, c1y] = this.at(hx, jibY - 10, 0);
+    const [c2x, c2y] = this.at(hx + sway, hy, 0);
     ctx.strokeStyle = 'rgba(30,30,30,0.7)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(this.sx(hx), this.sy(jibY - 8));
-    ctx.lineTo(this.sx(hx + sway), this.sy(hy));
+    ctx.moveTo(c1x, c1y);
+    ctx.lineTo(c2x, c2y);
     ctx.stroke();
     ctx.strokeStyle = '#3a3e44';
     ctx.lineWidth = Math.max(1, 3 * s);
     ctx.beginPath();
-    ctx.arc(this.sx(hx + sway), this.sy(hy - 8), 7 * s, -Math.PI * 0.1, Math.PI * 1.1, false);
+    ctx.arc(c2x, c2y + 8 * s, 7 * s, -Math.PI * 0.1, Math.PI * 1.1, false);
     ctx.stroke();
   }
 
-  /** The Harvest Farm's oak: a tapering trunk with roots, two branches out to the bough and a fall canopy. */
-  private drawOak(ground: number): void {
+  /** A steel member between two world points at depths, as a thick line with a lit edge. */
+  private strut(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number, width: number, color: string): void {
     const ctx = this.ctx;
-    const bough = ground + 235;
-    ctx.fillStyle = '#5a3a24';
+    const [ax, ay] = this.at(x1, y1, z1);
+    const [bx, by] = this.at(x2, y2, z2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, width * this.scale);
     ctx.beginPath();
-    ctx.moveTo(this.sx(-46), this.sy(ground));
-    ctx.quadraticCurveTo(this.sx(-22), this.sy(ground + 20), this.sx(-18), this.sy(ground + 60));
-    ctx.lineTo(this.sx(-14), this.sy(bough - 30));
-    // Left branch up to the bough's end.
-    ctx.quadraticCurveTo(this.sx(-50), this.sy(bough - 22), this.sx(-96), this.sy(bough - 4));
-    ctx.lineTo(this.sx(-80), this.sy(bough + 2));
-    ctx.quadraticCurveTo(this.sx(-30), this.sy(bough - 6), this.sx(-4), this.sy(bough));
-    ctx.lineTo(this.sx(8), this.sy(bough));
-    ctx.quadraticCurveTo(this.sx(40), this.sy(bough - 6), this.sx(92), this.sy(bough + 2));
-    ctx.lineTo(this.sx(106), this.sy(bough - 4));
-    ctx.quadraticCurveTo(this.sx(54), this.sy(bough - 24), this.sx(16), this.sy(bough - 32));
-    ctx.lineTo(this.sx(20), this.sy(ground + 60));
-    ctx.quadraticCurveTo(this.sx(24), this.sy(ground + 20), this.sx(50), this.sy(ground));
-    ctx.closePath();
-    ctx.fill();
-    // Bark lines.
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-    ctx.lineWidth = Math.max(1, 2 * this.scale);
-    ctx.beginPath();
-    for (const bx of [-8, 4, 12]) {
-      ctx.moveTo(this.sx(bx), this.sy(ground + 30 + (bx & 7) * 4));
-      ctx.lineTo(this.sx(bx + 2), this.sy(ground + 130 + (bx & 7) * 6));
-    }
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
     ctx.stroke();
-    // The canopy over the bough, a few fall colors, drawn see-through so it never looks like something to stand on.
-    const leaves = this.purple ? ['#7a4ab0', '#8a63c9', '#6c4aa8'] : FALL.leaves;
-    ctx.globalAlpha = 0.85;
-    for (let i = 0; i < 13; i++) {
-      const lx = -140 + i * 23 + ((i * 29) % 17);
-      const ly = bough + 30 + ((i * 41) % 46);
-      ctx.fillStyle = leaves[i % leaves.length]!;
-      ctx.beginPath();
-      ctx.arc(this.sx(lx), this.sy(ly), (26 + ((i * 13) % 12)) * this.scale, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
   }
 
-  private box(x: number, y: number, w: number, h: number, color: string): void {
+  /** World y just below the bottom of the screen (where tall things can stop). */
+  private bottomY(): number {
+    return this.cam.y - (this.h / 2 + 40) / this.scale;
+  }
+
+  /** Windows on a front face, on a fixed grid (step in world units): recessed panes, some lit. */
+  private windowGrid(f: { x: number; y: number; w: number; h: number }, step: number, litColor: string, litShare: number, seed: number): void {
     const ctx = this.ctx;
-    ctx.fillStyle = color;
-    ctx.fillRect(this.sx(x), this.sy(y + h), w * this.scale, h * this.scale);
+    const px = step * this.scale * (f.w / Math.max(1, f.w));
+    const cols = Math.max(1, Math.floor(f.w / px));
+    const x0 = f.x + (f.w - cols * px) / 2;
+    for (let r = 0; ; r++) {
+      const y = f.y + px * 0.6 + r * px;
+      if (y > this.h || y > f.y + f.h) break;
+      for (let c = 0; c < cols; c++) {
+        const hsh = ((r * 131 + c * 37 + seed * 17) % 97) / 97;
+        const wx = x0 + c * px + px * 0.2;
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(wx, y, px * 0.6, px * 0.62);
+        ctx.fillStyle = hsh < litShare ? litColor : 'rgba(150,170,200,0.14)';
+        ctx.fillRect(wx + 1, y + px * 0.08, px * 0.6 - 1, px * 0.54);
+        ctx.fillStyle = 'rgba(255,255,255,0.12)';
+        ctx.fillRect(wx, y + px * 0.62, px * 0.6, Math.max(1, px * 0.05));
+      }
+    }
   }
 
-  private drawScarecrow(x: number, y: number): void {
+  /** Things standing on the Rooftop behind the fighters, in perspective: AC units, a water tower, a stair hut, vents. */
+  private drawRooftopProps(roofY: number): void {
     const ctx = this.ctx;
     const s = this.scale;
+    const steel = this.purple ? '#6c4aa8' : '#7d858f';
+    const shadow = (x1: number, x2: number, z: number) => {
+      const [ax, ay] = this.at(x1, roofY, z);
+      const [bx] = this.at(x2, roofY, z);
+      contactShadow(ctx, (ax + bx) / 2, ay, (bx - ax) * 0.7, 9 * s, 0.35);
+    };
+    // Farthest first.
+    // Water tower on four legs.
+    shadow(-215, -125, 130);
+    for (const [lx, lz] of [[-200, 150], [-140, 150], [-200, 110], [-140, 110]] as const) this.strut(lx, roofY, lz, lx + (lx < -170 ? 5 : -5), roofY + 90, lz - (lz > 130 ? 5 : -5), 4, tone(steel, lz > 130 ? -0.35 : -0.1));
+    this.strut(-200, roofY + 45, 110, -140, roofY + 45, 110, 2, tone(steel, -0.1));
+    const [tx1, tty] = this.at(-212, roofY + 160, 130);
+    const [tx2, tby] = this.at(-128, roofY + 90, 130);
+    cylinder(ctx, this.eye(), tx1, tty, tx2, tby, this.purple ? '#7a4ab0' : '#8a6a4a');
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = Math.max(1, 1.5 * s);
+    ctx.beginPath();
+    for (const hy of [0.25, 0.5, 0.75]) {
+      ctx.moveTo(tx1, tty + (tby - tty) * hy);
+      ctx.lineTo(tx2, tty + (tby - tty) * hy);
+    }
+    ctx.stroke();
+    const [rx1, rty] = this.at(-218, roofY + 160, 130);
+    const [rx2] = this.at(-122, roofY + 160, 130);
+    const [, ray] = this.at(-170, roofY + 188, 130);
+    ctx.fillStyle = this.purple ? '#5a4a8a' : '#6b5038';
+    ctx.beginPath();
+    ctx.moveTo(rx1, rty);
+    ctx.lineTo((rx1 + rx2) / 2, ray);
+    ctx.lineTo(rx2, rty);
+    ctx.fill();
+    // Stair hut with a door.
+    shadow(90, 160, 95);
+    const hut = this.block(90, 160, roofY + 64, roofY, 70, 130, { color: steel, rim: true });
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(hut.x + hut.w * 0.3, hut.y + hut.h * 0.3, hut.w * 0.36, hut.h * 0.7);
+    // AC units with fans on top.
+    for (const [x1, x2, h, z1, z2] of [[-300, -230, 30, 30, 80], [230, 276, 44, 50, 100]] as const) {
+      shadow(x1, x2, (z1 + z2) / 2);
+      const ac = this.block(x1, x2, roofY + h, roofY, z1, z2, { color: tone(steel, 0.1), rim: true });
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      for (let k = 1; k < 5; k++) ctx.fillRect(ac.x + 4 * s, ac.y + (ac.h * k) / 5, ac.w - 8 * s, Math.max(1, s));
+      const [fx, fy] = this.at((x1 + x2) / 2, roofY + h, (z1 + z2) / 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath();
+      ctx.ellipse(fx, fy, (x2 - x1) * 0.3 * s, 4 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // A satellite dish on the tall AC unit.
+    const [dx, dy] = this.at(252, roofY + 66, 75);
+    this.strut(253, roofY + 44, 75, 253, roofY + 58, 75, 2, steel);
+    sphere(ctx, this.eye(), dx, dy, 16 * s, 8 * s, this.purple ? '#c9a0ff' : '#d6dbe0');
+    // Vents.
+    for (const vx of [-40, 20]) {
+      const [a1, a2] = this.at(vx, roofY + 24, 40);
+      const [b1, b2] = this.at(vx + 12, roofY, 40);
+      cylinder(ctx, this.eye(), a1, a2, b1, b2, steel);
+    }
+    // The antenna mast with its blinking light.
+    this.strut(330, roofY, 60, 330, roofY + 150, 60, 3, '#26282b');
+    const [bx, by] = this.at(330, roofY + 152, 60);
+    const on = (this.time >> 5) % 2 === 1;
+    ctx.fillStyle = on ? '#ff3b30' : '#661814';
+    ctx.beginPath();
+    ctx.arc(bx, by, Math.max(2, 5 * s), 0, Math.PI * 2);
+    ctx.fill();
+    if (on) glow(ctx, bx, by, 22 * s, 'rgba(255,59,48,0.5)');
+  }
+
+  /** Things on the Harvest Farm's field behind the fighters: the fence and sunflowers far back, the scarecrow, pumpkins, the oak. */
+  private drawFarmProps(ground: number): void {
+    const ctx = this.ctx;
+    detail.drawFarmBack(this.viewAt(260), ground);
+    // The scarecrow and its crows, a little way back.
+    const sv = this.viewAt(90);
+    contactShadow(ctx, sv.sx(-420), sv.sy(ground), 40 * sv.s, 7 * sv.s, 0.3);
+    this.drawScarecrow(sv, -420, ground);
+    detail.drawCrows(sv, ground);
+    // Pumpkins in the grass.
+    for (const [px, pr, pz] of [[-360, 16, 40], [-330, 11, 70], [380, 18, 50], [410, 12, 20], [600, 15, 60]] as const) this.drawPumpkin(this.viewAt(pz), px, ground, pr);
+    this.drawOak(ground);
+  }
+
+  private drawScarecrow(v: detail.View, x: number, y: number): void {
+    const ctx = this.ctx;
+    const s = v.s;
+    const e = this.eye();
     ctx.strokeStyle = '#6b4a2a';
     ctx.lineWidth = Math.max(1, 5 * s);
     ctx.beginPath();
-    ctx.moveTo(this.sx(x), this.sy(y));
-    ctx.lineTo(this.sx(x), this.sy(y + 110));
-    ctx.moveTo(this.sx(x - 36), this.sy(y + 80));
-    ctx.lineTo(this.sx(x + 36), this.sy(y + 80));
+    ctx.moveTo(v.sx(x), v.sy(y));
+    ctx.lineTo(v.sx(x), v.sy(y + 110));
+    ctx.moveTo(v.sx(x - 36), v.sy(y + 80));
+    ctx.lineTo(v.sx(x + 36), v.sy(y + 80));
     ctx.stroke();
-    ctx.fillStyle = '#5c7fa3';
-    ctx.fillRect(this.sx(x - 18), this.sy(y + 88), 36 * s, 40 * s);
-    ctx.fillStyle = '#e8c07a';
-    ctx.beginPath();
-    ctx.arc(this.sx(x), this.sy(y + 100), 11 * s, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#7a4a22';
-    ctx.fillRect(this.sx(x - 18), this.sy(y + 110), 36 * s, 4 * s);
-    ctx.fillRect(this.sx(x - 9), this.sy(y + 120), 18 * s, 10 * s);
+    // A blue shirt, round in the light, straw poking out of the cuffs.
+    const shirt = ctx.createLinearGradient(v.sx(x - 18), 0, v.sx(x + 18), 0);
+    shirt.addColorStop(e.light > 0 ? 1 : 0, '#7aa0c6');
+    shirt.addColorStop(e.light > 0 ? 0 : 1, '#3f5f80');
+    ctx.fillStyle = shirt;
+    ctx.fillRect(v.sx(x - 18), v.sy(y + 88), 36 * s, 40 * s);
+    ctx.fillStyle = '#e2bd5a';
+    for (const cx of [-40, 34]) ctx.fillRect(v.sx(x + cx), v.sy(y + 84), 6 * s, 6 * s);
+    sphere(ctx, e, v.sx(x), v.sy(y + 100), 11 * s, 11 * s, '#e8c07a');
+    ctx.fillStyle = '#5a3818';
+    ctx.fillRect(v.sx(x - 18), v.sy(y + 110), 36 * s, 4 * s);
+    const hat = ctx.createLinearGradient(0, v.sy(y + 130), 0, v.sy(y + 110));
+    hat.addColorStop(0, '#9a6230');
+    hat.addColorStop(1, '#5a3818');
+    ctx.fillStyle = hat;
+    ctx.fillRect(v.sx(x - 9), v.sy(y + 120), 18 * s, 10 * s);
   }
 
-  private drawPumpkin(x: number, y: number, r: number): void {
+  private drawPumpkin(v: detail.View, x: number, y: number, r: number): void {
     const ctx = this.ctx;
-    const s = this.scale;
-    ctx.fillStyle = '#e8731f';
-    ctx.strokeStyle = '#8a3f12';
-    ctx.lineWidth = Math.max(1, 1.5 * s);
+    const s = v.s;
+    const cx = v.sx(x);
+    const cy = v.sy(y + r * 0.8);
+    contactShadow(ctx, cx, v.sy(y), r * 1.5 * s, r * 0.35 * s, 0.35);
+    sphere(ctx, this.eye(), cx, cy, r * 1.2 * s, r * 0.85 * s, '#e8731f');
+    // Ribs.
+    ctx.strokeStyle = 'rgba(120,50,10,0.45)';
+    ctx.lineWidth = Math.max(1, 1.2 * s);
     ctx.beginPath();
-    ctx.ellipse(this.sx(x), this.sy(y + r * 0.8), r * 1.2 * s, r * 0.85 * s, 0, 0, Math.PI * 2);
-    ctx.fill();
+    for (const k of [-0.55, 0, 0.55]) ctx.ellipse(cx + k * r * 0.5 * s, cy, r * (0.75 - Math.abs(k) * 0.4) * s, r * 0.82 * s, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.fillStyle = '#3f7a2a';
-    ctx.fillRect(this.sx(x) - 1.5 * s, this.sy(y + r * 1.75), 3 * s, 5 * s);
+    ctx.fillRect(cx - 1.5 * s, v.sy(y + r * 1.75), 3 * s, 5 * s);
   }
 
-  /** The Harvest Farm's platforms: a grassy field, hay bales, a hay wagon, an oak bough. */
+  /** The Harvest Farm's oak: a round trunk with roots, two branches out to the bough, a canopy of lit leaf clusters. */
+  private drawOak(ground: number): void {
+    const ctx = this.ctx;
+    const e = this.eye();
+    const bough = ground + 235;
+    const light = e.light;
+    const P = (x: number, y: number) => [this.sx(x), this.sy(y)] as const;
+    contactShadow(ctx, this.sx(0), this.sy(ground), 90 * this.scale, 12 * this.scale, 0.4);
+    const bark = ctx.createLinearGradient(this.sx(-50), 0, this.sx(50), 0);
+    bark.addColorStop(light > 0 ? 0 : 1, '#3a2414');
+    bark.addColorStop(0.5, '#5a3a24');
+    bark.addColorStop(light > 0 ? 1 : 0, '#8a6040');
+    ctx.fillStyle = bark;
+    ctx.beginPath();
+    ctx.moveTo(...P(-46, ground));
+    ctx.quadraticCurveTo(...P(-22, ground + 20), ...P(-18, ground + 60));
+    ctx.lineTo(...P(-14, bough - 30));
+    ctx.quadraticCurveTo(...P(-50, bough - 22), ...P(-96, bough - 4));
+    ctx.lineTo(...P(-80, bough + 2));
+    ctx.quadraticCurveTo(...P(-30, bough - 6), ...P(-4, bough));
+    ctx.lineTo(...P(8, bough));
+    ctx.quadraticCurveTo(...P(40, bough - 6), ...P(92, bough + 2));
+    ctx.lineTo(...P(106, bough - 4));
+    ctx.quadraticCurveTo(...P(54, bough - 24), ...P(16, bough - 32));
+    ctx.lineTo(...P(20, ground + 60));
+    ctx.quadraticCurveTo(...P(24, ground + 20), ...P(50, ground));
+    ctx.closePath();
+    ctx.fill();
+    // Bark grooves.
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = Math.max(1, 2 * this.scale);
+    ctx.beginPath();
+    for (const bx of [-10, -2, 6, 13]) {
+      ctx.moveTo(...P(bx, ground + 20 + (bx & 7) * 4));
+      ctx.lineTo(...P(bx + 2, ground + 150 + (bx & 7) * 6));
+    }
+    ctx.stroke();
+    // The canopy: clusters set back in depth, the far ones darker, each lit from the sun side.
+    const leaves = this.purple ? ['#7a4ab0', '#8a63c9', '#6c4aa8'] : FALL.leaves;
+    const clusters: { x: number; y: number; r: number; z: number; c: string }[] = [];
+    for (let i = 0; i < 16; i++) {
+      clusters.push({
+        x: -150 + i * 20 + ((i * 29) % 17),
+        y: bough + 30 + ((i * 41) % 50),
+        r: 24 + ((i * 13) % 14),
+        z: ((i * 37) % 80) + 10,
+        c: leaves[i % leaves.length]!,
+      });
+    }
+    clusters.sort((a, b) => b.z - a.z);
+    for (const c of clusters) {
+      const [cx, cy] = this.at(c.x, c.y, c.z);
+      const f = 1500 / (1500 + c.z * this.scale);
+      sphere(ctx, e, cx, cy, c.r * this.scale * f, c.r * this.scale * f * 0.9, tone(c.c, -c.z / 300));
+    }
+  }
+
+  /** The Harvest Farm's platforms: a deep field, hay bales, a hay wagon, an oak bough, all solid in perspective. */
   private drawFarmPlatform(p: Platform): void {
     const ctx = this.ctx;
     const s = this.scale;
-    const x = this.sx(p.x1);
-    const w = (p.x2 - p.x1) * s;
-    const top = this.sy(p.y);
+    const e = this.eye();
     if (p.solid) {
-      ctx.fillStyle = '#6b4426';
-      ctx.fillRect(x, top, w, p.depth * s);
-      ctx.fillStyle = '#5a3a20';
-      for (let gx = p.x1 + 30; gx < p.x2; gx += 90) ctx.fillRect(this.sx(gx), top + 26 * s, 30 * s, 6 * s);
-      ctx.fillStyle = '#8f9a3a';
-      ctx.fillRect(x, top - 2, w, 10 * s + 2);
-      ctx.fillStyle = '#c8a24a';
-      for (let gx = p.x1; gx < p.x2; gx += 14) ctx.fillRect(this.sx(gx), top - 4 * s, 2 * s, 5 * s);
+      // The field: soil in front, grass running back to the hills in rows that shrink with distance.
+      const zf = -40;
+      const zb = 420;
+      const f = this.block(p.x1, p.x2, p.y, p.y - p.depth, zf, zb, { color: '#5e3c22', top: this.purple ? '#6c4aa8' : '#8f9a3a' });
+      if (e.vy < f.y) {
+        for (let z = zf, i = 0; z < zb; z += 30 + i * 4, i++) {
+          const [, y1] = this.at(0, p.y, z);
+          const [, y2] = this.at(0, p.y, z + 15 + i * 2);
+          ctx.fillStyle = i % 2 ? 'rgba(80,60,20,0.16)' : 'rgba(255,230,140,0.08)';
+          ctx.fillRect(0, y2, this.w, y1 - y2);
+        }
+        const [, backY] = this.at(0, p.y, zb);
+        haze(ctx, this.w, f.y, backY, rgbOf(this.purple ? PALETTE.purpleHorizon : FALL.skyHorizon), 0.5);
+      }
+      // Soil strata on the cut.
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      for (const k of [0.35, 0.6, 0.82]) ctx.fillRect(f.x, f.y + f.h * k, f.w, Math.max(1, 3 * s));
+      const lip = ctx.createLinearGradient(0, f.y, 0, f.y + 16 * s);
+      lip.addColorStop(0, this.purple ? '#8a63c9' : '#a7b04a');
+      lip.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = lip;
+      ctx.fillRect(f.x, f.y, f.w, 16 * s);
       return;
     }
-    const h = 12 * s;
     if (p.y > 200) {
-      // An oak bough.
-      ctx.fillStyle = '#5a3a24';
-      ctx.fillRect(x, top, w, h * 0.8);
-      ctx.fillStyle = '#c8642b';
-      for (let lx = p.x1 - 20; lx < p.x2 + 20; lx += 36) {
-        ctx.beginPath();
-        ctx.arc(this.sx(lx), top - 8 * s, 22 * s, 0, Math.PI * 2);
-        ctx.fill();
+      // The oak bough, a round branch with leaves sitting on it.
+      this.block(p.x1, p.x2, p.y, p.y - 10, -12, 12, { color: '#5a3a24' });
+      for (let lx = p.x1 - 20, i = 0; lx < p.x2 + 20; lx += 36, i++) {
+        const [cx, cy] = this.at(lx, p.y + 8, 6);
+        sphere(ctx, e, cx, cy, 22 * s, 18 * s, FALL.leaves[i % FALL.leaves.length]!);
       }
       return;
     }
     if (p.x1 < 0) {
-      // Hay bales stacked from the ground up to the top.
+      // Hay bales stacked from the ground up to the top, each a block with straw on its face.
       const bale = 34;
       for (let row = 0; row * bale < p.y; row++) {
-        const y0 = p.y - row * bale;
+        const y0 = row * bale;
+        const y1 = Math.min(p.y, y0 + bale);
         const off = row % 2 ? 20 : 0;
         for (let bx = p.x1 + off; bx < p.x2 - 10; bx += 40) {
           const bw = Math.min(40, p.x2 - bx);
-          ctx.fillStyle = row % 2 ? '#d6ae4c' : '#e2bd5a';
-          ctx.fillRect(this.sx(bx) + 1, this.sy(y0), bw * s - 2, Math.min(bale, y0) * s);
-          ctx.strokeStyle = '#a7832e';
+          const base = row % 2 ? '#d6ae4c' : '#e2bd5a';
+          const f = this.block(bx + 1, bx + bw - 1, y1, y0, -26, 26, { color: base });
+          ctx.strokeStyle = 'rgba(120,85,20,0.35)';
           ctx.lineWidth = 1;
-          ctx.strokeRect(this.sx(bx) + 1, this.sy(y0), bw * s - 2, Math.min(bale, y0) * s);
+          ctx.beginPath();
+          for (let k = 1; k < 5; k++) {
+            ctx.moveTo(f.x + 2, f.y + (f.h * k) / 5);
+            ctx.lineTo(f.x + f.w - 2, f.y + (f.h * k) / 5 + ((k * 7) % 3) - 1);
+          }
+          ctx.stroke();
+          // Twine.
+          ctx.fillStyle = 'rgba(90,60,20,0.6)';
+          ctx.fillRect(f.x + f.w * 0.3, f.y, Math.max(1, s), f.h);
+          ctx.fillRect(f.x + f.w * 0.7, f.y, Math.max(1, s), f.h);
         }
       }
       return;
     }
-    // A hay wagon: boards, wheels and a heap of hay.
-    ctx.fillStyle = '#8a5a2b';
-    ctx.fillRect(x, top, w, h);
-    ctx.fillStyle = '#e2bd5a';
-    ctx.beginPath();
-    ctx.ellipse(x + w / 2, top, w * 0.45, 10 * s, 0, Math.PI, 0);
-    ctx.fill();
-    ctx.strokeStyle = '#3a2614';
-    ctx.lineWidth = Math.max(1, 3 * s);
-    // Stakes down to the axles, and wheels on the ground.
+    // A hay wagon: back wheels in shadow, the bed, a heap of hay, front wheels.
     const wr = 30;
-    ctx.fillStyle = '#6b4426';
-    for (const wx of [p.x1 + 40, p.x2 - 40]) ctx.fillRect(this.sx(wx) - 4 * s, top, 8 * s, (p.y - wr) * s);
-    ctx.fillRect(this.sx(p.x1 + 40), this.sy(wr) - 3 * s, (p.x2 - p.x1 - 80) * s, 6 * s);
-    for (const wx of [p.x1 + 40, p.x2 - 40]) {
+    const wheel = (wx: number, z: number, k: number) => {
+      const [cx, cy] = this.at(wx, wr, z);
+      const f = 1500 / (1500 + z * s);
+      const r = wr * s * f;
+      ctx.strokeStyle = tone('#3a2614', k);
+      ctx.lineWidth = Math.max(1, 4 * s * f);
       ctx.beginPath();
-      ctx.arc(this.sx(wx), this.sy(wr), wr * s, 0, Math.PI * 2);
-      for (let k = 0; k < 4; k++) {
-        const a = (k / 4) * Math.PI;
-        ctx.moveTo(this.sx(wx) - Math.cos(a) * wr * s, this.sy(wr) - Math.sin(a) * wr * s);
-        ctx.lineTo(this.sx(wx) + Math.cos(a) * wr * s, this.sy(wr) + Math.sin(a) * wr * s);
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      for (let q = 0; q < 4; q++) {
+        const a = (q / 4) * Math.PI;
+        ctx.moveTo(cx - Math.cos(a) * r, cy - Math.sin(a) * r);
+        ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
       }
       ctx.stroke();
-    }
+      ctx.fillStyle = tone('#3a2614', k);
+      ctx.beginPath();
+      ctx.arc(cx, cy, 5 * s * f, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    const [sx1, sy1] = this.at((p.x1 + p.x2) / 2, 0, 0);
+    contactShadow(ctx, sx1, sy1, (p.x2 - p.x1) * 0.6 * s, 10 * s, 0.35);
+    for (const wx of [p.x1 + 40, p.x2 - 40]) wheel(wx, 28, -0.3);
+    for (const wx of [p.x1 + 40, p.x2 - 40]) this.block(wx - 4, wx + 4, p.y - 12, wr, -2, 2, { color: '#6b4426' });
+    this.block(p.x1 + 40, p.x2 - 40, wr + 3, wr - 3, -28, 28, { color: '#6b4426' });
+    const bed = this.block(p.x1, p.x2, p.y, p.y - 12, -28, 28, { color: '#8a5a2b', rim: true });
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    for (let k = 1; k < 6; k++) ctx.fillRect(bed.x + (bed.w * k) / 6, bed.y, Math.max(1, s), bed.h);
+    const [hx, hy] = this.at((p.x1 + p.x2) / 2, p.y + 2, 8);
+    sphere(ctx, e, hx, hy, (p.x2 - p.x1) * 0.42 * s, 12 * s, '#e2bd5a');
+    for (const wx of [p.x1 + 40, p.x2 - 40]) wheel(wx, -30, 0.05);
+  }
+
+  /** A block in world units (x1..x2 wide, y2 bottom to y1 top) from depth z1 back to z2, in perspective and lit. */
+  private block(x1: number, x2: number, y1: number, y2: number, z1: number, z2: number, style: BoxStyle): { x: number; y: number; w: number; h: number } {
+    const e = this.eye();
+    box3(this.ctx, e, this.sx(x1), this.sy(y1), this.sx(x2), this.sy(y2), z1, z2, style);
+    return frontRect(e, this.sx(x1), this.sy(y1), this.sx(x2), this.sy(y2), z1);
+  }
+
+  /** A world point at depth z, on screen. */
+  private at(x: number, y: number, z: number): [number, number] {
+    return project(this.eye(), this.sx(x), this.sy(y), z);
   }
 
   private drawPlatform(p: Platform, stage: string): void {
     if (stage === 'harvest') { this.drawFarmPlatform(p); return; }
     const ctx = this.ctx;
     const s = this.scale;
-    const x = this.sx(p.x1);
-    const w = (p.x2 - p.x1) * s;
-    const top = this.sy(p.y);
     if (p.solid) {
-      const d = p.depth * s;
-      ctx.fillStyle = stage === 'helipad' ? '#33373d' : '#3b4047';
-      ctx.beginPath();
-      ctx.moveTo(x, top);
-      ctx.lineTo(x + w, top);
-      ctx.lineTo(x + w - 18 * s, top + d);
-      ctx.lineTo(x + 18 * s, top + d);
-      ctx.closePath();
-      ctx.fill();
-      // Grid on the face (the v1 grid textures).
-      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+      const z1 = STAGE_DEPTH.slabFront;
+      const z2 = STAGE_DEPTH.slabBack;
+      const body = stage === 'helipad' ? '#3a3d4a' : stage === 'cranes' ? '#3d434c' : '#454a52';
+      const deck = stage === 'helipad' ? '#5b5f6e' : stage === 'cranes' ? '#8a8f96' : '#c9c3b8';
+      const f = this.block(p.x1, p.x2, p.y, p.y - p.depth, z1, z2, { color: body, top: deck });
+      // Lines across the deck running back to the horizon, so the surface reads as a floor.
+      const e = this.eye();
+      if (e.vy < f.y) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let gx = p.x1 + 40; gx < p.x2; gx += 40) {
+          const [ax, ay] = this.at(gx, p.y, z1);
+          const [bx, by] = this.at(gx, p.y, z2);
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+        }
+        for (let z = z1 + 40; z < z2; z += 40) {
+          const [ax, ay] = this.at(p.x1, p.y, z);
+          const [bx] = this.at(p.x2, p.y, z);
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, ay);
+        }
+        ctx.stroke();
+        // Light falls off toward the back of the deck.
+        const [, backY] = this.at(p.x1, p.y, z2);
+        const dg = ctx.createLinearGradient(0, f.y, 0, backY);
+        dg.addColorStop(0, 'rgba(255,255,255,0.08)');
+        dg.addColorStop(1, 'rgba(0,0,0,0.18)');
+        ctx.fillStyle = dg;
+        const [lx1, ly1] = this.at(p.x1, p.y, z1);
+        const [lx2] = this.at(p.x2, p.y, z1);
+        const [bx1, by1] = this.at(p.x1, p.y, z2);
+        const [bx2] = this.at(p.x2, p.y, z2);
+        ctx.beginPath();
+        ctx.moveTo(lx1, ly1);
+        ctx.lineTo(lx2, ly1);
+        ctx.lineTo(bx2, by1);
+        ctx.lineTo(bx1, by1);
+        ctx.closePath();
+        ctx.fill();
+        if (stage === 'helipad') {
+          // The landing circle painted on the deck, in perspective.
+          const zc = (z1 + z2) / 2;
+          const [cx, cy] = this.at(0, p.y, zc);
+          const [, nearY] = this.at(0, p.y, zc - 70);
+          const [, farY] = this.at(0, p.y, zc + 70);
+          const [rx1] = this.at(-120, p.y, zc);
+          ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+          ctx.lineWidth = Math.max(1, 3 * s);
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, cx - rx1, Math.max(1, (nearY - farY) / 2), 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+      // The front face: panel grid and a hazard stripe along the lip.
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let gx = p.x1 + 40; gx < p.x2; gx += 40) {
-        ctx.moveTo(this.sx(gx), top);
-        ctx.lineTo(this.sx(gx), top + d);
+      const cols = Math.round((p.x2 - p.x1) / 40);
+      for (let c = 1; c < cols; c++) {
+        const gx = f.x + (f.w * c) / cols;
+        ctx.moveTo(gx, f.y + 14 * s);
+        ctx.lineTo(gx, f.y + f.h);
       }
-      for (let gy = 20; gy < p.depth; gy += 20) {
-        ctx.moveTo(x + 10 * s, top + gy * s);
-        ctx.lineTo(x + w - 10 * s, top + gy * s);
+      for (let gy = f.y + 34 * s; gy < f.y + f.h; gy += 20 * s) {
+        ctx.moveTo(f.x, gy);
+        ctx.lineTo(f.x + f.w, gy);
       }
       ctx.stroke();
-      // Surface and hazard stripe.
-      ctx.fillStyle = '#e9e6df';
-      ctx.fillRect(x, top - 2, w, 6 * s + 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(f.x, f.y, f.w, Math.max(1, 1.5 * s));
       const stripe = 16 * s;
       ctx.save();
       ctx.beginPath();
-      ctx.rect(x, top + 6 * s, w, 8 * s);
+      ctx.rect(f.x, f.y + 3 * s, f.w, 9 * s);
       ctx.clip();
       ctx.fillStyle = PALETTE.ink;
-      ctx.fillRect(x, top + 6 * s, w, 8 * s);
+      ctx.fillRect(f.x, f.y + 3 * s, f.w, 9 * s);
       ctx.fillStyle = PALETTE.orange;
-      for (let sx = x - stripe; sx < x + w + stripe; sx += stripe * 2) {
+      for (let sx = f.x - stripe; sx < f.x + f.w + stripe; sx += stripe * 2) {
         ctx.beginPath();
-        ctx.moveTo(sx, top + 14 * s);
-        ctx.lineTo(sx + stripe, top + 6 * s);
-        ctx.lineTo(sx + stripe * 2, top + 6 * s);
-        ctx.lineTo(sx + stripe, top + 14 * s);
+        ctx.moveTo(sx, f.y + 12 * s);
+        ctx.lineTo(sx + stripe, f.y + 3 * s);
+        ctx.lineTo(sx + stripe * 2, f.y + 3 * s);
+        ctx.lineTo(sx + stripe, f.y + 12 * s);
         ctx.fill();
       }
       ctx.restore();
+      // Shadow under the lip.
+      const ug = ctx.createLinearGradient(0, f.y + 12 * s, 0, f.y + 40 * s);
+      ug.addColorStop(0, 'rgba(0,0,0,0.35)');
+      ug.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = ug;
+      ctx.fillRect(f.x, f.y + 12 * s, f.w, 28 * s);
       // Yellow corner lights where you can be pulled up onto the stage.
-      ctx.fillStyle = '#ffd23f';
-      for (const cx of [x, x + w]) ctx.fillRect(cx - 3 * s, top - 2, 6 * s, 16 * s);
+      for (const cx of [f.x, f.x + f.w]) {
+        ctx.fillStyle = '#ffd23f';
+        ctx.fillRect(cx - 3 * s, f.y - 2, 6 * s, 16 * s);
+        glow(ctx, cx, f.y + 6 * s, 18 * s, 'rgba(255,210,63,0.45)');
+      }
       if (stage === 'helipad') {
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-        ctx.lineWidth = Math.max(1, 3 * s);
-        ctx.beginPath();
-        ctx.ellipse(this.sx(0), top + 1, 110 * s, 4 * s, 0, 0, Math.PI * 2);
-        ctx.stroke();
         for (let i = -4; i <= 4; i++) {
-          ctx.fillStyle = (this.time >> 4) % 9 === i + 4 ? '#ffe27a' : '#a8ff7a';
-          ctx.fillRect(this.sx(i * 95) - 2 * s, top - 4 * s, 4 * s, 3 * s);
+          const [lx, ly] = this.at(i * 95, p.y, z1);
+          const on = (this.time >> 4) % 9 === i + 4;
+          ctx.fillStyle = on ? '#ffe27a' : '#a8ff7a';
+          ctx.fillRect(lx - 2 * s, ly - 4 * s, 4 * s, 3 * s);
+          if (on) glow(ctx, lx, ly - 3 * s, 14 * s, 'rgba(255,226,122,0.6)');
         }
       }
     } else {
-      // Steel girder in orange, with rivets.
-      const h = 10 * s;
-      ctx.fillStyle = stage === 'cranes' ? '#e8a21a' : PALETTE.orange;
-      ctx.fillRect(x, top, w, 3 * s);
-      ctx.fillRect(x, top + h - 3 * s, w, 3 * s);
-      ctx.fillRect(x, top, w, h * 0.3);
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.fillRect(x, top + 3 * s, w, h - 6 * s);
-      ctx.fillStyle = PALETTE.ink;
-      for (let rx = p.x1 + 10; rx < p.x2; rx += 20) ctx.fillRect(this.sx(rx) - s, top + h * 0.5 - s, 2 * s, 2 * s);
+      // A steel I-beam: you see its top flange and the web in shadow.
+      const color = stage === 'cranes' ? '#e8a21a' : PALETTE.orange;
+      const f = this.block(p.x1, p.x2, p.y, p.y - 12, -STAGE_DEPTH.beam, STAGE_DEPTH.beam, { color, rim: true });
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(f.x, f.y + f.h * 0.3, f.w, f.h * 0.4);
+      ctx.fillStyle = tone(color, -0.5);
+      for (let k = 0; k * 20 + 10 < p.x2 - p.x1; k++) ctx.fillRect(f.x + (k * 20 + 10) * (f.w / (p.x2 - p.x1)) - s, f.y + f.h * 0.5 - s, 2 * s, 2 * s);
       if (stage !== 'rooftop') return;
-      // Cables to the sky.
-      ctx.strokeStyle = 'rgba(30,30,30,0.5)';
+      // Cables up to the crane holding it.
+      const [ax, ay] = this.at(p.x1 + 6, p.y, 0);
+      const [bx] = this.at(p.x2 - 6, p.y, 0);
+      ctx.strokeStyle = 'rgba(30,30,30,0.55)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x + 6 * s, top);
-      ctx.lineTo(x + w / 2, 0);
-      ctx.lineTo(x + w - 6 * s, top);
+      ctx.moveTo(ax, ay);
+      ctx.lineTo((ax + bx) / 2, 0);
+      ctx.lineTo(bx, ay);
       ctx.stroke();
     }
   }
