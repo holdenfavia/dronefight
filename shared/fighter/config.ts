@@ -78,6 +78,17 @@ export const MOVEMENT = {
   helplessAirControl: 0.6,
 } as const;
 
+/**
+ * Up smashes reach the low platforms (owner's request): from the floor, an up smash hits someone standing on a
+ * platform up to this high (the Rooftop's side girders, Harvest Farm's bales and wagon).
+ */
+export const UP_SMASH = {
+  /** Highest platform an up smash from the floor still hits someone standing on. */
+  platformHeight: 125,
+  /** Size of the hitbox added at the top of a move that fell short. */
+  topR: 26,
+} as const;
+
 /** Recovering near the stage's corner pulls you up onto it. */
 export const LEDGE = {
   /** How far below the top of the stage the pull reaches. */

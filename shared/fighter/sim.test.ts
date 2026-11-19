@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { botInput, createBot } from './bot.js';
-import { MATCH, SIGNATURE } from './config.js';
+import { MATCH, SIGNATURE, UP_SMASH } from './config.js';
 import { ALL_FIGHTER_IDS, FIGHTER_IDS, FIGHTERS, SECRET_FIGHTER_IDS } from './fighters.js';
 import { createWorld, knockback, NO_INPUT, step, type Fighter, type Input, type World } from './sim.js';
 import { STAGE_IDS } from './stages.js';
@@ -586,6 +586,24 @@ describe('fighter sim', () => {
       run(w, 2, (i) => [{ ...NO_INPUT, aimRight: i === 0, attack: i === 0 }]);
       run(w, 240);
       expect(b!.stocks, id).toBe(MATCH.defaultStocks - 1);
+    }
+  });
+
+  it('an up smash from the floor hits anyone standing on a low platform', () => {
+    for (const attacker of ALL_FIGHTER_IDS) {
+      for (const target of ALL_FIGHTER_IDS) {
+        const w = createWorld('rooftop', [{ id: attacker }, { id: target }]);
+        skipCountdown(w);
+        const [a, b] = w.fighters;
+        // The Rooftop's left girder is at UP_SMASH.platformHeight; stand under its middle.
+        const girder = w.stage.platforms[1]!;
+        expect(girder.y).toBe(UP_SMASH.platformHeight);
+        const mid = (girder.x1 + girder.x2) / 2;
+        a!.x = mid; a!.facing = 1;
+        b!.x = mid; b!.y = girder.y; b!.grounded = true;
+        run(w, 40, (i) => [{ ...NO_INPUT, smash: i < 2, aimUp: i < 2, attack: i < 2 }]);
+        expect(b!.percent, `${attacker} up smash vs ${target}`).toBeGreaterThan(0);
+      }
     }
   });
 });
