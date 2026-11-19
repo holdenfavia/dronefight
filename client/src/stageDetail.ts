@@ -78,55 +78,11 @@ export function drawBirds(v: View, count: number, color: string, speed: number, 
 
 // ---------------------------------------------------------------- Rooftop
 
-/** Scenery on the Rooftop: a water tower, a stair hut, a dish, vents, a neon sign and a fire escape on the wall. */
-export function drawRooftopDetail(v: View, roofY: number, wallX1: number, wallX2: number, wallTop: number): void {
+/** Scenery on the Rooftop building's wall: a neon sign, a fire escape and a drainpipe. */
+export function drawRooftopDetail(v: View, wallX1: number, wallX2: number, wallTop: number): void {
   const ctx = v.ctx;
   const s = v.s;
   const purple = v.purple;
-  // On the roof, set back and faded.
-  ctx.globalAlpha = 0.45;
-  const steel = purple ? '#5a4a8a' : '#5d6670';
-  // Water tower on four legs.
-  ctx.strokeStyle = steel;
-  ctx.lineWidth = Math.max(1, 3 * s);
-  ctx.beginPath();
-  line(v, -205, roofY, -195, roofY + 90);
-  line(v, -135, roofY, -145, roofY + 90);
-  line(v, -205, roofY, -145, roofY + 90);
-  line(v, -135, roofY, -195, roofY + 90);
-  ctx.stroke();
-  box(v, -210, roofY + 90, 80, 70, purple ? '#6c4aa8' : '#8a6a4a');
-  ctx.strokeStyle = purple ? '#3e2a66' : '#5a4430';
-  ctx.lineWidth = Math.max(1, 2 * s);
-  ctx.beginPath();
-  for (const hy of [105, 125, 145]) line(v, -210, roofY + hy, -130, roofY + hy);
-  ctx.stroke();
-  ctx.fillStyle = purple ? '#5a4a8a' : '#6b5038';
-  ctx.beginPath();
-  ctx.moveTo(v.sx(-216), v.sy(roofY + 160));
-  ctx.lineTo(v.sx(-170), v.sy(roofY + 188));
-  ctx.lineTo(v.sx(-124), v.sy(roofY + 160));
-  ctx.fill();
-  // Stair hut with a door.
-  box(v, 90, roofY, 70, 64, steel);
-  box(v, 84, roofY + 64, 82, 6, purple ? '#6c4aa8' : '#6f7882');
-  box(v, 110, roofY, 26, 46, purple ? '#3e2a66' : '#3b4047');
-  // A satellite dish on the AC unit.
-  ctx.strokeStyle = steel;
-  ctx.lineWidth = Math.max(1, 2 * s);
-  ctx.beginPath();
-  line(v, 253, roofY + 50, 253, roofY + 62);
-  ctx.stroke();
-  ctx.fillStyle = purple ? '#8a63c9' : '#c9ced4';
-  ctx.beginPath();
-  ctx.ellipse(v.sx(250), v.sy(roofY + 70), 16 * s, 8 * s, -0.6, 0, Math.PI * 2);
-  ctx.fill();
-  // Roof vents.
-  for (const vx of [-40, 20]) {
-    box(v, vx, roofY, 10, 22, steel);
-    box(v, vx - 4, roofY + 22, 18, 4, steel);
-  }
-  ctx.globalAlpha = 1;
   // A neon sign on the wall under the roof's edge, flickering now and then.
   const signOn = !(v.time % 240 > 228 && v.time % 6 < 3);
   const neon = purple ? '#ff9cff' : '#ff5a8a';
@@ -224,32 +180,20 @@ export function drawHelipadDetail(v: View, x1: number, x2: number, y: number): v
     ctx.fill();
     light(v, edge + side * 10, y - 24, 4, '#fff4c2');
   }
-  // A big H painted on the pad's front face, and its number plate.
+  // The pad's number plate on its front face.
   ctx.font = `900 ${Math.max(8, 30 * s)}px "Barlow Condensed", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = 'rgba(255,255,255,0.16)';
-  ctx.fillText('H', v.sx(0), v.sy(y - 40));
   ctx.font = `800 ${Math.max(6, 12 * v.s)}px "Barlow Condensed", sans-serif`;
   ctx.fillText('PAD 03  ·  MAX 4 T', v.sx(250), v.sy(y - 40));
 }
 
-/** Clutter on the skyscraper roof under the pad, an antenna and a window-washer's gondola on its side. */
+/** An antenna on the skyscraper roof under the pad and a window-washer's gondola on its side. */
 export function drawSkyscraperDetail(v: View, roof: number, x1: number, x2: number): void {
   const ctx = v.ctx;
   const s = v.s;
   const dark = v.purple ? '#3e2a66' : '#33354a';
-  // HVAC boxes and a stair hut.
-  box(v, -250, roof, 60, 28, dark);
-  box(v, -180, roof, 40, 40, dark);
-  box(v, 150, roof, 50, 34, dark);
-  for (let i = 0; i < 3; i++) {
-    ctx.strokeStyle = v.purple ? '#5a4a8a' : '#4b4d66';
-    ctx.lineWidth = Math.max(1, 1.5 * s);
-    ctx.beginPath();
-    ctx.arc(v.sx(-235 + i * 18), v.sy(roof + 14), 6 * s, 0, Math.PI * 2);
-    ctx.stroke();
-  }
   // Antenna mast on the corner with a blinking light.
   ctx.strokeStyle = dark;
   ctx.lineWidth = Math.max(1, 2.5 * s);
@@ -450,13 +394,12 @@ export function drawContainerDoors(v: View, x: number, y: number, w: number, h: 
 
 // ---------------------------------------------------------------- Harvest Farm
 
-/** The farm's field: a split-rail fence, sunflowers, a pitchfork in the hay, crows on the scarecrow, stones in the soil. */
-export function drawFarmDetail(v: View, ground: number, depth: number): void {
+/** The back of the farm's field: a split-rail fence and sunflowers (draw with a View set back in depth). */
+export function drawFarmBack(v: View, ground: number): void {
   const ctx = v.ctx;
   const s = v.s;
   const wood = v.purple ? '#5a4a8a' : '#8a6a44';
-  // Split-rail fence along the back of the field, faded so it's scenery.
-  ctx.globalAlpha = 0.55;
+  // Split-rail fence along the back of the field.
   ctx.strokeStyle = wood;
   ctx.lineWidth = Math.max(1, 4 * s);
   ctx.beginPath();
@@ -467,7 +410,6 @@ export function drawFarmDetail(v: View, ground: number, depth: number): void {
     line(v, x, ground + 20, x + 120, ground + 24);
   }
   ctx.stroke();
-  ctx.globalAlpha = 1;
   // Sunflowers along the fence.
   for (const [fx, fh] of [[-560, 90], [-530, 110], [-500, 80], [500, 100], [530, 120], [-760, 95], [760, 105]] as const) {
     const sway = Math.sin(v.time * 0.03 + fx) * 3;
@@ -495,6 +437,12 @@ export function drawFarmDetail(v: View, ground: number, depth: number): void {
     ctx.arc(cx, cy, 7 * s, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+/** The front of the farm: a pitchfork in the hay bales, stones in the soil cut, grass tufts on the edge. */
+export function drawFarmFront(v: View, ground: number, depth: number): void {
+  const ctx = v.ctx;
+  const s = v.s;
   // A pitchfork stuck in the hay bales.
   ctx.strokeStyle = '#6b4a2a';
   ctx.lineWidth = Math.max(1, 3 * s);
@@ -507,20 +455,7 @@ export function drawFarmDetail(v: View, ground: number, depth: number): void {
   for (const dx of [-8, 0, 8]) line(v, -130 + dx * 0.9, ground + 150 + dx * 0.4, -122 + dx * 0.9, ground + 170 + dx * 0.4);
   line(v, -138, ground + 146, -122, ground + 154);
   ctx.stroke();
-  // Crows: two on the scarecrow's arms, flying off now and then.
-  for (const [cx, phase] of [[-450, 0], [-392, 600]] as const) {
-    if ((v.time + phase) % 1400 > 1100) continue;
-    const hop = (v.time + phase) % 200 < 8 ? 3 : 0;
-    const y = ground + 84 + hop;
-    ctx.fillStyle = '#1d1f22';
-    ctx.beginPath();
-    ctx.ellipse(v.sx(cx), v.sy(y + 6), 9 * s, 5.5 * s, 0.2, 0, Math.PI * 2);
-    ctx.arc(v.sx(cx + 7), v.sy(y + 12), 4 * s, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#e8a21a';
-    ctx.fillRect(v.sx(cx + 10), v.sy(y + 13), 4 * s, 1.5 * s);
-  }
-  // Stones, roots and a buried bone in the soil cut.
+  // Stones in the soil cut.
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
   for (let i = -20; i <= 20; i++) {
     const x = i * 70 + ((i * 37) % 30);
@@ -530,14 +465,6 @@ export function drawFarmDetail(v: View, ground: number, depth: number): void {
     ctx.ellipse(v.sx(x), v.sy(yy), (6 + (i & 3) * 3) * s, (4 + (i & 1) * 2) * s, 0, 0, Math.PI * 2);
     ctx.fill();
   }
-  ctx.strokeStyle = 'rgba(40,24,12,0.45)';
-  ctx.lineWidth = Math.max(1, 2 * s);
-  ctx.beginPath();
-  for (const rx of [-40, -10, 25]) {
-    ctx.moveTo(v.sx(rx), v.sy(ground - 10));
-    ctx.quadraticCurveTo(v.sx(rx * 2), v.sy(ground - 50), v.sx(rx * 3 + 10), v.sy(ground - 80));
-  }
-  ctx.stroke();
   // Grass tufts on the field.
   ctx.strokeStyle = v.purple ? '#8a63c9' : '#7a8a2a';
   ctx.lineWidth = Math.max(1, 1.5 * s);
@@ -627,5 +554,23 @@ export function drawCornShocks(v: View, near: Layer, hill: (x: number) => number
     ctx.lineTo(x, y - h);
     ctx.lineTo(x + 9 * near.s, y);
     ctx.fill();
+  }
+}
+
+/** Crows on the scarecrow's arms (draw with the scarecrow's View), flying off now and then. */
+export function drawCrows(v: View, ground: number): void {
+  const ctx = v.ctx;
+  const s = v.s;
+  for (const [cx, phase] of [[-450, 0], [-392, 600]] as const) {
+    if ((v.time + phase) % 1400 > 1100) continue;
+    const hop = (v.time + phase) % 200 < 8 ? 3 : 0;
+    const y = ground + 84 + hop;
+    ctx.fillStyle = '#1d1f22';
+    ctx.beginPath();
+    ctx.ellipse(v.sx(cx), v.sy(y + 6), 9 * s, 5.5 * s, 0.2, 0, Math.PI * 2);
+    ctx.arc(v.sx(cx + 7), v.sy(y + 12), 4 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#e8a21a';
+    ctx.fillRect(v.sx(cx + 10), v.sy(y + 13), 4 * s, 1.5 * s);
   }
 }
