@@ -4,6 +4,8 @@
 // (Brawler's armored haymaker, Blade's sword tip, Spark's teleports and rewind, Titan's armor and carry grab), and its own
 // signature mechanic with a HUD meter (ADR-0079; the logic is in signature.ts, the numbers in config.ts SIGNATURE).
 
+import { UP_SMASH } from './config.js';
+
 export type FighterId =
   | 'brawler' | 'blade' | 'spark' | 'titan' | 'ninja' | 'gunslinger' | 'chef' | 'ghost' | 'yoyo' | 'bard' | 'river'
   // Seasonal (ADR-0082): Thanksgiving.
@@ -1241,7 +1243,25 @@ function firstlight(): FighterDef {
   };
 }
 
-export const FIGHTERS: Record<FighterId, FighterDef> = {
+/**
+ * Every up smash reaches the low platforms (UP_SMASH): where a fighter's up smash falls short, a hitbox like its
+ * strongest one is added at the top of the move, high enough to hit even the smallest fighter standing up there.
+ */
+function reachPlatforms(roster: Record<FighterId, FighterDef>): Record<FighterId, FighterDef> {
+  const defs = Object.values(roster);
+  // How far below the platform the highest-sitting target's hurt circle starts.
+  const worst = Math.max(...defs.map((d) => d.height / 2 - d.hurtR));
+  for (const d of defs) {
+    const hbs = d.moves.usmash.hitboxes!;
+    const need = UP_SMASH.platformHeight + worst - d.height / 2 + 4;
+    if (Math.max(...hbs.map((h) => h.y + h.r)) >= need) continue;
+    const strongest = hbs.reduce((m, h) => (h.dmg > m.dmg ? h : m));
+    hbs.push({ ...strongest, x: 0, y: need - UP_SMASH.topR, r: UP_SMASH.topR, tip: false });
+  }
+  return roster;
+}
+
+export const FIGHTERS: Record<FighterId, FighterDef> = reachPlatforms({
   brawler: brawler(),
   blade: blade(),
   spark: spark(),
@@ -1256,4 +1276,4 @@ export const FIGHTERS: Record<FighterId, FighterDef> = {
   turkey: turkey(),
   pilgrim: pilgrim(),
   firstlight: firstlight(),
-};
+});
