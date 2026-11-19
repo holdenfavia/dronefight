@@ -42,7 +42,8 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Create/join room by two-digit code in the menu, invite link, lobby with picks and ready (ADR-0075)
 - [x] Start online fights from the lobby; host's stage, stocks and CPUs; leavers replaced by CPUs; late joiners watch (ADR-0076)
 - [x] Each player on their own computer
-- [ ] Play a real match over the internet and check the input delay; add prediction or rollback if it feels laggy
+- [x] Measure the online input delay; keep the input queues short (ADR-0088)
+- [ ] Predict your own fighter online (rollback) so it reacts like offline
 - [ ] Deploy and play over the internet
 
 ## Later

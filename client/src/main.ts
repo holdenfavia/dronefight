@@ -163,7 +163,9 @@ function startOnline(start: MatchStart, you: number): void {
 
 /** One 60 Hz tick of an online fight: send our keys, then step the frames the server has sent. */
 function tickOnline(): void {
-  net.sendInput(onlineYou >= 0 && !onlineMenu ? encodeInput(keyboard.read()) : 0);
+  // Read every tick, even with the menu open, so keys pressed in the menu don't reach the fight afterwards.
+  const keys = encodeInput(keyboard.read());
+  net.sendInput(onlineYou >= 0 && !onlineMenu ? keys : 0);
   const frames = () => onlineQueue.reduce((n, q) => n + (q.kind === 'frame' ? 1 : 0), 0);
   let waiting = frames();
   if (onlineBuffering) {
@@ -218,6 +220,7 @@ function resume(): void {
   ui.hideMenu();
   mode = 'game';
   keyboard.takePressed();
+  keyboard.clearTaps();
 }
 
 /** Back to the menus with CPUs fighting behind them; `screen` picks which menu. */
