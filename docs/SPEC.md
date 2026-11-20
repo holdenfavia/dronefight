@@ -11,7 +11,7 @@ A **side-view platform fighter** to play with friends: an original cast of ten f
 - Desktop browsers (Chrome/Edge primary; Safari/Firefox best-effort), **keyboard only** (ADR-0070).
 - Up to **10 fighters** per match (ADR-0087; four panels shown until you add more): **one player per keyboard** (ADR-0071), CPUs (Easy, Normal, Hard) fill the rest. No local 2-player until online play.
 - Boot to a title screen and main menu (Fight, Online, Controls, Settings), then a **roster-grid character select** with four player panels (more on demand, ADR-0087); CPUs are tagged **CPU** with their level everywhere (ADR-0075). **Settings** sets your own **tag** (up to 4 letters or digits, over your fighter) and **color**, saved in the browser and shown to the room online (ADR-0083).
-- **Online** with friends by two-digit room code (ADR-0005) or invite link `?room=NN`: each player on their own computer picks and readies up in the room's lobby, the host sets the match on a **Match settings** screen when making the room (stage or Random, stocks, mode, stage pick and ban, ADR-0086) and CPUs, and starts. The **server runs the fight** and sends every frame's inputs to everyone; snapshots heal drift; late joiners watch; a leaver's fighter becomes a CPU (ADR-0076).
+- **Online** with friends by two-digit room code (ADR-0005) or invite link `?room=NN`: each player on their own computer picks and readies up in the room's lobby, the host sets the match on a **Match settings** screen when making the room (stage or Random, stocks, mode, stage pick and ban, ADR-0086) and CPUs, and starts. The **server runs the fight** and sends every frame's inputs to everyone; snapshots heal drift; late joiners watch; a leaver's fighter becomes a CPU (ADR-0076). Input queues stay short so online lag doesn't build up (ADR-0088).
 
 ## Rules (ADR-0070)
 
@@ -73,7 +73,7 @@ Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Cr
 
 ## Look and sound
 
-- Bright sky over a parallax city, orange / black / white (ADR-0007), fighters **dressed in their picked looks** (ADR-0084): lucha libre Brawler, pirate Blade, hourglass sage Spark, iron giant Titan, indigo Ninja, masked bandit Gunslinger, head chef, phantom gentleman Ghost, skater Yo-yo Kid, busker Bard; River, Turkey, Pilgrim and Chief too (ADR-0088), each with its main piece in the player's color (one color per slot: orange, lime, cyan, pink, ADR-0026, unless the player picked their own, ADR-0083; the team color in team battles, ADR-0081). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
+- Bright sky over a parallax city, orange / black / white (ADR-0007), fighters **dressed in their picked looks** (ADR-0084): lucha libre Brawler, pirate Blade, hourglass sage Spark, iron giant Titan, indigo Ninja, masked bandit Gunslinger, head chef, phantom gentleman Ghost, skater Yo-yo Kid, busker Bard; River, Turkey, Pilgrim and Chief too (ADR-0089), each with its main piece in the player's color (one color per slot: orange, lime, cyan, pink, ADR-0026, unless the player picked their own, ADR-0083; the team color in team battles, ADR-0081). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
 - Menus: bold condensed caps on dark translucent panels with orange accents (ADR-0039).
 - All sound synthesized in the browser (ADR-0010).
 

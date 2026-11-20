@@ -1,4 +1,4 @@
-# ADR-0088: Dressed looks for River and the Thanksgiving fighters
+# ADR-0089: Dressed looks for River and the Thanksgiving fighters
 
 - **Status:** Accepted
 - **Date:** 2026-11-19

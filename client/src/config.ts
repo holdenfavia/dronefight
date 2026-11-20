@@ -190,12 +190,19 @@ export const FALL = {
   leafCount: 28,
 } as const;
 
-/** Online fights (ADR-0076): how many server frames to keep in hand against network jitter. */
+/** Online fights (ADR-0076, ADR-0088): how many server frames to keep in hand against network jitter. */
 export const ONLINE = {
   /** Frames to wait for before stepping (and again after the frames stop for a moment). */
   bufferFrames: 2,
   /** More than this waiting: step two per tick until caught up. */
   catchUpFrames: 6,
+  /**
+   * Every this many ticks, frames that were never needed in that time (more than `spareFrames` always waiting)
+   * are stepped off two per tick, so a burst never leaves lasting lag (ADR-0088).
+   */
+  drainWindowTicks: 30,
+  /** Frames kept in hand beyond the one stepped, against jitter. */
+  spareFrames: 1,
   /** More than this waiting (a hidden tab, a long stall): jump straight to the newest frames. */
   jumpFrames: 45,
 } as const;

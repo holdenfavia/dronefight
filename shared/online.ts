@@ -179,8 +179,16 @@ export function describeDrift(ours: string, theirs: string): string {
 
 /** Frames between snapshots during a fight. */
 export const SNAPSHOT_EVERY_FRAMES = 60;
-/** Inputs a member may have waiting on the server; older ones are dropped so lag can't build up. */
-export const MAX_QUEUED_INPUTS = 4;
+/** Frames of input backlog a member may have on the server; more is merged so lag can't build up (ADR-0088). */
+export const MAX_QUEUED_INPUTS = 1;
+
+/**
+ * Two frames of input folded into one (`older` is skipped): `newer`, plus any key `older` newly pressed (not held
+ * in `before`), so a quick tap inside a skipped frame still lands.
+ */
+export function mergeInputs(before: number, older: number, newer: number): number {
+  return newer | (older & ~before);
+}
 /** With no new input for this many frames (tab hidden, connection stalled) the fighter lets go of every key. */
 export const INPUT_HOLD_FRAMES = 12;
 /** Frames the server keeps running after the last stock falls, before the room goes back to its lobby. */

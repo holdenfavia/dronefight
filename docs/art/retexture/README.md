@@ -17,7 +17,7 @@ Each sheet shows the fighter with its signature meter (ADR-0079) empty on the le
 | Yo-yo Kid | Skater kid: backwards cap, hoodie, skateboard on back | Combo counter; full: rainbow around-the-world loop |
 | Bard | Street busker: beanie, flannel, acoustic guitar, harmonica | Notes pile up; full: coins and hearts fill the guitar case |
 
-River (secret) and the seasonal fighters (Turkey, Pilgrim, Chief) had no concept sheets; their looks went straight into the game (ADR-0088, `client/src/dressedSeasonal.ts`).
+River (secret) and the seasonal fighters (Turkey, Pilgrim, Chief) had no concept sheets; their looks went straight into the game (ADR-0089, `client/src/dressedSeasonal.ts`).
 
 ## Rules for the art
 
