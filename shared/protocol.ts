@@ -21,7 +21,7 @@ export type ClientMessage =
   | { t: 'settings'; settings: RoomSettings }
   /** Host only: start the fight (everyone ready). */
   | { t: 'start' }
-  /** Your keys this frame (shared/online.ts encodeInput); `s` numbers them so the server can ack (ADR-0089). */
+  /** Your keys this frame (shared/online.ts encodeInput); `s` numbers them so the server can ack (ADR-0090). */
   | { t: 'in'; b: number; s?: number };
 
 export interface RoomMember {
@@ -43,7 +43,7 @@ export type ServerMessage =
   /** A fight starts (or, joining mid-fight, is going on): build the same world. `you` is your fighter slot, -1 to watch. */
   | { t: 'match'; start: MatchStart; you: number }
   /** Inputs for frames `from`, `from + 1`, … (one array of input bits per frame, one entry per fighter). */
-  /** `ack`: per fighter, the `s` of the last input the server used, -1 for none or a CPU (ADR-0089). */
+  /** `ack`: per fighter, the `s` of the last input the server used, -1 for none or a CPU (ADR-0090). */
   | { t: 'frames'; from: number; inputs: number[][]; ack?: number[] }
   /** The whole world after frame `frame` was stepped (shared/online.ts serializeWorld). */
   | { t: 'snap'; frame: number; world: string }

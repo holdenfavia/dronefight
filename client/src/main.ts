@@ -60,7 +60,7 @@ let onlineDrain = 0;
 /** The Esc menu is open over an online fight. */
 let onlineMenu = false;
 /**
- * Prediction (ADR-0089), when you have a fighter: `confirmed` is the server's fight, stepped as its frames arrive;
+ * Prediction (ADR-0090), when you have a fighter: `confirmed` is the server's fight, stepped as its frames arrive;
  * `world` (what's shown) is rebuilt from it every tick with your keys the server hasn't used yet.
  */
 let confirmed: World | null = null;
@@ -268,7 +268,7 @@ function eventKey(e: GameEvent): string {
 }
 
 /**
- * Online with a fighter of your own (ADR-0089): send this tick's keys, step every frame the server has sent into
+ * Online with a fighter of your own (ADR-0090): send this tick's keys, step every frame the server has sent into
  * the confirmed fight, then show it stepped ahead with your keys the server hasn't used yet. A wrong guess about
  * anyone else's keys is fixed on the next tick, when the fight is rebuilt from the newer confirmed frames.
  */

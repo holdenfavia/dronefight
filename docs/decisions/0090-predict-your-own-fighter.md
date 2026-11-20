@@ -1,4 +1,4 @@
-# ADR-0089: Predict your own fighter online (rollback on the client)
+# ADR-0090: Predict your own fighter online (rollback on the client)
 
 - **Status:** Accepted
 - **Date:** 2026-11-19

@@ -47,7 +47,7 @@ describe('online input queue (ADR-0088)', () => {
   });
 });
 
-describe('input acks (ADR-0089)', () => {
+describe('input acks (ADR-0090)', () => {
   it('reports the sequence number of the last input used, the newer one when merged', () => {
     const m = new OnlineMatch(START);
     expect(m.acks()).toEqual([-1, -1]);

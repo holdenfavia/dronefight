@@ -11,7 +11,7 @@ interface Slot {
   bot: Bot | null;
   queue: { b: number; s: number }[];
   last: number;
-  /** Sequence number of the last input used (ADR-0089), -1 for none. */
+  /** Sequence number of the last input used (ADR-0090), -1 for none. */
   ack: number;
   /** Frames since this member's last input arrived. */
   starved: number;

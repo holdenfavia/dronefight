@@ -26,7 +26,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Original cast instead of drones: Brawler, Blade, Spark, Titan, each with its own gimmick (ADR-0072)
 - [x] Six more fighters: Ninja, Gunslinger, Chef, Ghost, Yo-yo Kid, Bard (ADR-0073)
 - [x] Real character art to replace the stick figures: the ten picked looks (ADR-0084, `docs/art/retexture/`)
-- [ ] Dressed looks for River and the seasonal fighters
+- [x] Dressed looks for River and the seasonal fighters (ADR-0089)
 - [x] Specials on Space instead of Q (ADR-0074)
 - [ ] Rebindable keys, in case two players' keys clash on some keyboards
 - [x] Settings menu: your own tag and color, shown to friends online (ADR-0083)
@@ -43,7 +43,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Start online fights from the lobby; host's stage, stocks and CPUs; leavers replaced by CPUs; late joiners watch (ADR-0076)
 - [x] Each player on their own computer
 - [x] Measure the online input delay; keep the input queues short (ADR-0088)
-- [ ] Predict your own fighter online (rollback) so it reacts like offline
+- [x] Predict your own fighter online (rollback) so it reacts like offline (ADR-0090)
 - [ ] Deploy and play over the internet
 
 ## Later

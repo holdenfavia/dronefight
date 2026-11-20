@@ -6,6 +6,7 @@
 import type { FighterId } from '../../shared/fighter/fighters';
 import { PALETTE } from './config';
 import type { FigurePose } from './figures';
+import { drawDressedSeasonal } from './dressedSeasonal';
 
 export interface Skeleton {
   H: number;
@@ -30,6 +31,8 @@ export interface Skeleton {
 
 export const DRESSED: ReadonlySet<FighterId> = new Set<FighterId>([
   'brawler', 'blade', 'spark', 'titan', 'ninja', 'gunslinger', 'chef', 'ghost', 'yoyo', 'bard',
+  // River and the Thanksgiving fighters (dressedSeasonal.ts).
+  'river', 'turkey', 'pilgrim', 'firstlight',
 ]);
 
 /** Fixed colors of each look; the slot color fills the main piece. */
@@ -52,7 +55,7 @@ const LOOK = {
 } as const;
 
 /** A darker (k < 1) or lighter (k > 1) version of a #rrggbb color. */
-function shade(color: string, k: number): string {
+export function shade(color: string, k: number): string {
   if (!/^#[0-9a-f]{6}$/i.test(color)) return color;
   const n = parseInt(color.slice(1), 16);
   const ch = (v: number) => Math.max(0, Math.min(255, Math.round(k > 1 ? v + (255 - v) * (k - 1) : v * k)));
@@ -61,7 +64,7 @@ function shade(color: string, k: number): string {
 }
 
 /** Stroke a limb: a dark outline, then the color on top. */
-function limb(ctx: CanvasRenderingContext2D, pts: readonly number[], w: number, color: string, from = 0): void {
+export function limb(ctx: CanvasRenderingContext2D, pts: readonly number[], w: number, color: string, from = 0): void {
   ctx.beginPath();
   ctx.moveTo(pts[from]!, pts[from + 1]!);
   for (let i = from + 2; i < pts.length; i += 2) ctx.lineTo(pts[i]!, pts[i + 1]!);
@@ -73,7 +76,7 @@ function limb(ctx: CanvasRenderingContext2D, pts: readonly number[], w: number, 
   ctx.stroke();
 }
 
-function disc(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, fill: string, line = 1.4): void {
+export function disc(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, fill: string, line = 1.4): void {
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = fill;
@@ -86,7 +89,7 @@ function disc(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, fi
 }
 
 /** A soft glow: a few stacked translucent discs (cheaper than a gradient every frame). */
-function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string, strength = 1): void {
+export function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string, strength = 1): void {
   const a = ctx.globalAlpha;
   ctx.fillStyle = color;
   for (const [k, al] of [[1, 0.12], [0.7, 0.18], [0.45, 0.25]] as const) {
@@ -98,7 +101,7 @@ function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, co
   ctx.globalAlpha = a;
 }
 
-function fill(ctx: CanvasRenderingContext2D, color: string, line = 1.6): void {
+export function fill(ctx: CanvasRenderingContext2D, color: string, line = 1.6): void {
   ctx.fillStyle = color;
   ctx.fill();
   if (line > 0) {
@@ -109,7 +112,7 @@ function fill(ctx: CanvasRenderingContext2D, color: string, line = 1.6): void {
 }
 
 /** A torso: a four-sided shape from the shoulders to the hips. */
-function torso(ctx: CanvasRenderingContext2D, top: number, bottom: number, wTop: number, wBottom: number, color: string, dx = 0): void {
+export function torso(ctx: CanvasRenderingContext2D, top: number, bottom: number, wTop: number, wBottom: number, color: string, dx = 0): void {
   ctx.beginPath();
   ctx.moveTo(-wTop + dx, top);
   ctx.lineTo(wTop + dx, top);
@@ -120,14 +123,14 @@ function torso(ctx: CanvasRenderingContext2D, top: number, bottom: number, wTop:
 }
 
 /** A shoe at the end of a leg, pointing forward. */
-function shoe(ctx: CanvasRenderingContext2D, leg: readonly number[], w: number, color: string): void {
+export function shoe(ctx: CanvasRenderingContext2D, leg: readonly number[], w: number, color: string): void {
   const x = leg[4]!, y = leg[5]!;
   ctx.beginPath();
   ctx.ellipse(x + w * 0.35, y, w * 0.85, w * 0.5, 0, 0, Math.PI * 2);
   fill(ctx, color, 1.3);
 }
 
-function eye(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, pose: FigurePose, color: string = PALETTE.ink): void {
+export function eye(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, pose: FigurePose, color: string = PALETTE.ink): void {
   ctx.fillStyle = color;
   if (pose.blink > 0.5) ctx.fillRect(x - r, y - 0.6, r * 2, 1.4);
   else {
@@ -137,7 +140,7 @@ function eye(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, pos
   }
 }
 
-function star(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string): void {
+export function star(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string): void {
   ctx.beginPath();
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
@@ -931,5 +934,7 @@ export function drawDressed(ctx: CanvasRenderingContext2D, id: FighterId, pose: 
       ctx.globalAlpha = 1;
       break;
     }
+    default:
+      drawDressedSeasonal(ctx, id, pose, sk);
   }
 }
