@@ -1,5 +1,5 @@
 // Seasonal events (ADR-0082): fighters and stages that join the game for part of the year, tagged Seasonal.
-// Thanksgiving is the first; Christmas comes next.
+// Thanksgiving (ADR-0082) and Christmas (ADR-0091).
 //
 // To add an event: add its id to SeasonId and an entry to SEASONS (dates, fighters, stages, colors). Its fighters
 // go in SEASONAL_FIGHTER_IDS (shared/fighter/fighters.ts) and its stages in SEASONAL_STAGE_IDS (stages.ts).
@@ -13,7 +13,7 @@ import { FIGHTER_IDS, type FighterId } from './fighter/fighters.js';
 import { STAGE_IDS, SEASONAL_STAGE_IDS, type StageId } from './fighter/stages.js';
 import { SEASONAL_FIGHTER_IDS } from './fighter/fighters.js';
 
-export type SeasonId = 'thanksgiving';
+export type SeasonId = 'thanksgiving' | 'christmas';
 
 /** A day of the year: month 1-12, day 1-31. */
 export interface MonthDay {
@@ -51,6 +51,17 @@ export const SEASONS: Record<SeasonId, SeasonDef> = {
     stages: ['harvest'],
     color: '#d9722b',
     accent: '#ffcf7a',
+  },
+  christmas: {
+    id: 'christmas',
+    name: 'Christmas',
+    blurb: 'Snowman, Nutcracker, Elf, Santa, Reindeer and Gingerbread join the fight, in the Winter Village.',
+    start: { month: 12, day: 1 },
+    end: { month: 12, day: 31 },
+    fighters: ['snowman', 'nutcracker', 'elf', 'santa', 'reindeer', 'gingerbread'],
+    stages: ['village'],
+    color: '#c8283c',
+    accent: '#bfe8ff',
   },
 };
 

@@ -25,7 +25,8 @@ export type SignatureKind =
   // Seasonal fighters (ADR-0082).
   | 'gobbleReady' | 'thundergobble'
   | 'harvest' | 'cannon'
-  | 'sister' | 'tidal';
+  | 'sister' | 'tidal'
+  | 'snowpack' | 'avalanche' | 'woundUp' | 'crunch' | 'sugarReady' | 'sugarrush' | 'naughty' | 'coal' | 'glow' | 'beacon' | 'batchReady' | 'freshbatch';
 
 /** Chief's Three Sisters, as bits in the meter. */
 export const SISTERS = { corn: 1, beans: 2, squash: 4, all: 7 } as const;
@@ -96,6 +97,11 @@ export function resetSignature(f: Fighter): void {
 /** Once a frame, before the fighter acts. */
 export function tickSignature(world: World, f: Fighter): void {
   if (f.id === 'spark') f.meter = Math.min(SIGNATURE.mana.max, f.meter + SIGNATURE.mana.regen);
+  // The Nutcracker's key winds as it marches about on the ground.
+  if (f.id === 'nutcracker' && f.grounded && f.action === 'idle' && Math.abs(f.vx) > 40 && f.meter < SIGNATURE.windup.max) {
+    f.meter = Math.min(SIGNATURE.windup.max, f.meter + SIGNATURE.windup.perMarchFrame);
+    if (f.meter >= SIGNATURE.windup.max) sig(world, f, 'woundUp');
+  }
   if (f.buff > 0 && --f.buff === 0) f.buffKind = '';
   for (let i = 0; i < f.tagTime.length; i++) {
     if (f.tagTime[i]! > 0 && --f.tagTime[i]! === 0) f.tags[i] = 0;
@@ -223,6 +229,49 @@ export function beginMove(world: World, f: Fighter, move: MoveId): MoveId {
         sig(world, f, 'tidal');
       }
       break;
+    case 'snowman':
+      if (move === 'nspecial' && f.meter >= S.snowpack.max) {
+        f.meter = 0;
+        f.moveSig = 'avalanche';
+        sig(world, f, 'avalanche');
+        return 'avalanche';
+      }
+      break;
+    case 'nutcracker':
+      if (SMASHES.has(move) && f.meter >= S.windup.max) {
+        f.meter = 0;
+        f.moveMod = S.windup.crunchDmg;
+        f.moveKb = S.windup.crunchKb;
+        f.moveSig = 'crunch';
+        sig(world, f, 'crunch');
+      }
+      break;
+    case 'elf':
+      if (move === 'dspecial' && f.meter >= S.sugar.max) {
+        f.meter = 0;
+        f.moveSig = 'sugarrush';
+        sig(world, f, 'sugarrush');
+        return 'sugarrush';
+      }
+      break;
+    case 'reindeer':
+      if (move === 'nspecial' && f.meter >= S.glow.max) {
+        f.meter = 0;
+        f.moveMod = S.glow.beaconDmg;
+        f.moveKb = S.glow.beaconKb;
+        f.moveSig = 'beacon';
+        sig(world, f, 'beacon');
+      }
+      break;
+    case 'gingerbread':
+      if ((move === 'dspecial') && f.meter >= S.batch.max) {
+        f.meter = 0;
+        f.percent = Math.max(0, f.percent - S.batch.heal);
+        f.moveSig = 'freshbatch';
+        sig(world, f, 'freshbatch');
+        return 'freshbatch';
+      }
+      break;
     case 'bard': {
       if (OFF_BEAT_FREE.has(move)) break;
       if ((move === 'sspecial' || move === 'dspecial') && f.meter >= S.groove.max) {
@@ -265,12 +314,12 @@ export function projectileHit(f: Fighter, hit: HitStats): { hit: HitStats; look?
   if (f.id === 'chef' && f.buffKind === 'soup' && f.move === 'nspecial') {
     out = { ...out, dmg: out.dmg + SIGNATURE.pantry.soupDmg, stun: Math.max(out.stun ?? 0, SIGNATURE.pantry.soupStun) };
   }
-  return { hit: out, look: f.moveSig === 'golden' ? 'goldbullet' : f.moveSig === 'cannon' ? 'cannonball' : undefined };
+  return { hit: out, look: f.moveSig === 'golden' ? 'goldbullet' : f.moveSig === 'cannon' ? 'cannonball' : f.moveSig === 'beacon' ? 'beacon' : undefined };
 }
 
 /** Signature shots, by the look they fly with: what the hit is called. */
 export function shotSig(look: string | undefined): string | undefined {
-  return look === 'goldbullet' ? 'golden' : look === 'cannonball' ? 'cannon' : undefined;
+  return look === 'goldbullet' ? 'golden' : look === 'cannonball' ? 'cannon' : look === 'beacon' ? 'beacon' : look === 'avalanche' ? 'avalanche' : undefined;
 }
 
 /** A fizzled spell only stings: 1 to 2 damage (its knockback is already zero). */
@@ -340,7 +389,8 @@ export function strikeMods(world: World, a: Fighter, t: Fighter, opts: Signature
     dmg *= a.moveMod;
     kb *= a.moveKb;
     bonus += a.moveBonus;
-    if (a.moveSig === 'payback' || a.moveSig === 'kopunch' || a.moveSig === 'flashcut' || a.moveSig === 'thundergobble' || a.moveSig === 'tidal') name = a.moveSig;
+    if (a.moveSig === 'payback' || a.moveSig === 'kopunch' || a.moveSig === 'flashcut' || a.moveSig === 'thundergobble' || a.moveSig === 'tidal'
+      || a.moveSig === 'crunch' || a.moveSig === 'sugarrush' || a.moveSig === 'freshbatch') name = a.moveSig;
   }
   // Chains: hits in a row.
   a.chain = world.frame - a.chainFrame <= chainWindow(a) ? a.chain + 1 : 1;
@@ -363,6 +413,16 @@ export function strikeMods(world: World, a: Fighter, t: Fighter, opts: Signature
       }
       break;
     }
+    case 'santa':
+      // A Lump of Coal for a fighter on the Naughty List; it takes them off the list.
+      if ((t.tags[a.slot] ?? 0) > 0 && !opts.isThrow) {
+        dmg *= SIGNATURE.naughty.coalDmg;
+        kb *= SIGNATURE.naughty.coalKb;
+        t.tags[a.slot] = 0;
+        t.tagTime[a.slot] = 0;
+        name = 'coal';
+      }
+      break;
     case 'yoyo': {
       const T = SIGNATURE.trick;
       dmg *= Math.min(T.maxDmg, 1 + T.dmgPer * (a.chain - 1));
@@ -456,6 +516,39 @@ export function afterStrike(world: World, a: Fighter, t: Fighter, dmg: number, l
       }
       break;
     }
+    case 'snowman':
+      if (!opts.melee && opts.move === 'nspecial' && a.meter < S.snowpack.max) {
+        a.meter++;
+        sig(world, a, 'snowpack');
+      }
+      break;
+    case 'nutcracker': {
+      if (a.moveSig === 'crunch') break;
+      const was = a.meter;
+      a.meter = Math.min(S.windup.max, a.meter + dmg * S.windup.perDmg);
+      if (was < S.windup.max && a.meter >= S.windup.max) sig(world, a, 'woundUp');
+      break;
+    }
+    case 'elf': {
+      if (opts.move === 'sugarrush') break;
+      const was = a.meter;
+      a.meter = Math.min(S.sugar.max, a.meter + dmg * S.sugar.perDealt);
+      if (was < S.sugar.max && a.meter >= S.sugar.max) sig(world, a, 'sugarReady');
+      break;
+    }
+    case 'reindeer':
+      if (opts.melee && opts.move && AERIALS.has(opts.move) && a.meter < S.glow.max) {
+        a.meter++;
+        sig(world, a, 'glow');
+      }
+      break;
+    case 'gingerbread': {
+      if (opts.move === 'freshbatch') break;
+      const was = a.meter;
+      a.meter = Math.min(S.batch.max, a.meter + dmg * S.batch.perDealt);
+      if (was < S.batch.max && a.meter >= S.batch.max) sig(world, a, 'batchReady');
+      break;
+    }
     default:
       break;
   }
@@ -476,6 +569,20 @@ export function afterStrike(world: World, a: Fighter, t: Fighter, dmg: number, l
       const was = t.meter;
       t.meter = Math.min(S.gobble.max, t.meter + dmg * S.gobble.perTaken);
       if (was < S.gobble.max && t.meter >= S.gobble.max) sig(world, t, 'gobbleReady');
+      break;
+    }
+    case 'santa':
+      // Whoever hits Santa goes on the Naughty List (a teammate's friendly fire too).
+      if (dmg > 0 && a !== t) {
+        if (!(a.tags[t.slot] ?? 0)) sig(world, t, 'naughty', a.slot);
+        a.tags[t.slot] = 1;
+        a.tagTime[t.slot] = S.naughty.frames;
+      }
+      break;
+    case 'gingerbread': {
+      const was = t.meter;
+      t.meter = Math.min(S.batch.max, t.meter + dmg * S.batch.perTaken);
+      if (was < S.batch.max && t.meter >= S.batch.max) sig(world, t, 'batchReady');
       break;
     }
     default:
@@ -582,6 +689,27 @@ export function signatureGauge(world: World, f: Fighter): SignatureGauge | null 
         text: n === 3 ? 'TIDAL SWEEP' : n === 2 ? `NEED ${missing[0]!.toUpperCase()}` : undefined,
       };
     }
+    // Christmas (ADR-0091).
+    case 'snowman':
+      return { label: 'SNOWPACK', value: f.meter / S.snowpack.max, pips: S.snowpack.max, lit: f.meter, ready: f.meter >= S.snowpack.max, text: f.meter >= S.snowpack.max ? 'AVALANCHE' : undefined };
+    case 'nutcracker': {
+      const ready = f.meter >= S.windup.max;
+      return { label: 'WIND-UP', value: f.meter / S.windup.max, ready, text: ready ? 'CRUNCH' : `${Math.floor(f.meter)}%` };
+    }
+    case 'elf': {
+      const ready = f.meter >= S.sugar.max;
+      return { label: 'SUGAR', value: f.meter / S.sugar.max, ready, text: ready ? 'SUGAR RUSH' : `${Math.floor(f.meter)}%` };
+    }
+    case 'santa': {
+      const listed = world.fighters.filter((o) => o !== f && (o.tags[f.slot] ?? 0) > 0).length;
+      return { label: 'NAUGHTY', value: Math.min(1, listed / 3), pips: 3, lit: Math.min(3, listed), ready: listed > 0, text: listed > 0 ? 'COAL' : undefined };
+    }
+    case 'reindeer':
+      return { label: 'GLOW', value: f.meter / S.glow.max, pips: S.glow.max, lit: f.meter, ready: f.meter >= S.glow.max, text: f.meter >= S.glow.max ? 'BEACON' : undefined };
+    case 'gingerbread': {
+      const ready = f.meter >= S.batch.max;
+      return { label: 'BATCH', value: f.meter / S.batch.max, ready, text: ready ? 'FRESH BATCH' : `${Math.floor(f.meter)}%` };
+    }
     default:
       return null;
   }
@@ -597,4 +725,5 @@ export const SIGNATURE_NAMES: Partial<Record<FighterId, string>> = {
   brawler: 'KO Meter', blade: 'Edge', spark: 'Mana', titan: 'Payback', ninja: 'Marks',
   gunslinger: 'Hot Streak', chef: 'Pantry', ghost: 'Haunt', yoyo: 'Trick Combo', bard: 'Groove',
   turkey: 'Gobble', pilgrim: 'Harvest', firstlight: 'Three Sisters',
+  snowman: 'Snowpack', nutcracker: 'Wind-up Key', elf: 'Sugar Rush', santa: 'Naughty List', reindeer: 'Glow', gingerbread: 'Fresh Batch',
 };

@@ -1,12 +1,12 @@
 // Stages (ADR-0070): one solid main platform, optional pass-through platforms, blast zones.
 
-export type StageId = 'rooftop' | 'helipad' | 'cranes' | 'harvest';
+export type StageId = 'rooftop' | 'helipad' | 'cranes' | 'harvest' | 'village';
 
 /** Every stage the sim knows. Seasonal ones (ADR-0082) are offered only while their event is on (shared/seasons.ts). */
-export const STAGE_IDS: readonly StageId[] = ['rooftop', 'helipad', 'cranes', 'harvest'];
+export const STAGE_IDS: readonly StageId[] = ['rooftop', 'helipad', 'cranes', 'harvest', 'village'];
 
 /** Seasonal stages (ADR-0082): which event each belongs to is in shared/seasons.ts. */
-export const SEASONAL_STAGE_IDS: readonly StageId[] = ['harvest'];
+export const SEASONAL_STAGE_IDS: readonly StageId[] = ['harvest', 'village'];
 
 export interface Platform {
   x1: number;
@@ -85,6 +85,21 @@ export const STAGES: Record<StageId, StageDef> = {
     blast: BLAST,
     spawns: [{ x: -220, y: 0 }, { x: 220, y: 0 }, { x: -80, y: 0 }, { x: 80, y: 0 }],
     view: { x1: -440, x2: 440 },
+  },
+  // Seasonal, Christmas (ADR-0091): a snowy village square at dusk. A raised square with a big tree behind it, a
+  // market-stall roof low on the left, a parked sleigh low on the right and a garland of lights strung up high.
+  village: {
+    id: 'village',
+    name: 'Winter Village',
+    blurb: 'A snowy village square: a market stall, a sleigh and a garland of lights.',
+    platforms: [
+      { x1: -390, x2: 390, y: 0, solid: true, depth: 100 },
+      { x1: -300, x2: -150, y: 110, solid: false, depth: 10 },
+      { x1: 150, x2: 310, y: 95, solid: false, depth: 10 },
+      { x1: -110, x2: 110, y: 225, solid: false, depth: 10 },
+    ],
+    blast: BLAST,
+    spawns: [{ x: -210, y: 0 }, { x: 210, y: 0 }, { x: -70, y: 0 }, { x: 70, y: 0 }],
   },
 };
 

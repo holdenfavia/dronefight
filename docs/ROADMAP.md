@@ -49,7 +49,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 ## Later
 
 - [x] Seasonal events framework; Thanksgiving: Turkey, Pilgrim, Chief, Harvest Farm (ADR-0082)
-- [ ] Christmas event: fighters and a winter stage (add a `SEASONS` entry, ADR-0082)
+- [x] Christmas event: Snowman, Nutcracker, Elf, Santa, Reindeer, Gingerbread and the Winter Village (ADR-0091)
 - [x] Stage pick and ban (match setting, off by default) and a Match settings screen when making a room (ADR-0086)
 - [x] Up to 10 fighters per match, four panels shown first (ADR-0087)
 - [ ] More fighters, more stages, items

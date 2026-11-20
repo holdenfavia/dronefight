@@ -12,10 +12,23 @@ describe('seasonal events (ADR-0082)', () => {
     expect(activeSeasons(day(11, 26)).map((s) => s.id)).toEqual(['thanksgiving']);
     expect(activeSeasons(day(11, 30)).map((s) => s.id)).toEqual(['thanksgiving']);
     expect(activeSeasons(day(10, 31))).toEqual([]);
-    expect(activeSeasons(day(12, 1))).toEqual([]);
+    expect(activeSeasons(day(12, 1)).map((s) => s.id)).toEqual(['christmas']);
     // 11 pm Nov 30 in Chicago is already Dec 1 in UTC: still on.
     expect(activeSeasons(new Date(Date.UTC(2026, 11, 1, 5, 0, 0))).map((s) => s.id)).toEqual(['thanksgiving']);
     expect(seasonDay(new Date(Date.UTC(2026, 11, 1, 5, 0, 0)))).toEqual({ month: 11, day: 30 });
+  });
+
+  it('Christmas runs through December, US Central time (ADR-0091)', () => {
+    expect(activeSeasons(day(12, 1)).map((s) => s.id)).toEqual(['christmas']);
+    expect(activeSeasons(day(12, 25)).map((s) => s.id)).toEqual(['christmas']);
+    expect(activeSeasons(day(12, 31)).map((s) => s.id)).toEqual(['christmas']);
+    expect(activeSeasons(day(1, 1))).toEqual([]);
+    const on = activeSeasons(day(12, 20));
+    expect(seasonalFighters(on)).toEqual(['snowman', 'nutcracker', 'elf', 'santa', 'reindeer', 'gingerbread']);
+    expect(availableStages(on)).toContain('village');
+    expect(availableStages(on)).not.toContain('harvest');
+    expect(seasonOfFighter('santa')?.id).toBe('christmas');
+    expect(seasonOfStage('village')?.id).toBe('christmas');
   });
 
   it('windows can wrap the new year (for a Christmas or New Year event)', () => {
