@@ -73,7 +73,7 @@ Rooftop (main platform + three pass-through girders), Helipad (one flat pad), Cr
 
 ## Look and sound
 
-- Bright sky over a parallax city, orange / black / white (ADR-0007), fighters **dressed in their picked looks** (ADR-0084): lucha libre Brawler, pirate Blade, hourglass sage Spark, iron giant Titan, indigo Ninja, masked bandit Gunslinger, head chef, phantom gentleman Ghost, skater Yo-yo Kid, busker Bard (River and seasonal fighters are still stick figures), each with its main piece in the player's color (one color per slot: orange, lime, cyan, pink, ADR-0026, unless the player picked their own, ADR-0083; the team color in team battles, ADR-0081). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
+- Bright sky over a parallax city, orange / black / white (ADR-0007), fighters **dressed in their picked looks** (ADR-0084): lucha libre Brawler, pirate Blade, hourglass sage Spark, iron giant Titan, indigo Ninja, masked bandit Gunslinger, head chef, phantom gentleman Ghost, skater Yo-yo Kid, busker Bard; River, Turkey, Pilgrim and Chief too (ADR-0089), each with its main piece in the player's color (one color per slot: orange, lime, cyan, pink, ADR-0026, unless the player picked their own, ADR-0083; the team color in team battles, ADR-0081). Purple sky 2:02–2:22 pm US Central every day (ADR-0069).
 - Menus: bold condensed caps on dark translucent panels with orange accents (ADR-0039).
 - All sound synthesized in the browser (ADR-0010).
 

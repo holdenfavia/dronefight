@@ -1,11 +1,6 @@
-// The fighters, drawn with the Canvas 2D API (ADR-0072, ADR-0073). The ten roster fighters wear their dressed
-// looks (ADR-0084, drawn in dressed.ts on this same skeleton); River and the seasonal fighters are still stick
-// figures (placeholder art, owner's request 2026-11-10). Each one has its own silhouette: the Brawler's gloves and headband, the Blade's sword,
-// the Spark's pointed hat, the Titan's size and boxy head, the Ninja's hood, the Gunslinger's hat and revolver,
-// the Chef's toque and pan, the Ghost's sheet, the Yo-yo Kid's cap and yo-yo, the Bard's guitar, and the secret
-// River's round belly and propeller beanie (ADR-0077). Seasonal (ADR-0082): the Turkey's tail fan, beak and wattle,
-// the Pilgrim's tall buckled hat, white collar and blunderbuss, and Chief's long hair, deerskin mantle,
-// wampum sash and canoe paddle (drawn plainly: a headband with a few simple feathers, no caricature).
+// The fighters, drawn with the Canvas 2D API (ADR-0072, ADR-0073). Every fighter wears a dressed look drawn on
+// this stick-figure skeleton: the ten roster fighters in dressed.ts (ADR-0084), River and the seasonal fighters in
+// dressedSeasonal.ts. The stick figures below are the fallback for any fighter without a dressed look yet.
 // Local units around the body centre, y down, facing +x.
 
 import type { FighterId } from '../../shared/fighter/fighters';
@@ -38,6 +33,8 @@ export interface FigurePose {
   meter?: number;
   /** The signature move is ready (full meter). */
   ready?: boolean;
+  /** Chief's Three Sisters as grown so far (SISTERS bits), shown on his belt. */
+  sisters?: number;
 }
 
 /**
@@ -311,87 +308,6 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
     ctx.restore();
   }
 
-  // River's big round belly, behind the limbs, wobbling as he moves.
-  if (river) {
-    const wob = Math.sin(pose.phase * 0.35) * (stride ? 1.5 : 0.6);
-    const by = (shoulderY + hipY) / 2 + H * 0.04;
-    ctx.fillStyle = pose.color;
-    ctx.strokeStyle = PALETTE.ink;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(H * 0.06, by, H * 0.36 + wob, H * 0.3 - wob * 0.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    // A shine and a belly button.
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(H * 0.16, by - H * 0.12, H * 0.09, H * 0.05, -0.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = PALETTE.ink;
-    ctx.beginPath();
-    ctx.arc(H * 0.2, by + H * 0.04, 1.3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // The Turkey's tail fan and round body, behind the limbs.
-  if (id === 'turkey') {
-    const cy = (shoulderY + hipY) / 2;
-    const fanR = H * 0.5;
-    const fanX = -H * 0.16;
-    const colors = ['#7a4a22', '#c8642b', '#e8a03a', pose.color];
-    for (let ring = 0; ring < colors.length; ring++) {
-      const r = fanR * (1 - ring * 0.2);
-      ctx.fillStyle = colors[ring]!;
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(fanX, cy);
-      ctx.arc(fanX, cy, r, Math.PI * 0.75, Math.PI * 1.85);
-      ctx.closePath();
-      ctx.fill();
-      if (ring === 0) ctx.stroke();
-    }
-    ctx.fillStyle = '#6b4226';
-    ctx.strokeStyle = PALETTE.ink;
-    ctx.beginPath();
-    ctx.ellipse(0, cy, H * 0.22, H * 0.2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  }
-
-  // Chief's deerskin mantle over the shoulders, and the wampum sash across it.
-  if (id === 'firstlight') {
-    ctx.fillStyle = '#b98a57';
-    ctx.strokeStyle = PALETTE.ink;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(-H * 0.14, shoulderY - 2);
-    ctx.lineTo(H * 0.14, shoulderY - 2);
-    ctx.lineTo(H * 0.11, hipY - H * 0.04);
-    ctx.lineTo(-H * 0.11, hipY - H * 0.04);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    // Fringe at the hem.
-    ctx.strokeStyle = '#7d5a34';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let fx = -H * 0.1; fx <= H * 0.1; fx += H * 0.04) {
-      ctx.moveTo(fx, hipY - H * 0.04);
-      ctx.lineTo(fx, hipY + H * 0.02);
-    }
-    ctx.stroke();
-    // Wampum: purple and white shell beads.
-    const beads = 5;
-    for (let i = 0; i < beads; i++) {
-      const t = i / (beads - 1);
-      ctx.fillStyle = i % 2 ? '#f4efe6' : '#5b3a86';
-      ctx.beginPath();
-      ctx.arc(-H * 0.1 + t * H * 0.2, shoulderY + H * 0.02 + t * H * 0.16, 1.8, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
   // Dark outline under the color so figures read against any background.
   ctx.strokeStyle = PALETTE.ink;
   ctx.lineWidth = lw + 2.5;
@@ -462,67 +378,6 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
       ctx.strokeStyle = '#6b7075';
       ctx.lineWidth = 1.5;
       ctx.stroke();
-    } else if (id === 'pilgrim') {
-      // A blunderbuss along the arm, its muzzle flared.
-      const ex = hand.x + fx * 18;
-      const ey = hand.y + fy * 18;
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 4.5;
-      ctx.beginPath();
-      ctx.moveTo(hand.x - fx * 6, hand.y - fy * 6);
-      ctx.lineTo(ex, ey);
-      ctx.stroke();
-      ctx.strokeStyle = '#7a4a22';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(hand.x - fx * 6, hand.y - fy * 6);
-      ctx.lineTo(hand.x + fx * 4, hand.y + fy * 4);
-      ctx.stroke();
-      ctx.strokeStyle = '#8d939a';
-      ctx.beginPath();
-      ctx.moveTo(hand.x + fx * 4, hand.y + fy * 4);
-      ctx.lineTo(ex, ey);
-      ctx.stroke();
-      ctx.fillStyle = '#8d939a';
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(ex - fy * 2, ey + fx * 2);
-      ctx.lineTo(ex + fx * 4 - fy * 4, ey + fy * 4 + fx * 4);
-      ctx.lineTo(ex + fx * 4 + fy * 4, ey + fy * 4 - fx * 4);
-      ctx.lineTo(ex + fy * 2, ey - fx * 2);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    } else if (id === 'firstlight') {
-      // A canoe paddle: a long shaft through the hand and a leaf-shaped blade at the far end.
-      const bx = hand.x + fx * 26;
-      const by = hand.y + fy * 26;
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(hand.x - fx * 12, hand.y - fy * 12);
-      ctx.lineTo(bx, by);
-      ctx.stroke();
-      ctx.strokeStyle = '#c99a5b';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(hand.x - fx * 12, hand.y - fy * 12);
-      ctx.lineTo(bx, by);
-      ctx.stroke();
-      ctx.save();
-      ctx.translate(bx + fx * 8, by + fy * 8);
-      ctx.rotate(Math.atan2(fy, fx));
-      ctx.fillStyle = '#c99a5b';
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, 10, 4.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = pose.color;
-      ctx.fillRect(-7, -1, 4, 2);
-      ctx.restore();
     } else if (id === 'yoyo') {
       // The yo-yo on its string: it shoots out along the arm when attacking.
       const out = pose.attack ? 6 + (pose.strike ?? 0) * 34 : 12;
@@ -542,24 +397,6 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
       ctx.fill();
       ctx.stroke();
     }
-  }
-
-  // Chief's long dark hair, down the back, tied with a band in the slot color.
-  if (id === 'firstlight') {
-    ctx.fillStyle = '#1f1a17';
-    ctx.beginPath();
-    ctx.ellipse(-headR * 0.25, headY - headR * 0.05, headR * 1.08, headR * 1.08, 0, 0, Math.PI * 2);
-    ctx.fill();
-    const sway = Math.sin(pose.phase * 0.35) * 1.5;
-    ctx.beginPath();
-    ctx.moveTo(-headR * 1.1, headY);
-    ctx.quadraticCurveTo(-headR * 1.6 + sway, headY + headR * 1.6, -headR * 1.2 + sway, headY + headR * 2.8);
-    ctx.lineTo(-headR * 0.5 + sway, headY + headR * 2.6);
-    ctx.quadraticCurveTo(-headR * 0.7, headY + headR * 1.4, -headR * 0.2, headY + headR * 0.6);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = pose.color;
-    ctx.fillRect(-headR * 1.35 + sway * 0.5, headY + headR * 1.3, headR * 0.8, headR * 0.28);
   }
 
   // Head.
@@ -687,93 +524,6 @@ function stickFigure(ctx: CanvasRenderingContext2D, id: FighterId, pose: FigureP
     ctx.moveTo(-headR * 0.6, capY + headR * 0.1);
     ctx.quadraticCurveTo(-headR * 1.6, capY - headR * 0.8, -headR * 2.0, capY - headR * 0.3);
     ctx.stroke();
-  } else if (river) {
-    // A propeller beanie; the propeller spins.
-    ctx.beginPath();
-    ctx.arc(0, capY + headR * 0.5, headR * 0.95, Math.PI, 0);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = PALETTE.ink;
-    ctx.fillRect(-1, capY - headR * 0.45, 2, headR * 0.5);
-    const spin = Math.cos(pose.phase * 0.6);
-    ctx.fillStyle = '#ffd23f';
-    ctx.beginPath();
-    ctx.ellipse(0, capY - headR * 0.45, headR * 0.9 * Math.abs(spin) + 1, headR * 0.16, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  } else if (id === 'turkey') {
-    // A beak, a red wattle and a little crest in the slot color.
-    ctx.fillStyle = '#f2b632';
-    ctx.beginPath();
-    ctx.moveTo(headR * 0.8, headY - headR * 0.2);
-    ctx.lineTo(headR * 1.75, headY + headR * 0.05);
-    ctx.lineTo(headR * 0.8, headY + headR * 0.3);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    const wob = Math.sin(pose.phase * 0.5) * 1.2;
-    ctx.fillStyle = '#d8312b';
-    ctx.beginPath();
-    ctx.ellipse(headR * 0.95 + wob * 0.3, headY + headR * 0.75, headR * 0.22, headR * 0.5, 0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = pose.color;
-    ctx.beginPath();
-    ctx.arc(0, capY + headR * 0.05, headR * 0.3, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (id === 'pilgrim') {
-    // A tall black hat with a buckled band, and a wide white collar.
-    ctx.fillStyle = '#1f1f22';
-    ctx.beginPath();
-    ctx.ellipse(0, capY + headR * 0.4, headR * 1.6, headR * 0.28, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-headR * 0.85, capY + headR * 0.4);
-    ctx.lineTo(-headR * 0.7, capY - headR * 1.3);
-    ctx.lineTo(headR * 0.7, capY - headR * 1.3);
-    ctx.lineTo(headR * 0.85, capY + headR * 0.4);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = pose.color;
-    ctx.fillRect(-headR * 0.8, capY - headR * 0.05, headR * 1.6, headR * 0.35);
-    ctx.strokeStyle = '#ffd23f';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(-headR * 0.25, capY - headR * 0.08, headR * 0.5, headR * 0.4);
-    ctx.fillStyle = PALETTE.white;
-    ctx.strokeStyle = PALETTE.ink;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-headR * 0.9, neckY);
-    ctx.lineTo(headR * 0.9, neckY);
-    ctx.lineTo(headR * 0.5, neckY + headR * 0.6);
-    ctx.lineTo(-headR * 0.5, neckY + headR * 0.6);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  } else if (id === 'firstlight') {
-    // A headband in the slot color with a few simple feathers at the back.
-    ctx.fillRect(-headR * 1.02, headY - headR * 0.6, headR * 2.04, headR * 0.32);
-    const tilt = Math.sin(pose.phase * 0.3) * 0.05;
-    const feathers: [number, number, string][] = [[-0.75, -0.35, '#f4efe6'], [-0.45, -0.1, '#c8642b'], [-1.0, -0.6, '#3a2a20']];
-    for (const [fx, lean, col] of feathers) {
-      ctx.save();
-      ctx.translate(headR * fx, headY - headR * 0.55);
-      ctx.rotate(lean + tilt);
-      ctx.fillStyle = col;
-      ctx.strokeStyle = PALETTE.ink;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(0, -headR * 0.75, headR * 0.2, headR * 0.75, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(0, -headR * 1.4);
-      ctx.stroke();
-      ctx.restore();
-    }
   } else if (titan) {
     // A brow plate and a belt.
     ctx.fillRect(-headR, capY - 2, headR * 2, 5);

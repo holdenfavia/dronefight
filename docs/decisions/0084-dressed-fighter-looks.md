@@ -12,7 +12,7 @@ Since the restart, the fighters have been placeholder stick figures, at the owne
 - Still drawn with Canvas 2D paths in `client/src/figures.ts` (no image files), on the same skeleton and attack poses, so every move still reads and sizes still match the hitboxes.
 - The slot, personal or team color (ADR-0026, ADR-0083, ADR-0081) is each look's main accent piece (for example the Brawler's mask, the Blade's coat, the Spark's robe), so you can still tell fighters apart at a glance.
 - The signature meter (ADR-0079) shows on the body as it fills or when it's full: the Brawler's mask eyes burn, the Blade's cutlass glints, the Spark's hourglass glows, the Titan's furnace heats, the Ninja's eyes glow, the Gunslinger's bandolier lights up, the Chef's pan flames, the Ghost's eye glows, the Yo-yo Kid's yo-yo gets a rainbow trail, and the Bard's guitar sends notes.
-- River and the seasonal fighters (Turkey, Pilgrim, Chief) keep their current figures for now.
+- River and the seasonal fighters (Turkey, Pilgrim, Chief) keep their current figures for now. (Amended 2026-11-19 by ADR-0089: they are dressed too.)
 
 ## Alternatives considered
 - **Image sprites drawn from the concept sheets:** they would need every pose drawn by hand and would scale badly. Vector paths keep the poses and stay sharp at any camera zoom.
