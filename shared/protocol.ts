@@ -21,8 +21,8 @@ export type ClientMessage =
   | { t: 'settings'; settings: RoomSettings }
   /** Host only: start the fight (everyone ready). */
   | { t: 'start' }
-  /** Your keys this frame (shared/online.ts encodeInput). */
-  | { t: 'in'; b: number };
+  /** Your keys this frame (shared/online.ts encodeInput); `s` numbers them so the server can ack (ADR-0089). */
+  | { t: 'in'; b: number; s?: number };
 
 export interface RoomMember {
   id: number;
@@ -43,7 +43,8 @@ export type ServerMessage =
   /** A fight starts (or, joining mid-fight, is going on): build the same world. `you` is your fighter slot, -1 to watch. */
   | { t: 'match'; start: MatchStart; you: number }
   /** Inputs for frames `from`, `from + 1`, … (one array of input bits per frame, one entry per fighter). */
-  | { t: 'frames'; from: number; inputs: number[][] }
+  /** `ack`: per fighter, the `s` of the last input the server used, -1 for none or a CPU (ADR-0089). */
+  | { t: 'frames'; from: number; inputs: number[][]; ack?: number[] }
   /** The whole world after frame `frame` was stepped (shared/online.ts serializeWorld). */
   | { t: 'snap'; frame: number; world: string }
   /** A player left mid-fight: a CPU of this level takes over their fighter. */
@@ -54,6 +55,10 @@ export type ServerMessage =
 
 export const ROOM_CODE_DIGITS = 2;
 export const MAX_ROOM_MEMBERS = 10;
+
+function isSeq(v: unknown): v is number {
+  return typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+}
 
 function parseSettings(v: unknown): RoomSettings | null {
   if (!v || typeof v !== 'object') return null;
@@ -110,7 +115,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return settings ? { t: 'settings', settings } : null;
     }
     case 'in':
-      return isInputBits(msg.b) ? { t: 'in', b: msg.b } : null;
+      if (!isInputBits(msg.b)) return null;
+      return isSeq(msg.s) ? { t: 'in', b: msg.b, s: msg.s } : { t: 'in', b: msg.b };
     default:
       return null;
   }

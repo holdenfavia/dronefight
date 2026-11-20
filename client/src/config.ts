@@ -203,6 +203,11 @@ export const ONLINE = {
   drainWindowTicks: 30,
   /** Frames kept in hand beyond the one stepped, against jitter. */
   spareFrames: 1,
+  /**
+   * Most frames your own fighter is predicted ahead of the server's (ADR-0089), about 330 ms. Past this (a stalled
+   * connection) the fight on screen waits for the server.
+   */
+  maxPredictFrames: 20,
   /** More than this waiting (a hidden tab, a long stall): jump straight to the newest frames. */
   jumpFrames: 45,
 } as const;

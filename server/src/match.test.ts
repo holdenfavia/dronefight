@@ -46,3 +46,20 @@ describe('online input queue (ADR-0088)', () => {
     expect(used).toContain(ATTACK);
   });
 });
+
+describe('input acks (ADR-0089)', () => {
+  it('reports the sequence number of the last input used, the newer one when merged', () => {
+    const m = new OnlineMatch(START);
+    expect(m.acks()).toEqual([-1, -1]);
+    m.input(0, LEFT, 1);
+    m.step();
+    expect(m.acks()[0]).toBe(1);
+    for (let s = 2; s <= 5; s++) m.input(0, LEFT, s);
+    m.step();
+    expect(m.acks()[0]).toBe(4); // 2..4 folded into one frame, 5 waits.
+    m.step();
+    expect(m.acks()[0]).toBe(5);
+    m.step(); // Starved: the last keys repeat, nothing new is acked.
+    expect(m.acks()[0]).toBe(5);
+  });
+});
