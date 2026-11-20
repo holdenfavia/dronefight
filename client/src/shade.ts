@@ -13,7 +13,7 @@ export interface Eye {
 }
 
 /** Focal length in pixels: bigger is flatter. */
-const FOCAL = 1500;
+export const FOCAL = 1500;
 
 /** A screen point on the z = 0 plane moved to depth z (world units; positive is away from the viewer). */
 export function project(e: Eye, x: number, y: number, z: number): [number, number] {
