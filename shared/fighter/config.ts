@@ -254,4 +254,17 @@ export const SIGNATURE = {
   harvest: { max: 3, cannonDmg: 2.2, cannonKb: 1.6 },
   /** Chief's Three Sisters: ground hits grow corn, air hits beans, specials and throws squash. All three: the next smash is a Tidal Sweep. */
   sisters: { tidalDmg: 1.3, tidalKb: 1.35 },
+  // Christmas fighters (ADR-0091).
+  /** Snowman's Snowpack: each snowball that lands packs one. Full: the next Snowball is an Avalanche. */
+  snowpack: { max: 3 },
+  /** Nutcracker's wind-up key: winds while marching on the ground (per frame) and with each hit (per damage). Full: the next smash is a Crunch. */
+  windup: { max: 100, perMarchFrame: 0.35, perDmg: 1.2, crunchDmg: 1.35, crunchKb: 1.3 },
+  /** Elf's Sugar Rush: fills from damage dealt. Full: Jingle Bell becomes Sugar Rush. */
+  sugar: { max: 100, perDealt: 2.2 },
+  /** Santa's Naughty List: hitting Santa lists you for this long; his next hit on you is a Lump of Coal. */
+  naughty: { frames: 60 * 8, coalDmg: 1.3, coalKb: 1.2 },
+  /** Reindeer's Glow: each aerial that lands brightens the nose. Full: the next Nose Beam is a Beacon. */
+  glow: { max: 3, beaconDmg: 1.9, beaconKb: 1.5 },
+  /** Gingerbread's Fresh Batch: fills from damage taken (and a little dealt). Full: the down special bakes a Fresh Batch that heals. */
+  batch: { max: 100, perTaken: 1.4, perDealt: 0.5, heal: 15 },
 } as const;

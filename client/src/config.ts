@@ -99,6 +99,8 @@ export const ATTACK_COLORS = {
     river: '#b8e0ff',
     // Seasonal (ADR-0082).
     turkey: '#c8642b', pilgrim: '#e0b04a', firstlight: '#6fc3c9',
+    // Seasonal (ADR-0091).
+    snowman: '#bfe8ff', nutcracker: '#e03a3a', elf: '#3fd06a', santa: '#ff3d4f', reindeer: '#ff4a3a', gingerbread: '#e8a25a',
   },
   /** Status effects shown over a fighter. */
   curse: '#b06bff',
@@ -120,6 +122,12 @@ export const SIGNATURE_LOOKS: Record<string, { text: string; color: string }> = 
   thundergobble: { text: 'THUNDER GOBBLE!', color: '#ff8a3d' },
   cannon: { text: 'HARVEST CANNON!', color: '#e0b04a' },
   tidal: { text: 'TIDAL SWEEP!', color: '#6fc3c9' },
+  avalanche: { text: 'AVALANCHE!', color: '#bfe8ff' },
+  crunch: { text: 'CRUNCH!', color: '#e03a3a' },
+  sugarrush: { text: 'SUGAR RUSH!', color: '#3fd06a' },
+  coal: { text: 'LUMP OF COAL!', color: '#5a5a66' },
+  beacon: { text: 'BEACON!', color: '#ff4a3a' },
+  freshbatch: { text: 'FRESH BATCH!', color: '#e8a25a' },
 };
 
 /** A city stage's sky and backdrop colors. */
@@ -188,6 +196,27 @@ export const FALL = {
   leaves: ['#d9542b', '#e8892f', '#f2b632', '#b8401f', '#c97a2a'],
   /** Leaves drifting across the screen. */
   leafCount: 28,
+} as const;
+
+/** The Winter Village's look (seasonal stage, ADR-0091): a snowy dusk. */
+export const WINTER = {
+  skyTop: '#2b3a6b',
+  skyHorizon: '#9a7fb8',
+  skyBottom: '#f2c7c0',
+  hillFar: '#c9d6ec',
+  hillMid: '#a9bcdc',
+  hillNear: '#e9f0fa',
+  snow: '#f4f8ff',
+  snowShade: '#c9d6ec',
+  stone: '#5a5f73',
+  wood: '#7a4a2a',
+  pine: '#1f5a3a',
+  pineDark: '#164a2e',
+  /** String lights, in turn. */
+  lights: ['#ff4a4a', '#ffd23a', '#4ad06a', '#4ab8ff', '#ff8ad8'],
+  windows: '#ffd890',
+  /** Flakes drifting across the screen. */
+  flakeCount: 70,
 } as const;
 
 /** Online fights (ADR-0076, ADR-0088): how many server frames to keep in hand against network jitter. */

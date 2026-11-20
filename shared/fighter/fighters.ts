@@ -9,7 +9,9 @@ import { UP_SMASH } from './config.js';
 export type FighterId =
   | 'brawler' | 'blade' | 'spark' | 'titan' | 'ninja' | 'gunslinger' | 'chef' | 'ghost' | 'yoyo' | 'bard' | 'river'
   // Seasonal (ADR-0082): Thanksgiving.
-  | 'turkey' | 'pilgrim' | 'firstlight';
+  | 'turkey' | 'pilgrim' | 'firstlight'
+  // Seasonal (ADR-0091): Christmas.
+  | 'snowman' | 'nutcracker' | 'elf' | 'santa' | 'reindeer' | 'gingerbread';
 
 /** The roster everyone sees (and the pool Random and CPUs draw from). */
 export const FIGHTER_IDS: readonly FighterId[] = ['brawler', 'blade', 'spark', 'titan', 'ninja', 'gunslinger', 'chef', 'ghost', 'yoyo', 'bard'];
@@ -21,7 +23,10 @@ export const SECRET_FIGHTER_IDS: readonly FighterId[] = ['river'];
  * Seasonal fighters (ADR-0082): on the roster, tagged Seasonal, only while their event is on. Which event each
  * belongs to, and when it runs, is in shared/seasons.ts.
  */
-export const SEASONAL_FIGHTER_IDS: readonly FighterId[] = ['turkey', 'pilgrim', 'firstlight'];
+export const SEASONAL_FIGHTER_IDS: readonly FighterId[] = [
+  'turkey', 'pilgrim', 'firstlight',
+  'snowman', 'nutcracker', 'elf', 'santa', 'reindeer', 'gingerbread',
+];
 
 /** Every fighter the sim knows, secret and seasonal ones included (what online picks may be). */
 export const ALL_FIGHTER_IDS: readonly FighterId[] = [...FIGHTER_IDS, ...SECRET_FIGHTER_IDS, ...SEASONAL_FIGHTER_IDS];
@@ -43,7 +48,8 @@ export type ExtraMoveId =
   // Signature moves (ADR-0079): what a special turns into when its fighter's meter is full.
   | 'kopunch' | 'flashcut' | 'cook' | 'tempoEncore' | 'lullabyEncore'
   // Seasonal fighters (ADR-0082).
-  | 'thundergobble' | 'weirhit';
+  | 'thundergobble' | 'weirhit'
+  | 'avalanche' | 'clamphit' | 'sugarrush' | 'chimneyland' | 'stompland' | 'freshbatch';
 
 export type MoveId = CoreMoveId | ExtraMoveId;
 
@@ -1243,6 +1249,443 @@ function firstlight(): FighterDef {
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Seasonal fighters: Christmas (ADR-0091). On the roster, tagged Seasonal, while the event runs (shared/seasons.ts).
+// Original designs (Hard rule 3): no film, toy-line or mascot versions of any of them.
+
+// Snowman: heavy, slow and hard to move. Stick-arm swats and a head-butt; snowballs that slow, a belly slide, a
+// burst of snow to recover, and an ice patch that slows whoever steps on it.
+// Signature: Snowpack. Every snowball that lands packs snow; three, and the next Snowball is an Avalanche.
+
+const SNOWBALL: ProjectileDef = { kind: 'shot', look: 'snowball', speed: 900, angle: 8, r: 10, lifeFrames: 46, gravity: 700, limit: 2, hit: { dmg: 6, angle: 40, bkb: 28, kbg: 46, slow: 90 } };
+
+function snowman(): FighterDef {
+  return {
+    id: 'snowman',
+    name: 'Snowman',
+    blurb: 'Heavy and slow. Snowballs slow and pack snow; three hits, and the next one is an Avalanche.',
+    specials: { neutral: 'Snowball', side: 'Belly Slide', up: 'Snow Burst', down: 'Ice Patch' },
+    halfW: 28, height: 36, hurtR: 26,
+    weight: 114,
+    walkSpeed: 280, airSpeed: 270, airAccel: 2000,
+    gravity: 2500, maxFall: 980, fastFall: 1550,
+    jumpSpeed: 820, airJumpSpeed: 720, airJumps: 1,
+    upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
+    moves: {
+      // Twig swat, twig swat, belly bump.
+      jab: { frames: 14, hitboxes: [hb(3, 4, 34, 6, 20, 3, 70, 22, 15)], next: { move: 'jab2', from: 6 } },
+      jab2: { frames: 28, hitboxes: [hb(5, 7, 34, -2, 26, 7, 40, 46, 76)] },
+      // A long twig-arm swipe.
+      ftilt: { frames: 28, hitboxes: [hb(8, 11, 50, 6, 22, 10, 36, 32, 96)] },
+      // Top hat flips up.
+      utilt: { frames: 26, hitboxes: [hb(6, 10, 0, 44, 26, 9, 92, 38, 92)] },
+      dtilt: { frames: 22, hitboxes: [hb(6, 8, 42, -18, 22, 7, 30, 30, 62)] },
+      // A big head-butt with all that snow behind it.
+      fsmash: { frames: 54, charge: { frame: 14, max: 60, dmg: 0.4 }, lunge: { frame: 16, vx: 300, vy: 0 }, hitboxes: [hb(18, 21, 44, 10, 30, 19, 38, 40, 104)] },
+      // A fountain of snow overhead.
+      usmash: { frames: 50, charge: { frame: 10, max: 60, dmg: 0.4 }, hitboxes: [hb(14, 20, 0, 50, 34, 17, 90, 38, 102)] },
+      // Drops its weight: snow sprays out both ways.
+      dsmash: {
+        frames: 50, charge: { frame: 8, max: 60, dmg: 0.4 },
+        hitboxes: [hb(15, 18, 50, -16, 28, 15, 28, 42, 98), hb(15, 18, -50, -16, 28, 15, 152, 42, 98)],
+      },
+      nair: { frames: 30, landLag: 8, hitboxes: [hb(5, 13, 0, 0, 40, 9, 50, 28, 86)] },
+      fair: { frames: 32, landLag: 9, hitboxes: [hb(9, 12, 44, 4, 26, 12, 40, 30, 98)] },
+      bair: { frames: 30, landLag: 9, hitboxes: [hb(7, 10, -42, 2, 26, 13, 145, 30, 102)] },
+      uair: { frames: 28, landLag: 8, hitboxes: [hb(6, 10, 0, 46, 26, 10, 88, 30, 96)] },
+      // Sits down hard.
+      dair: { frames: 38, landLag: 14, hitboxes: [hb(11, 15, 0, -36, 28, 14, -75, 26, 90)] },
+      nspecial: { frames: 30, projectile: { frame: 10, def: SNOWBALL } },
+      // A full Snowpack: a huge snowball that rolls along and buries whoever it hits.
+      avalanche: {
+        frames: 44, invincible: { from: 1, to: 8 },
+        projectile: { frame: 14, def: { kind: 'shot', look: 'avalanche', speed: 620, angle: 0, r: 17, lifeFrames: 80, gravity: 0, limit: 1, hit: { dmg: 16, angle: 40, bkb: 50, kbg: 92, slow: 150, stun: 26 } } },
+      },
+      // Belly slide: low, fast and long.
+      sspecial: {
+        frames: 46, recovery: true, gravity: { from: 1, to: 20, scale: 0.35 }, lunge: { frame: 8, vx: 820, vy: 40 }, rehit: 10,
+        hitboxes: [hb(8, 26, 28, -8, 28, 7, 50, 40, 60)],
+      },
+      // A burst of snow underfoot.
+      uspecial: {
+        frames: 34, recovery: true, helpless: true, boost: { frame: 7, speed: 1060, steer: 28 },
+        hitboxes: [hb(5, 9, 0, -10, 38, 9, 85, 50, 70)],
+      },
+      // An ice patch on the floor: slows and stings whoever steps on it.
+      dspecial: {
+        frames: 34,
+        projectile: { frame: 10, def: { kind: 'hazard', look: 'ice', speed: 160, angle: 30, r: 26, lifeFrames: 360, gravity: 1800, limit: 1, rehit: 40, hit: { dmg: 3, angle: 70, bkb: 30, kbg: 10, slow: 120 } } },
+      },
+      grab: grab(32, 22, 8, 32),
+      pummel: pummel(3),
+      fthrow: throwMove(28, 12, 10, 40, 56, 76),
+      bthrow: throwMove(32, 14, 11, 140, 52, 94, true),
+      uthrow: throwMove(28, 12, 9, 90, 62, 74),
+      // Rolls them in snow.
+      dthrow: throwMove(30, 14, 8, 70, 50, 50),
+      getupattack: getupAttack(34, 7),
+    },
+  };
+}
+
+// Nutcracker: a wooden toy soldier with a saber and a little toy cannon. Clean saber reach, a marching charge with
+// armor, a wind-up spin to recover, and a jaw clamp that catches an attack and cracks back.
+// Signature: the Wind-up Key. It winds as the Nutcracker marches about on the ground (and a little with each hit);
+// fully wound, the next smash is a Nutcracker Crunch.
+
+function nutcracker(): FighterDef {
+  return {
+    id: 'nutcracker',
+    name: 'Nutcracker',
+    blurb: 'Toy soldier: marching winds the key; fully wound, the next smash is a Nutcracker Crunch.',
+    specials: { neutral: 'Toy Cannon', side: 'Saber March', up: 'Wind-up Spin', down: 'Jaw Clamp' },
+    halfW: 22, height: 36, hurtR: 23,
+    weight: 106,
+    walkSpeed: 340, airSpeed: 300, airAccel: 2300,
+    gravity: 2450, maxFall: 960, fastFall: 1500,
+    jumpSpeed: 840, airJumpSpeed: 760, airJumps: 1,
+    upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
+    moves: {
+      // Saber: thrust, thrust, cut.
+      jab: { frames: 12, hitboxes: [hb(2, 3, 40, 4, 16, 2, 70, 20, 10)], next: { move: 'jab2', from: 5 } },
+      jab2: { frames: 12, hitboxes: [hb(2, 3, 42, 4, 16, 2, 70, 20, 10)], next: { move: 'jab3', from: 5 } },
+      jab3: { frames: 26, hitboxes: [hb(4, 6, 44, 4, 24, 6, 40, 46, 74)] },
+      ftilt: { frames: 26, hitboxes: [hb(7, 10, 56, 4, 20, 10, 36, 32, 96)] },
+      // Shako plume flick.
+      utilt: { frames: 24, hitboxes: [hb(5, 10, 4, 46, 26, 8, 92, 38, 92)] },
+      dtilt: { frames: 20, hitboxes: [hb(5, 7, 50, -16, 18, 6, 30, 30, 60)] },
+      // A stiff-legged lunge, saber first.
+      fsmash: { frames: 50, charge: { frame: 12, max: 60, dmg: 0.4 }, lunge: { frame: 14, vx: 420, vy: 0 }, hitboxes: [hb(16, 19, 58, 4, 26, 16, 36, 40, 102)] },
+      // Salute overhead.
+      usmash: { frames: 46, charge: { frame: 9, max: 60, dmg: 0.4 }, hitboxes: [hb(12, 17, 6, 58, 28, 15, 90, 38, 104)] },
+      dsmash: {
+        frames: 44, charge: { frame: 7, max: 60, dmg: 0.4 },
+        hitboxes: [hb(11, 13, 52, -14, 22, 13, 25, 38, 98), hb(16, 18, -52, -14, 22, 13, 155, 38, 98)],
+      },
+      nair: { frames: 28, landLag: 6, hitboxes: [hb(5, 13, 0, 0, 38, 8, 50, 28, 84)] },
+      fair: { frames: 28, landLag: 8, hitboxes: [hb(7, 10, 52, 2, 22, 10, 40, 30, 96)] },
+      bair: { frames: 26, landLag: 8, hitboxes: [hb(6, 9, -40, 2, 24, 12, 145, 30, 102)] },
+      uair: { frames: 26, landLag: 7, hitboxes: [hb(5, 9, 0, 52, 24, 9, 88, 30, 94)] },
+      dair: { frames: 34, landLag: 11, hitboxes: [hb(10, 13, 0, -44, 22, 12, -72, 26, 86)] },
+      // A toy cannon: a slow, heavy wooden ball.
+      nspecial: {
+        frames: 34,
+        projectile: { frame: 12, def: { kind: 'shot', look: 'toyball', speed: 760, angle: 4, r: 11, lifeFrames: 50, gravity: 500, limit: 1, hit: { dmg: 9, angle: 35, bkb: 34, kbg: 60 } } },
+      },
+      // Marches forward with the saber out; light hits don't stop it.
+      sspecial: {
+        frames: 46, recovery: true, gravity: { from: 1, to: 20, scale: 0.3 }, lunge: { frame: 8, vx: 700, vy: 60 },
+        armor: { from: 6, to: 24, kb: 80 },
+        hitboxes: [hb(8, 24, 44, 4, 24, 10, 38, 44, 86)],
+      },
+      // Spins up like a wound toy.
+      uspecial: {
+        frames: 30, recovery: true, helpless: true, boost: { frame: 5, speed: 1080, steer: 30 }, rehit: 5,
+        hitboxes: [hb(5, 15, 0, 14, 30, 3, 85, 40, 20), hb(16, 17, 0, 22, 32, 6, 80, 50, 80)],
+      },
+      // The jaw clamps shut on an attack, then cracks back.
+      dspecial: { frames: 34, counter: { from: 5, to: 20, move: 'clamphit', mult: 1.3 } },
+      clamphit: { frames: 28, invincible: { from: 1, to: 12 }, hitboxes: [hb(4, 7, 36, 10, 30, 8, 40, 55, 92, { counter: true })] },
+      grab: grab(30, 20, 7, 30),
+      pummel: pummel(2),
+      fthrow: throwMove(26, 11, 9, 42, 54, 72),
+      bthrow: throwMove(30, 13, 10, 140, 50, 92, true),
+      uthrow: throwMove(26, 11, 8, 90, 62, 66),
+      // Cracks them like a walnut.
+      dthrow: throwMove(28, 13, 9, 75, 48, 46),
+      getupattack: getupAttack(36, 7),
+    },
+  };
+}
+
+// Elf: a quick workshop elf with a candy-cane hook. Light and jumpy: toys thrown in turn, a wrapping-paper
+// command grab, a candy-cane pogo, and a jingle bell that rattles anyone close.
+// Signature: Sugar Rush. Damage dealt fills it; full, Jingle Bell becomes a Sugar Rush (a long burst of speed).
+
+const TOY_TRAIN: ProjectileDef = { kind: 'shot', look: 'train', speed: 820, angle: 0, r: 9, lifeFrames: 44, gravity: 0, limit: 2, hit: { dmg: 5, angle: 40, bkb: 26, kbg: 40 } };
+const BOUNCY_BALL: ProjectileDef = { kind: 'bomb', look: 'bouncyball', speed: 620, angle: 35, r: 9, lifeFrames: 80, gravity: 1500, blastR: 26, limit: 2, hit: { dmg: 6, angle: 70, bkb: 30, kbg: 44 } };
+const TOP: ProjectileDef = { kind: 'shot', look: 'top', speed: 520, angle: 0, r: 10, lifeFrames: 60, gravity: 0, limit: 2, hit: { dmg: 5, angle: 60, bkb: 34, kbg: 36, stun: 12 } };
+
+function elf(): FighterDef {
+  return {
+    id: 'elf',
+    name: 'Elf',
+    blurb: 'Quick and jumpy. Hits fill the Sugar Rush; full, Jingle Bell becomes a long burst of speed.',
+    specials: { neutral: 'Toy Toss', side: 'Gift Wrap', up: 'Candy Cane Pogo', down: 'Jingle Bell' },
+    halfW: 20, height: 28, hurtR: 20,
+    weight: 80,
+    walkSpeed: 410, airSpeed: 340, airAccel: 2700,
+    gravity: 2250, maxFall: 900, fastFall: 1450,
+    jumpSpeed: 830, airJumpSpeed: 740, airJumps: 2,
+    upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
+    moves: {
+      // Hook, hook, kick.
+      jab: { frames: 10, hitboxes: [hb(2, 3, 28, 4, 16, 2, 70, 18, 10)], next: { move: 'jab2', from: 4 } },
+      jab2: { frames: 10, hitboxes: [hb(2, 3, 30, 4, 16, 2, 70, 18, 10)], next: { move: 'jab3', from: 4 } },
+      jab3: { frames: 22, hitboxes: [hb(3, 5, 32, 0, 22, 5, 42, 42, 70)] },
+      // The candy cane hooks out.
+      ftilt: { frames: 22, hitboxes: [hb(5, 8, 44, 4, 20, 8, 36, 32, 92)] },
+      utilt: { frames: 20, hitboxes: [hb(4, 8, 6, 34, 24, 7, 92, 36, 90)] },
+      dtilt: { frames: 16, hitboxes: [hb(4, 6, 38, -14, 18, 5, 30, 30, 56)] },
+      // A full swing of the candy cane.
+      fsmash: { frames: 46, charge: { frame: 11, max: 60, dmg: 0.4 }, hitboxes: [hb(14, 17, 48, 4, 26, 15, 36, 38, 100)] },
+      usmash: { frames: 42, charge: { frame: 8, max: 60, dmg: 0.4 }, hitboxes: [hb(10, 15, 0, 44, 28, 14, 90, 36, 100)] },
+      // A spin on the floor, cane out.
+      dsmash: {
+        frames: 40, charge: { frame: 6, max: 60, dmg: 0.4 },
+        hitboxes: [hb(9, 11, 42, -14, 22, 12, 25, 36, 94), hb(14, 16, -42, -14, 22, 12, 155, 36, 94)],
+      },
+      nair: { frames: 26, landLag: 5, hitboxes: [hb(4, 12, 0, 0, 32, 8, 50, 26, 82)] },
+      fair: { frames: 26, landLag: 7, hitboxes: [hb(6, 9, 40, 2, 22, 9, 40, 30, 94)] },
+      bair: { frames: 24, landLag: 7, hitboxes: [hb(5, 8, -34, 2, 22, 11, 145, 30, 100)] },
+      uair: { frames: 22, landLag: 6, hitboxes: [hb(4, 8, 0, 36, 22, 8, 88, 30, 92)] },
+      dair: { frames: 30, landLag: 10, hitboxes: [hb(8, 11, 0, -32, 20, 10, -70, 26, 84)] },
+      // Toys in turn: a wind-up train, a bouncy ball, a spinning top.
+      nspecial: { frames: 28, projectile: { frame: 9, def: TOY_TRAIN, cycle: [TOY_TRAIN, BOUNCY_BALL, TOP] } },
+      // Wraps whoever is in front up like a present: a command grab.
+      sspecial: {
+        frames: 44, recovery: true, gravity: { from: 1, to: 22, scale: 0.35 }, lunge: { frame: 6, vx: 520, vy: 40 },
+        hitboxes: [hb(10, 16, 34, 4, 26, 0, 0, 0, 0, { grab: true, grabAir: true })],
+      },
+      // Bounces up on the candy cane.
+      uspecial: {
+        frames: 30, recovery: true, helpless: true, boost: { frame: 5, speed: 1120, steer: 32 },
+        hitboxes: [hb(5, 9, 0, -14, 26, 8, 85, 50, 66)],
+      },
+      // A jingle bell rattles anyone close for a moment.
+      dspecial: { frames: 34, hitboxes: [hb(8, 11, 0, 4, 46, 3, 80, 28, 10, { stun: 24 })] },
+      // Sugar Rush (full meter): a candy burst all around, then a long burst of speed.
+      sugarrush: {
+        frames: 36, invincible: { from: 1, to: 10 }, haste: { frame: 10, frames: 420 },
+        hitboxes: [hb(8, 11, 0, 4, 56, 6, 70, 46, 70)],
+      },
+      grab: grab(26, 18, 6, 28),
+      pummel: pummel(2, 14),
+      fthrow: throwMove(24, 10, 8, 40, 54, 68),
+      bthrow: throwMove(28, 12, 9, 140, 48, 88, true),
+      uthrow: throwMove(26, 11, 7, 90, 62, 62),
+      dthrow: throwMove(26, 12, 6, 75, 46, 44),
+      getupattack: getupAttack(30, 6),
+    },
+  };
+}
+
+// Santa: big and jolly, with a sack of presents. Sack swings, gift bombs, a sleigh dash, a jingle of sleigh bells
+// to climb, and a chimney drop that comes straight down.
+// Signature: the Naughty List. Whoever hits Santa goes on the list for a while; Santa's next hit on a listed
+// fighter is a Lump of Coal (more damage and knockback) and takes them off it.
+
+function santa(): FighterDef {
+  return {
+    id: 'santa',
+    name: 'Santa',
+    blurb: 'Big and jolly. Hit him and you go on the Naughty List; his next hit on you is a Lump of Coal.',
+    specials: { neutral: 'Gift Bomb', side: 'Sleigh Dash', up: 'Sleigh Bells', down: 'Chimney Drop' },
+    halfW: 28, height: 38, hurtR: 27,
+    weight: 118,
+    walkSpeed: 300, airSpeed: 280, airAccel: 2100,
+    gravity: 2500, maxFall: 980, fastFall: 1550,
+    jumpSpeed: 830, airJumpSpeed: 740, airJumps: 1,
+    upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
+    moves: {
+      // Mitten, mitten, belly.
+      jab: { frames: 14, hitboxes: [hb(3, 4, 32, 4, 20, 3, 70, 22, 15)], next: { move: 'jab2', from: 6 } },
+      jab2: { frames: 14, hitboxes: [hb(3, 4, 34, 4, 20, 3, 70, 22, 15)], next: { move: 'jab3', from: 6 } },
+      jab3: { frames: 28, hitboxes: [hb(5, 7, 34, -4, 28, 7, 40, 48, 78)] },
+      // The sack swings out.
+      ftilt: { frames: 28, hitboxes: [hb(8, 11, 50, 2, 26, 11, 36, 32, 96)] },
+      utilt: { frames: 26, hitboxes: [hb(6, 11, 4, 46, 28, 9, 92, 38, 94)] },
+      dtilt: { frames: 22, hitboxes: [hb(6, 8, 44, -18, 22, 7, 30, 30, 62)] },
+      // A full overhead swing of the sack.
+      fsmash: { frames: 56, charge: { frame: 15, max: 60, dmg: 0.4 }, hitboxes: [hb(19, 22, 52, 4, 32, 19, 36, 42, 104)] },
+      usmash: { frames: 50, charge: { frame: 10, max: 60, dmg: 0.4 }, hitboxes: [hb(14, 19, 0, 56, 32, 17, 90, 38, 104)] },
+      // Boots stamp both sides.
+      dsmash: {
+        frames: 50, charge: { frame: 8, max: 60, dmg: 0.4 },
+        hitboxes: [hb(14, 17, 48, -16, 26, 15, 28, 42, 98), hb(14, 17, -48, -16, 26, 15, 152, 42, 98)],
+      },
+      nair: { frames: 30, landLag: 8, hitboxes: [hb(5, 13, 0, 0, 40, 9, 50, 28, 86)] },
+      fair: { frames: 32, landLag: 9, hitboxes: [hb(9, 12, 46, 2, 26, 12, 40, 30, 98)] },
+      bair: { frames: 30, landLag: 9, hitboxes: [hb(7, 10, -42, 2, 26, 13, 145, 30, 102)] },
+      uair: { frames: 28, landLag: 8, hitboxes: [hb(6, 10, 0, 48, 26, 10, 88, 30, 96)] },
+      dair: { frames: 36, landLag: 13, hitboxes: [hb(11, 14, 0, -40, 24, 13, -75, 26, 88)] },
+      // A present, tossed: it bursts open where it lands.
+      nspecial: {
+        frames: 34,
+        projectile: { frame: 11, def: { kind: 'bomb', look: 'gift', speed: 560, angle: 38, r: 13, lifeFrames: 90, gravity: 1600, blastR: 42, limit: 2, hit: { dmg: 9, angle: 55, bkb: 32, kbg: 64 } } },
+      },
+      // A sleigh dash: far and fast, a good way back to the stage.
+      sspecial: {
+        frames: 46, recovery: true, gravity: { from: 1, to: 24, scale: 0.15 }, lunge: { frame: 8, vx: 900, vy: 140 },
+        hitboxes: [hb(8, 22, 34, 0, 28, 10, 40, 44, 84)],
+      },
+      // Sleigh bells: a jingling climb.
+      uspecial: {
+        frames: 36, recovery: true, helpless: true, boost: { frame: 6, speed: 1040, steer: 34 }, rehit: 6,
+        gravity: { from: 6, to: 30, scale: 0.6 },
+        hitboxes: [hb(6, 18, 0, 14, 32, 3, 85, 40, 20), hb(19, 20, 0, 22, 34, 6, 80, 50, 76)],
+      },
+      // Chimney Drop: a little hop, then straight down; the landing puffs soot both ways. In the air, straight down.
+      dspecial: {
+        frames: 70, hop: { frame: 4, vx: 80, vy: 700 }, slam: { frame: 18, speed: 1700, landMove: 'chimneyland' },
+        hitboxes: [hb(18, 70, 0, -26, 32, 11, -70, 40, 70)],
+      },
+      dspecialAir: { frames: 60, slam: { frame: 6, speed: 1700, landMove: 'chimneyland' }, hitboxes: [hb(6, 60, 0, -26, 32, 11, -70, 40, 70)] },
+      chimneyland: {
+        frames: 34,
+        hitboxes: [hb(2, 5, 0, -14, 42, 14, 80, 52, 92), hb(2, 5, 64, -16, 32, 11, 40, 48, 88), hb(2, 5, -64, -16, 32, 11, 140, 48, 88)],
+      },
+      grab: grab(32, 22, 7, 30),
+      pummel: pummel(3),
+      fthrow: throwMove(28, 12, 10, 40, 58, 78),
+      // Into the sack and over the shoulder.
+      bthrow: throwMove(32, 14, 12, 140, 52, 96, true),
+      uthrow: throwMove(28, 12, 9, 90, 62, 76),
+      dthrow: throwMove(30, 14, 8, 72, 50, 50),
+      getupattack: getupAttack(34, 7),
+    },
+  };
+}
+
+// Reindeer: a flying reindeer. Antler hits, kicks and a long hover; a glowing nose beam, a gallop, a sky leap,
+// and a hoof stomp that comes straight down.
+// Signature: the Glow. Every aerial that lands makes the nose glow brighter; three, and the next Nose Beam is a Beacon.
+
+function reindeer(): FighterDef {
+  return {
+    id: 'reindeer',
+    name: 'Reindeer',
+    blurb: 'Flies: a long hover and three jumps. Air hits light the nose; three, and the next beam is a Beacon.',
+    specials: { neutral: 'Nose Beam', side: 'Gallop', up: 'Sky Leap', down: 'Hoof Stomp' },
+    halfW: 26, height: 34, hurtR: 24,
+    weight: 90,
+    walkSpeed: 400, airSpeed: 340, airAccel: 2600,
+    gravity: 2100, maxFall: 860, fastFall: 1400,
+    jumpSpeed: 860, airJumpSpeed: 760, airJumps: 2,
+    upSpecials: 1, sideSpecials: 1, hoverFrames: 70,
+    moves: {
+      // Antler butt, antler butt, hind kick.
+      jab: { frames: 12, hitboxes: [hb(2, 3, 30, 10, 18, 2, 70, 20, 10)], next: { move: 'jab2', from: 5 } },
+      jab2: { frames: 24, hitboxes: [hb(4, 6, 34, 8, 24, 6, 40, 44, 72)] },
+      ftilt: { frames: 24, hitboxes: [hb(6, 9, 46, 10, 22, 9, 38, 32, 94)] },
+      // Antlers sweep up.
+      utilt: { frames: 22, hitboxes: [hb(4, 9, 10, 44, 28, 8, 92, 38, 90)] },
+      dtilt: { frames: 18, hitboxes: [hb(4, 6, 42, -16, 18, 6, 30, 30, 58)] },
+      // Lowers the antlers and charges in.
+      fsmash: { frames: 50, charge: { frame: 12, max: 60, dmg: 0.4 }, lunge: { frame: 14, vx: 300, vy: 0 }, hitboxes: [hb(16, 19, 48, 12, 28, 17, 36, 40, 102)] },
+      usmash: { frames: 44, charge: { frame: 9, max: 60, dmg: 0.4 }, hitboxes: [hb(12, 17, 4, 52, 30, 15, 90, 38, 102)] },
+      dsmash: {
+        frames: 44, charge: { frame: 7, max: 60, dmg: 0.4 },
+        hitboxes: [hb(11, 13, 46, -14, 24, 13, 25, 38, 96), hb(15, 17, -46, -14, 24, 13, 155, 38, 96)],
+      },
+      nair: { frames: 28, landLag: 6, hitboxes: [hb(5, 13, 0, 0, 38, 8, 50, 28, 84)] },
+      fair: { frames: 28, landLag: 8, hitboxes: [hb(7, 10, 44, 8, 24, 10, 40, 30, 96)] },
+      bair: { frames: 26, landLag: 8, hitboxes: [hb(6, 9, -42, 0, 24, 13, 145, 30, 104)] },
+      uair: { frames: 24, landLag: 7, hitboxes: [hb(5, 9, 4, 48, 26, 9, 88, 30, 94)] },
+      dair: { frames: 32, landLag: 11, hitboxes: [hb(10, 13, 0, -36, 22, 12, -72, 26, 86)] },
+      // The nose glows and fires a beam.
+      nspecial: {
+        frames: 32,
+        projectile: { frame: 11, def: { kind: 'shot', look: 'nosebeam', speed: 1200, angle: 0, r: 8, lifeFrames: 32, gravity: 0, limit: 1, hit: { dmg: 7, angle: 30, bkb: 30, kbg: 52 } } },
+      },
+      // A gallop, antlers down.
+      sspecial: {
+        frames: 42, recovery: true, gravity: { from: 1, to: 18, scale: 0.3 }, lunge: { frame: 6, vx: 820, vy: 80 }, rehit: 7,
+        hitboxes: [hb(6, 20, 32, 6, 24, 3, 60, 22, 10), hb(21, 23, 36, 6, 28, 7, 40, 46, 78)],
+      },
+      // A great leap into the sky.
+      uspecial: {
+        frames: 34, recovery: true, helpless: true, boost: { frame: 5, speed: 1200, steer: 40 },
+        hitboxes: [hb(5, 10, 0, 16, 30, 8, 85, 50, 66)],
+      },
+      // Hoof Stomp: down from the air, a stomp on landing.
+      dspecial: {
+        frames: 64, hop: { frame: 4, vx: 60, vy: 620 }, slam: { frame: 16, speed: 1600, landMove: 'stompland' },
+        hitboxes: [hb(16, 64, 0, -24, 26, 10, -70, 36, 66)],
+      },
+      dspecialAir: { frames: 56, slam: { frame: 6, speed: 1600, landMove: 'stompland' }, hitboxes: [hb(6, 56, 0, -24, 26, 10, -70, 36, 66)] },
+      stompland: {
+        frames: 28,
+        hitboxes: [hb(2, 4, 40, -14, 28, 10, 40, 44, 84), hb(2, 4, -40, -14, 28, 10, 140, 44, 84)],
+      },
+      grab: grab(30, 20, 7, 28),
+      pummel: pummel(2),
+      fthrow: throwMove(26, 11, 9, 42, 54, 72),
+      bthrow: throwMove(28, 12, 10, 140, 50, 92, true),
+      // Tossed up on the antlers.
+      uthrow: throwMove(26, 11, 8, 88, 64, 70),
+      dthrow: throwMove(26, 12, 6, 75, 48, 46),
+      getupattack: getupAttack(32, 7),
+    },
+  };
+}
+
+// Gingerbread: a tiny gingerbread cookie, the fastest and lightest of the Christmas cast. Quick kicks, gumdrops,
+// a run-run-run dash, an icing line to swing back up, and a cookie-cutter spin.
+// Signature: Fresh Batch. Taking damage fills it (and dealing it a little); full, the down special bakes a Fresh
+// Batch: a burst of oven heat that also takes some damage off.
+
+const GUMDROP: ProjectileDef = { kind: 'shot', look: 'gumdrop', speed: 980, angle: 10, r: 7, lifeFrames: 38, gravity: 900, limit: 3, hit: { dmg: 4, angle: 45, bkb: 20, kbg: 34 } };
+
+function gingerbread(): FighterDef {
+  return {
+    id: 'gingerbread',
+    name: 'Gingerbread',
+    blurb: 'Tiny and the fastest of all. Getting hit fills Fresh Batch; full, bake a burst that heals.',
+    specials: { neutral: 'Gumdrop', side: 'Run Run Run', up: 'Icing Swing', down: 'Cookie Cutter' },
+    halfW: 18, height: 28, hurtR: 20,
+    weight: 70,
+    walkSpeed: 440, airSpeed: 350, airAccel: 2800,
+    gravity: 2300, maxFall: 920, fastFall: 1500,
+    jumpSpeed: 840, airJumpSpeed: 760, airJumps: 2,
+    upSpecials: 1, sideSpecials: 1, hoverFrames: 0,
+    moves: {
+      // Little kicks.
+      jab: { frames: 9, hitboxes: [hb(2, 3, 24, 2, 15, 2, 70, 16, 10)], next: { move: 'jab2', from: 4 } },
+      jab2: { frames: 9, hitboxes: [hb(2, 3, 26, 2, 15, 2, 70, 16, 10)], next: { move: 'jab3', from: 4 } },
+      jab3: { frames: 20, hitboxes: [hb(3, 5, 28, 0, 20, 5, 42, 40, 68)] },
+      ftilt: { frames: 20, hitboxes: [hb(4, 7, 34, 0, 18, 7, 38, 30, 90)] },
+      utilt: { frames: 18, hitboxes: [hb(3, 7, 4, 30, 22, 6, 92, 34, 88)] },
+      dtilt: { frames: 14, hitboxes: [hb(3, 5, 32, -12, 16, 4, 30, 28, 52)] },
+      // A flying headbutt.
+      fsmash: { frames: 44, charge: { frame: 10, max: 60, dmg: 0.4 }, lunge: { frame: 12, vx: 460, vy: 0 }, hitboxes: [hb(13, 16, 36, 4, 24, 14, 38, 36, 98)] },
+      usmash: { frames: 40, charge: { frame: 7, max: 60, dmg: 0.4 }, hitboxes: [hb(9, 14, 0, 38, 26, 13, 90, 34, 98)] },
+      dsmash: {
+        frames: 38, charge: { frame: 6, max: 60, dmg: 0.4 },
+        hitboxes: [hb(8, 10, 34, -12, 20, 11, 25, 34, 92), hb(12, 14, -34, -12, 20, 11, 155, 34, 92)],
+      },
+      nair: { frames: 24, landLag: 5, hitboxes: [hb(3, 11, 0, 0, 30, 7, 50, 26, 80)] },
+      fair: { frames: 24, landLag: 6, hitboxes: [hb(5, 8, 32, 2, 20, 9, 40, 28, 92)] },
+      bair: { frames: 22, landLag: 6, hitboxes: [hb(4, 7, -30, 2, 20, 10, 145, 28, 98)] },
+      uair: { frames: 20, landLag: 5, hitboxes: [hb(3, 7, 0, 32, 20, 7, 88, 28, 90)] },
+      dair: { frames: 28, landLag: 9, hitboxes: [hb(7, 10, 0, -28, 18, 9, -70, 24, 82)] },
+      // Flicks a gumdrop.
+      nspecial: { frames: 22, projectile: { frame: 7, def: GUMDROP } },
+      // Run, run, as fast as you can: a long dash that hits all the way.
+      sspecial: {
+        frames: 44, recovery: true, rehit: 5, gravity: { from: 1, to: 22, scale: 0.25 }, lunge: { frame: 4, vx: 980, vy: 60 },
+        hitboxes: [hb(4, 24, 26, 2, 20, 2, 60, 18, 10), hb(25, 27, 30, 2, 24, 6, 40, 42, 74)],
+      },
+      // An icing line: latches onto a nearby corner, else a plain hop up.
+      uspecial: { frames: 30, recovery: true, helpless: true, tether: { frame: 6, range: 280 }, boost: { frame: 6, speed: 1000, steer: 34 }, hitboxes: [hb(6, 10, 0, 10, 26, 6, 85, 46, 60)] },
+      // A cookie-cutter spin.
+      dspecial: { frames: 30, rehit: 5, hitboxes: [hb(5, 16, 0, 0, 34, 2, 60, 20, 10), hb(17, 18, 0, 0, 38, 5, 60, 44, 70)] },
+      // Fresh Batch (full meter): a burst of oven heat; it takes some damage off too.
+      freshbatch: {
+        frames: 40, invincible: { from: 1, to: 16 },
+        hitboxes: [hb(12, 15, 0, 2, 58, 10, 70, 50, 84)],
+      },
+      grab: grab(24, 18, 6, 26),
+      pummel: pummel(2, 12),
+      fthrow: throwMove(22, 9, 7, 40, 52, 66),
+      bthrow: throwMove(26, 11, 8, 140, 48, 86, true),
+      uthrow: throwMove(24, 10, 6, 90, 60, 60),
+      dthrow: throwMove(24, 11, 5, 75, 44, 42),
+      getupattack: getupAttack(28, 6),
+    },
+  };
+}
+
 /**
  * Every up smash reaches the low platforms (UP_SMASH): where a fighter's up smash falls short, a hitbox like its
  * strongest one is added at the top of the move, high enough to hit even the smallest fighter standing up there.
@@ -1276,4 +1719,10 @@ export const FIGHTERS: Record<FighterId, FighterDef> = reachPlatforms({
   turkey: turkey(),
   pilgrim: pilgrim(),
   firstlight: firstlight(),
+  snowman: snowman(),
+  nutcracker: nutcracker(),
+  elf: elf(),
+  santa: santa(),
+  reindeer: reindeer(),
+  gingerbread: gingerbread(),
 });

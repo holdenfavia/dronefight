@@ -12,6 +12,7 @@ import { drawFighterFigure } from './figures';
 import { cheatOn } from './cheats';
 import { isPurpleSkyTime } from './purpleSky';
 import * as detail from './stageDetail';
+import * as winter from './winterStage';
 import { FOCAL, blend, box3, contactShadow, cylinder, frontRect, glow, haze, project, rgbOf, sphere, tone, toHex, type BoxStyle, type Eye } from './shade';
 
 interface Particle {
@@ -300,6 +301,19 @@ export class Renderer {
             case 'groove': text = 'ON BEAT'; break;
             case 'offbeat': text = 'OFF BEAT'; color = '#9aa4b0'; break;
             case 'encore': text = 'ENCORE!'; break;
+            // Christmas (ADR-0091).
+            case 'snowpack': text = `SNOW ${f.meter}`; break;
+            case 'avalanche': text = 'AVALANCHE!'; break;
+            case 'woundUp': text = 'WOUND UP'; break;
+            case 'crunch': text = 'CRUNCH!'; break;
+            case 'sugarReady': text = 'SUGAR READY'; break;
+            case 'sugarrush': text = 'SUGAR RUSH!'; break;
+            case 'naughty': text = 'NAUGHTY!'; color = '#5a5a66'; break;
+            case 'coal': text = 'COAL!'; color = '#5a5a66'; break;
+            case 'glow': text = `GLOW ${f.meter}`; break;
+            case 'beacon': text = 'BEACON!'; break;
+            case 'batchReady': text = 'OVEN HOT'; break;
+            case 'freshbatch': text = 'FRESH BATCH! HEALED'; break;
             default: text = '';
           }
           // Small, frequent ones only get a ring; the big moments get a popup.
@@ -617,6 +631,7 @@ export class Renderer {
     }
     this.drawParticles(true);
     if (this.fall) this.drawFallingLeaves();
+    if (this.stageId === 'village') winter.drawSnowfall(this.view());
     this.drawKoBeams();
     for (const p of this.popups) {
       ctx.globalAlpha = Math.min(1, p.life / 12);
@@ -633,6 +648,7 @@ export class Renderer {
 
   private drawSky(): void {
     const ctx = this.ctx;
+    if (this.stageId === 'village') { winter.drawWinterSky(this.view(), this.cam.y); return; }
     const fall = this.fall && !this.purple;
     const L = this.fall || this.purple ? CITY_LOOKS.rooftop : this.look;
     // The sun drifts a hair with the camera; the cache is a little bigger than the screen so it can slide.
@@ -737,6 +753,7 @@ export class Renderer {
       };
     };
     if (this.fall) { this.drawCountryside(layer); return; }
+    if (this.stageId === 'village') { winter.drawWinterBackdrop(this.view(), layer); return; }
     const look = this.look;
     const horizonRgb = rgbOf(this.purple ? PALETTE.purpleHorizon : look.skyHorizon);
     const light = this.light();
@@ -1112,6 +1129,7 @@ export class Renderer {
     const s = this.scale;
     const id = world.stage.id;
     const main = world.stage.platforms[0]!;
+    if (id === 'village') { winter.drawWinterStage(this.view(), world.stage); return; }
     // What holds the main platform up.
     if (id === 'rooftop') {
       // The building under the roof, all the way down, with recessed windows.
@@ -1186,6 +1204,7 @@ export class Renderer {
   /** Birds crossing the sky, a kind for each stage. */
   private drawSkyBirds(): void {
     const v = this.view();
+    if (this.stageId === 'village') return;
     if (this.fall) detail.drawBirds(v, 5, '#3a2614', 0.7, 0.18, 3);
     else if (this.stageId === 'cranes') detail.drawBirds(v, 6, 'rgba(255,255,255,0.8)', 0.5, 0.22, 1);
     else if (this.stageId === 'helipad') detail.drawBirds(v, 4, 'rgba(30,24,40,0.7)', 0.6, 0.3, 2);
@@ -2085,6 +2104,7 @@ export class Renderer {
       ctx.fill();
       ctx.stroke();
     };
+    if (winter.drawChristmasLook(ctx, p, px, py, r)) return true;
     switch (p.look) {
       case 'star': {
         // A spinning four-point throwing star.

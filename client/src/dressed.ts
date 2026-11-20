@@ -7,6 +7,7 @@ import type { FighterId } from '../../shared/fighter/fighters';
 import { PALETTE } from './config';
 import type { FigurePose } from './figures';
 import { drawDressedSeasonal } from './dressedSeasonal';
+import { CHRISTMAS_DRESSED, drawDressedChristmas } from './dressedChristmas';
 
 export interface Skeleton {
   H: number;
@@ -33,6 +34,8 @@ export const DRESSED: ReadonlySet<FighterId> = new Set<FighterId>([
   'brawler', 'blade', 'spark', 'titan', 'ninja', 'gunslinger', 'chef', 'ghost', 'yoyo', 'bard',
   // River and the Thanksgiving fighters (dressedSeasonal.ts).
   'river', 'turkey', 'pilgrim', 'firstlight',
+  // The Christmas fighters (dressedChristmas.ts, ADR-0091).
+  'snowman', 'nutcracker', 'elf', 'santa', 'reindeer', 'gingerbread',
 ]);
 
 /** Fixed colors of each look; the slot color fills the main piece. */
@@ -935,6 +938,7 @@ export function drawDressed(ctx: CanvasRenderingContext2D, id: FighterId, pose: 
       break;
     }
     default:
-      drawDressedSeasonal(ctx, id, pose, sk);
+      if (CHRISTMAS_DRESSED.has(id)) drawDressedChristmas(ctx, id, pose, sk);
+      else drawDressedSeasonal(ctx, id, pose, sk);
   }
 }
