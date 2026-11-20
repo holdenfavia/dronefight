@@ -43,7 +43,7 @@ Check items off as they land. Add items as they're discovered. Moving to a new p
 - [x] Start online fights from the lobby; host's stage, stocks and CPUs; leavers replaced by CPUs; late joiners watch (ADR-0076)
 - [x] Each player on their own computer
 - [x] Measure the online input delay; keep the input queues short (ADR-0088)
-- [ ] Predict your own fighter online (rollback) so it reacts like offline
+- [x] Predict your own fighter online (rollback) so it reacts like offline (ADR-0090)
 - [ ] Deploy and play over the internet
 
 ## Later

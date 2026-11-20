@@ -47,7 +47,7 @@ let matchSetup: MatchSetup | null = null;
 let attractBots: Bot[] = world.fighters.map((f) => createBot(f.slot, 2, 3));
 
 /** Online fight state (ADR-0076). */
-type QueuedFrame = { kind: 'frame'; frame: number; inputs: number[] } | { kind: 'snap'; frame: number; world: string };
+type QueuedFrame = { kind: 'frame'; frame: number; inputs: number[]; ack?: number[] } | { kind: 'snap'; frame: number; world: string };
 let onlineQueue: QueuedFrame[] = [];
 /** Your fighter slot online, -1 when watching. */
 let onlineYou = -1;
@@ -59,6 +59,20 @@ let onlineWindowTicks = 0;
 let onlineDrain = 0;
 /** The Esc menu is open over an online fight. */
 let onlineMenu = false;
+/**
+ * Prediction (ADR-0090), when you have a fighter: `confirmed` is the server's fight, stepped as its frames arrive;
+ * `world` (what's shown) is rebuilt from it every tick with your keys the server hasn't used yet.
+ */
+let confirmed: World | null = null;
+/** Your keys sent but not yet used by the server, oldest first. */
+let unacked: { seq: number; bits: number }[] = [];
+let inputSeq = 0;
+/** Everyone's keys in the newest confirmed frame (the guess for what they keep pressing). */
+let lastBits: number[] = [];
+/** Newest predicted frame already shown: its sounds and effects have played. */
+let shownFrame = 0;
+/** Events played from predicted frames, by frame, so the confirmed ones aren't played twice. */
+let playedEvents = new Map<number, Set<string>>();
 let desyncs = 0;
 
 /** Three quick Space taps on a menu open the cheat code box (ADR-0077). */
@@ -72,9 +86,9 @@ applyCheatLooks();
 
 net.match = {
   onMatch: (start, you) => startOnline(start, you),
-  onFrames: (from, inputs) => {
+  onFrames: (from, inputs, ack) => {
     if (mode !== 'online') return;
-    inputs.forEach((bits, i) => onlineQueue.push({ kind: 'frame', frame: from + i, inputs: bits }));
+    inputs.forEach((bits, i) => onlineQueue.push({ kind: 'frame', frame: from + i, inputs: bits, ack: i === inputs.length - 1 ? ack : undefined }));
   },
   onSnap: (frame, json) => {
     if (mode === 'online') onlineQueue.push({ kind: 'snap', frame, world: json });
@@ -151,6 +165,12 @@ function startOnline(start: MatchStart, you: number): void {
   onlineDrain = 0;
   onlineMenu = false;
   onlineResults = true;
+  confirmed = you >= 0 ? cloneWorld(world) : null;
+  unacked = [];
+  inputSeq = 0;
+  lastBits = start.fighters.map(() => 0);
+  shownFrame = world.frame;
+  playedEvents = new Map();
   // Each player's own tag and color (ADR-0083), the same on every screen in the room.
   setFightColors(resolveColors(start.fighters.map((f) => (f.member >= 0 ? f.color ?? -1 : -1))));
   const tagOf = (f: MatchStart['fighters'][number], i: number) => (f.member < 0 ? `CPU ${f.level}` : f.tag || (i === you ? 'YOU' : `P${i + 1}`));
@@ -172,7 +192,11 @@ function startOnline(start: MatchStart, you: number): void {
 function tickOnline(): void {
   // Read every tick, even with the menu open, so keys pressed in the menu don't reach the fight afterwards.
   const keys = encodeInput(keyboard.read());
-  net.sendInput(onlineYou >= 0 && !onlineMenu ? keys : 0);
+  if (confirmed) {
+    tickPredicted(onlineMenu ? 0 : keys);
+    return;
+  }
+  net.sendInput(0, ++inputSeq);
   const frames = () => onlineQueue.reduce((n, q) => n + (q.kind === 'frame' ? 1 : 0), 0);
   let waiting = frames();
   if (onlineBuffering) {
@@ -216,13 +240,90 @@ function tickOnline(): void {
 
 /** The server's world after `frame`: ours should match it; if not, take the server's. */
 function applySnapshot(frame: number, json: string): void {
-  if (frame === world.frame && serializeWorld(world) === json) return;
+  const ours = confirmed ?? world;
+  if (frame === ours.frame && serializeWorld(ours) === json) return;
   const w = deserializeWorld(json);
   if (!w) return;
   // Tiny floating-point differences between browsers and the server's Node are expected now and then.
-  if (frame === world.frame) console.debug(`dronefight: online fight drifted at frame ${frame}; using the server's (${++desyncs} so far): ${describeDrift(serializeWorld(world), json)}`);
+  if (frame === ours.frame) console.debug(`dronefight: online fight drifted at frame ${frame}; using the server's (${++desyncs} so far): ${describeDrift(serializeWorld(ours), json)}`);
+  if (confirmed) {
+    confirmed = w;
+    return;
+  }
   world = w;
   prev = world.fighters.map((f) => ({ x: f.x, y: f.y }));
+}
+
+/** A copy of a world to step ahead without touching the original (the stage is shared, never changed). */
+function cloneWorld(w: World): World {
+  const copy = structuredClone({ ...w, stage: null, events: [] }) as unknown as World;
+  copy.stage = w.stage;
+  return copy;
+}
+
+/** Identifies an event within its frame, to tell whether a predicted frame already played it. */
+function eventKey(e: GameEvent): string {
+  const r = e as Partial<Record<'slot' | 'attacker' | 'target' | 'look', unknown>>;
+  return `${e.type}|${r.slot ?? ''}|${r.attacker ?? ''}|${r.target ?? ''}|${r.look ?? ''}`;
+}
+
+/**
+ * Online with a fighter of your own (ADR-0090): send this tick's keys, step every frame the server has sent into
+ * the confirmed fight, then show it stepped ahead with your keys the server hasn't used yet. A wrong guess about
+ * anyone else's keys is fixed on the next tick, when the fight is rebuilt from the newer confirmed frames.
+ */
+function tickPredicted(keys: number): void {
+  const seq = ++inputSeq;
+  net.sendInput(keys, seq);
+  unacked.push({ seq, bits: keys });
+  let fight = confirmed!;
+  // The server's frames, as soon as they arrive: no jitter buffer, the prediction covers the gaps.
+  while (onlineQueue.length) {
+    const q = onlineQueue.shift()!;
+    if (q.kind === 'snap') {
+      applySnapshot(q.frame, q.world);
+      fight = confirmed!;
+      continue;
+    }
+    if (q.frame !== fight.frame) continue; // Already past it (a snapshot moved us on).
+    step(fight, q.inputs.map(decodeInput));
+    lastBits = q.inputs;
+    // Sounds and effects the prediction didn't show (someone else's surprise), late rather than never.
+    const played = playedEvents.get(fight.frame);
+    const missed = fight.events.filter((e) => !played?.has(eventKey(e)) && e.type !== 'go');
+    if (fight.frame <= shownFrame && missed.length) {
+      playEvents(missed, fight);
+      renderer.onEvents(fight, missed);
+    }
+    playedEvents.delete(fight.frame);
+    if (fight.over && ++overTimer >= GAME_OVER_FRAMES) {
+      world = fight;
+      showResults();
+      return;
+    }
+    const acked = q.ack?.[onlineYou];
+    if (acked !== undefined) unacked = unacked.filter((u) => u.seq > acked);
+  }
+  // Stalled for long (a hidden tab): the oldest keys won't be used as predicted any more.
+  if (unacked.length > ONLINE.maxPredictFrames * 3) unacked = unacked.slice(-ONLINE.maxPredictFrames);
+  // Rebuild what's shown: the confirmed fight plus your pending keys, everyone else holding theirs.
+  const shown = cloneWorld(fight);
+  const ahead = unacked.slice(0, ONLINE.maxPredictFrames);
+  let before = shown.fighters.map((f) => ({ x: f.x, y: f.y }));
+  for (const u of ahead) {
+    before = shown.fighters.map((f) => ({ x: f.x, y: f.y }));
+    const countdown = Math.ceil(shown.countdown / 60);
+    step(shown, lastBits.map((b, i) => decodeInput(i === onlineYou ? u.bits : b)));
+    if (shown.frame > shownFrame) {
+      shownFrame = shown.frame;
+      playedEvents.set(shown.frame, new Set(shown.events.map(eventKey)));
+      frameEffects(shown, countdown);
+    }
+  }
+  // Forget what was played for frames long confirmed.
+  for (const f of playedEvents.keys()) if (f <= fight.frame) playedEvents.delete(f);
+  world = shown;
+  prev = before;
 }
 
 function pause(): void {
@@ -242,6 +343,7 @@ function resume(): void {
 /** Back to the menus with CPUs fighting behind them; `screen` picks which menu. */
 function toMenu(screen: 'select' | 'main' | 'online' | 'stages' = 'main'): void {
   mode = 'menu';
+  confirmed = null;
   onlineMenu = false;
   onlineQueue = [];
   ui.hideHud();
@@ -259,6 +361,9 @@ function toMenu(screen: 'select' | 'main' | 'online' | 'stages' = 'main'): void 
 
 function showResults(): void {
   const online = mode === 'online';
+  // The results are the server's, not a guess.
+  if (confirmed) world = confirmed;
+  confirmed = null;
   mode = 'results';
   onlineMenu = false;
   onlineQueue = [];
@@ -274,7 +379,7 @@ function pan(x: number): number {
   return Math.max(-0.8, Math.min(0.8, x / 900));
 }
 
-function playEvents(events: readonly GameEvent[]): void {
+function playEvents(events: readonly GameEvent[], w: World = world): void {
   for (const e of events) {
     switch (e.type) {
       case 'hit':
@@ -284,17 +389,17 @@ function playEvents(events: readonly GameEvent[]): void {
       case 'shieldhit': sfx.shieldHit(pan(e.x)); break;
       case 'parry': sfx.parry(pan(e.x)); break;
       case 'counter': sfx.parry(pan(e.x)); break;
-      case 'grab': sfx.grab(pan(world.fighters[e.slot]!.x)); break;
-      case 'throw': sfx.swing(pan(world.fighters[e.slot]!.x)); break;
-      case 'tech': sfx.land(pan(world.fighters[e.slot]!.x)); break;
+      case 'grab': sfx.grab(pan(w.fighters[e.slot]!.x)); break;
+      case 'throw': sfx.swing(pan(w.fighters[e.slot]!.x)); break;
+      case 'tech': sfx.land(pan(w.fighters[e.slot]!.x)); break;
       case 'shieldbreak': sfx.shieldBreak(0); break;
       case 'ko': sfx.ko(pan(e.x)); break;
-      case 'jump': sfx.jump(e.air, pan(world.fighters[e.slot]!.x)); break;
-      case 'land': if (e.hard) sfx.land(pan(world.fighters[e.slot]!.x)); break;
-      case 'swing': sfx.swing(pan(world.fighters[e.slot]!.x)); break;
-      case 'shot': sfx.shot(e.kind, e.look, pan(world.fighters[e.slot]!.x)); break;
+      case 'jump': sfx.jump(e.air, pan(w.fighters[e.slot]!.x)); break;
+      case 'land': if (e.hard) sfx.land(pan(w.fighters[e.slot]!.x)); break;
+      case 'swing': sfx.swing(pan(w.fighters[e.slot]!.x)); break;
+      case 'shot': sfx.shot(e.kind, e.look, pan(w.fighters[e.slot]!.x)); break;
       case 'reflect': sfx.parry(pan(e.x)); break;
-      case 'status': sfx.status(e.status, pan(world.fighters[e.slot]!.x)); break;
+      case 'status': sfx.status(e.status, pan(w.fighters[e.slot]!.x)); break;
       case 'explode': if (e.look === 'smoke' || e.look === 'tomato' || e.look === 'pie') sfx.land(pan(e.x)); else sfx.explode(pan(e.x)); break;
       case 'go': sfx.beep(true); goTimer = GO_FRAMES; break;
       default: break;
@@ -317,19 +422,24 @@ function advance(inputs: Input[], effects = true): void {
   prev = world.fighters.map((f) => ({ x: f.x, y: f.y }));
   const before = Math.ceil(world.countdown / 60);
   step(world, inputs);
-  const after = Math.ceil(world.countdown / 60);
   if (!effects) return;
-  if (world.countdown > 0 && after !== before) sfx.beep(false);
-  playEvents(world.events);
-  renderer.onEvents(world, world.events);
-  renderer.tick(world);
-  ui.updateHud(world);
-  ui.setPrimed(keyboard.primed);
-  if (world.countdown > 0) ui.setBanner(String(after));
-  else if (goTimer > 0) { goTimer--; ui.setBanner('GO!'); }
-  else if (world.over) ui.setBanner('GAME!');
-  else ui.setBanner('');
+  frameEffects(world, before);
   if (world.over && ++overTimer >= GAME_OVER_FRAMES) showResults();
+}
+
+/** Sounds, effects, HUD and banners for a frame just stepped (`countdownBefore`: whole seconds left before it). */
+function frameEffects(w: World, countdownBefore: number): void {
+  const after = Math.ceil(w.countdown / 60);
+  if (w.countdown > 0 && after !== countdownBefore) sfx.beep(false);
+  playEvents(w.events, w);
+  renderer.onEvents(w, w.events);
+  renderer.tick(w);
+  ui.updateHud(w);
+  ui.setPrimed(keyboard.primed);
+  if (w.countdown > 0) ui.setBanner(String(after));
+  else if (goTimer > 0) { goTimer--; ui.setBanner('GO!'); }
+  else if (w.over) ui.setBanner('GAME!');
+  else ui.setBanner('');
 }
 
 function stepAttract(): void {
@@ -409,7 +519,10 @@ document.addEventListener('visibilitychange', () => {
 renderer.reset(world);
 renderer.setTags(world.fighters.map(() => ({ text: 'CPU', cpu: true })));
 // An invite link (?room=42) opens the lobby and joins; otherwise boot to the title screen (ADR-0075).
-const invite = new URLSearchParams(location.search).get('room');
+const params = new URLSearchParams(location.search);
+// `?debug`: the fight and the connection on `window.dronefight`, for timing tests (docs/RUNBOOK.md).
+if (params.has('debug')) Object.assign(window, { dronefight: { net, get world() { return world; }, get confirmed() { return confirmed; }, get you() { return onlineYou; } } });
+const invite = params.get('room');
 if (invite && /^\d{2}$/.test(invite)) {
   ui.showOnline();
   net.join(invite);

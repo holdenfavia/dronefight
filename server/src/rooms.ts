@@ -113,7 +113,7 @@ export class RoomManager {
       }
       case 'in': {
         const at = this.peerRoom.get(peer);
-        at?.room.match?.input(at.id, msg.b);
+        at?.room.match?.input(at.id, msg.b, msg.s ?? -1);
         return;
       }
     }
@@ -166,7 +166,7 @@ export class RoomManager {
 
   private flush(room: Room): void {
     if (!room.pending.length) return;
-    this.broadcast(room, { t: 'frames', from: room.pendingFrom, inputs: room.pending });
+    this.broadcast(room, { t: 'frames', from: room.pendingFrom, inputs: room.pending, ack: room.match?.acks() ?? [] });
     room.pending = [];
   }
 

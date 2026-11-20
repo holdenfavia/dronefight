@@ -9,8 +9,10 @@ interface Slot {
   /** Room member playing this fighter, or -1 for a CPU. */
   member: number;
   bot: Bot | null;
-  queue: number[];
+  queue: { b: number; s: number }[];
   last: number;
+  /** Sequence number of the last input used (ADR-0090), -1 for none. */
+  ack: number;
   /** Frames since this member's last input arrived. */
   starved: number;
 }
@@ -27,6 +29,7 @@ export class OnlineMatch {
       bot: f.member < 0 ? createBot(i, (f.level || 2) as BotLevel, start.seed) : null,
       queue: [],
       last: 0,
+      ack: -1,
       starved: 0,
     }));
   }
@@ -36,10 +39,15 @@ export class OnlineMatch {
   }
 
   /** A member's keys for their next frame. */
-  input(member: number, bits: number): void {
+  input(member: number, bits: number, seq = -1): void {
     const s = this.slots.find((x) => x.member === member);
     if (!s) return;
-    s.queue.push(bits);
+    s.queue.push({ b: bits, s: seq });
+  }
+
+  /** Per fighter, the sequence number of the last input used (-1 for none or a CPU). */
+  acks(): number[] {
+    return this.slots.map((s) => (s.bot ? -1 : s.ack));
   }
 
   /** The member left: a CPU takes over their fighter. Returns its slot, or -1. */
@@ -70,12 +78,14 @@ export class OnlineMatch {
       // drains: fold the oldest inputs into the next one, keeping keys newly pressed in them (ADR-0088).
       while (s.queue.length > MAX_QUEUED_INPUTS + 1) {
         const older = s.queue.shift()!;
-        s.queue[0] = mergeInputs(s.last, older, s.queue[0]!);
-        s.last = older;
+        const newer = s.queue[0]!;
+        s.queue[0] = { b: mergeInputs(s.last, older.b, newer.b), s: newer.s };
+        s.last = older.b;
       }
       const next = s.queue.shift();
       if (next !== undefined) {
-        s.last = next;
+        s.last = next.b;
+        s.ack = next.s;
         s.starved = 0;
       } else if (++s.starved > INPUT_HOLD_FRAMES) {
         s.last = encodeInput(NO_INPUT);

@@ -27,7 +27,8 @@ export interface RoomInfo {
 /** What the game loop does with an online fight. */
 export interface MatchHandlers {
   onMatch(start: MatchStart, you: number): void;
-  onFrames(from: number, inputs: number[][]): void;
+  /** `ack`: per fighter, the last input sequence number the server used by the end of these frames (ADR-0090). */
+  onFrames(from: number, inputs: number[][], ack: number[] | undefined): void;
   onSnap(frame: number, world: string): void;
   onCpu(slot: number, level: BotLevel): void;
   onEnd(): void;
@@ -114,9 +115,9 @@ export class NetClient {
     this.send({ t: 'start' });
   }
 
-  /** Your keys for this frame of an online fight. */
-  sendInput(bits: number): void {
-    if (this.socket && this.status === 'online' && this.room) this.socket.send(`{"t":"in","b":${bits}}`);
+  /** Your keys for this frame of an online fight, numbered so the server's acks say which it used (ADR-0090). */
+  sendInput(bits: number, seq: number): void {
+    if (this.socket && this.status === 'online' && this.room) this.socket.send(`{"t":"in","b":${bits},"s":${seq}}`);
   }
 
   private sharePick(): void {
@@ -194,7 +195,7 @@ export class NetClient {
         return;
       }
       case 'match': this.match?.onMatch(msg.start, msg.you); return;
-      case 'frames': this.match?.onFrames(msg.from, msg.inputs); return;
+      case 'frames': this.match?.onFrames(msg.from, msg.inputs, msg.ack); return;
       case 'snap': this.match?.onSnap(msg.frame, msg.world); return;
       case 'cpu': this.match?.onCpu(msg.slot, msg.level); return;
       case 'end':

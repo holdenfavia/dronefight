@@ -50,6 +50,7 @@ The menu has four slots. Click a slot's top button to cycle **You → CPU Easy/N
 - Try it locally: `npm run dev`, open the game in two browser windows (or two computers on the same network: `npm run dev -- --host`, then `http://<your-ip>:5173`), Online, Make a room in one, join with the code in the other, Ready in both, Start.
 - If a fight drifts (rare last-digit float differences between a browser and Node), the client takes the server's snapshot within a second; the console logs it at the Debug (Verbose) level with the field that differed.
 - `World` must stay plain JSON (no Maps, class instances or Infinity), or snapshots break; `shared/online.test.ts` checks a restored world plays on identically.
+- Your own fighter is predicted (ADR-0090): `world` in `client/src/main.ts` is what's shown, `confirmed` is the server's fight. Open the page with `?debug` to get both, plus `net` and your slot `you`, on `window.dronefight` for timing tests. To test lag locally, put a TCP proxy that delays each direction in front of the server and open the page through it (measured at 60 ms round trip: your fighter moves about 17 ms after a key press, the server's copy about 117 ms).
 - Bump `PROTOCOL_VERSION` in `shared/constants.ts` whenever `shared/protocol.ts` or `shared/online.ts` message shapes change; old pages are told to refresh.
 
 ## Deploy (Fly.io, ADR-0021)
