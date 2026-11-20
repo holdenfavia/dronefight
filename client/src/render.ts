@@ -12,7 +12,7 @@ import { drawFighterFigure } from './figures';
 import { cheatOn } from './cheats';
 import { isPurpleSkyTime } from './purpleSky';
 import * as detail from './stageDetail';
-import { blend, box3, contactShadow, cylinder, frontRect, glow, haze, project, rgbOf, sphere, tone, toHex, type BoxStyle, type Eye } from './shade';
+import { FOCAL, blend, box3, contactShadow, cylinder, frontRect, glow, haze, project, rgbOf, sphere, tone, toHex, type BoxStyle, type Eye } from './shade';
 
 interface Particle {
   x: number;
@@ -60,6 +60,28 @@ const STAGE_DEPTH = {
   beam: 16,
   /** Where the eye sits, as a fraction of the screen height: above the middle, so you look down onto the stage. */
   eyeHeight: 0.3,
+} as const;
+
+/** The Harvest Farm's ground, seen from above (world units of depth). */
+const FARM_FIELD = {
+  /** Where the grass field meets the hills. */
+  back: 420,
+  /** Half the width (in depth) of the dirt lane the fighters stand on. */
+  lane: 34,
+  /** Spacing of the plowed rows in the pumpkin patch in front. */
+  furrow: 56,
+  /** How much bigger than at depth 0 the nearest ground may get (caps how far toward you it is drawn). */
+  maxNear: 4,
+} as const;
+
+/** The Harvest Farm oak's crown, cached as an image (world units around the bough; y up from the bough). */
+const OAK_CROWN = {
+  /** Image width and height. */
+  w: 520,
+  h: 280,
+  /** Height above the bough of the image's middle row, and how far above that the image's top is. */
+  mid: 70,
+  top: 150,
 } as const;
 
 /** "r,g,b" as "#rrggbb". */
@@ -606,6 +628,7 @@ export class Renderer {
   }
 
   /** The sky behind everything: gradient, sun and light shafts, painted into a cache and redrawn every few frames. */
+  private oakCache: { canvas: HTMLCanvasElement; key: string } | null = null;
   private skyCache: { canvas: HTMLCanvasElement; key: string; frame: number } | null = null;
 
   private drawSky(): void {
@@ -1156,7 +1179,7 @@ export class Renderer {
     else if (id === 'harvest') {
       const wagon = world.stage.platforms.find((p) => !p.solid && p.x1 > 0 && p.y < 200);
       if (wagon) detail.drawLantern(v, wagon.x1 + 10, wagon.y);
-      detail.drawFarmFront(v, main.y, main.depth);
+      detail.drawFarmFront(v, main.y);
     }
   }
 
@@ -1499,23 +1522,227 @@ export class Renderer {
       ctx.lineTo(...P(bx + 2, ground + 150 + (bx & 7) * 6));
     }
     ctx.stroke();
-    // The canopy: clusters set back in depth, the far ones darker, each lit from the sun side.
+    // The crown is painted once per zoom step into its own canvas (dozens of lit clusters are too dear every frame).
+    const S = Math.round(this.scale * 20) / 20;
+    const key = `${S}|${light}|${this.purple}`;
+    if (!this.oakCache || this.oakCache.key !== key) {
+      const canvas = this.oakCache?.canvas ?? document.createElement('canvas');
+      canvas.width = Math.ceil(OAK_CROWN.w * S);
+      canvas.height = Math.ceil(OAK_CROWN.h * S);
+      const c = canvas.getContext('2d')!;
+      c.clearRect(0, 0, canvas.width, canvas.height);
+      const ox = canvas.width / 2;
+      const oy = OAK_CROWN.top * S;
+      // Seen head-on from the crown's middle: x and height from the bough, set back by depth z.
+      const at = (x: number, y: number, z: number): [number, number] => {
+        const f = 1500 / (1500 + z * S);
+        return [ox + x * S * f, oy - (y - OAK_CROWN.mid) * S * f];
+      };
+      this.paintOakCrown(c, { vx: ox, vy: oy, s: S, light }, at, S);
+      this.oakCache = { canvas, key };
+    }
+    const k = this.scale / S;
+    const [ax, ay] = this.at(0, bough + OAK_CROWN.mid, 0);
+    const cv = this.oakCache.canvas;
+    ctx.drawImage(cv, ax - (cv.width / 2) * k, ay - OAK_CROWN.top * S * k, cv.width * k, cv.height * k);
+  }
+
+  /** The oak's limbs and crown, in the crown's own coordinates (y measured up from the bough). */
+  private paintOakCrown(ctx: CanvasRenderingContext2D, e: Eye, at: (x: number, y: number, z: number) => [number, number], scale: number): void {
+    const bough = 0;
+    const light = e.light;
+    const P = (x: number, y: number) => at(x, y, 0);
+    // Limbs reaching up into the crown, so the leaves hang off branches instead of sitting on a shelf.
+    ctx.strokeStyle = '#4a2f1c';
+    ctx.lineCap = 'round';
+    for (const [x1, y1, x2, y2, w] of [[-60, bough - 6, -150, bough + 60, 9], [60, bough - 6, 150, bough + 50, 9], [-6, bough - 20, -50, bough + 120, 11], [8, bough - 20, 70, bough + 115, 10], [-110, bough + 40, -180, bough + 30, 5], [120, bough + 35, 190, bough + 15, 5]] as const) {
+      ctx.lineWidth = Math.max(1, w * scale);
+      ctx.beginPath();
+      ctx.moveTo(...P(x1, y1));
+      ctx.quadraticCurveTo(...P((x1 + x2) / 2, (y1 + y2) / 2 + 18), ...P(x2, y2));
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+    // The crown: a dome of leaf clusters around a dark core, set back in depth. Clusters low in the crown are in its
+    // own shade, the top ones catch the sun, and a few hang below the bough at the ends.
     const leaves = this.purple ? ['#7a4ab0', '#8a63c9', '#6c4aa8'] : FALL.leaves;
-    const clusters: { x: number; y: number; r: number; z: number; c: string }[] = [];
-    for (let i = 0; i < 16; i++) {
-      clusters.push({
-        x: -150 + i * 20 + ((i * 29) % 17),
-        y: bough + 30 + ((i * 41) % 50),
-        r: 24 + ((i * 13) % 14),
-        z: ((i * 37) % 80) + 10,
-        c: leaves[i % leaves.length]!,
-      });
+    const cx0 = 5;
+    const cy0 = bough + 70;
+    const rx = 205;
+    const ry = 80;
+    const [ccx, ccy] = at(cx0, cy0 - 5, 60);
+    const core = ctx.createRadialGradient(ccx, ccy, 0, ccx, ccy, rx * scale);
+    core.addColorStop(0, this.purple ? '#3e2a66' : '#6a2a14');
+    core.addColorStop(1, this.purple ? 'rgba(62,42,102,0)' : 'rgba(106,42,20,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.ellipse(ccx, ccy, rx * 0.95 * scale, ry * 0.95 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const clusters: { x: number; y: number; r: number; z: number; c: string; shade: number }[] = [];
+    const n = 46;
+    for (let i = 0; i < n; i++) {
+      const a = i * 2.39996;
+      const rr = Math.sqrt((i + 0.5) / n);
+      const x = cx0 + Math.cos(a) * rx * rr;
+      const y = cy0 + Math.sin(a) * ry * rr * (Math.sin(a) < 0 ? 0.8 : 1);
+      // Toward the middle of the dome the clusters bulge out toward you; at its rim they sit further back.
+      const z = 20 + rr * 70 - ((i * 37) % 30);
+      const up = (y - (cy0 - ry)) / (2 * ry);
+      clusters.push({ x, y, r: 26 + ((i * 13) % 16) - rr * 6, z, c: leaves[i % leaves.length]!, shade: -0.32 + up * 0.42 });
+    }
+    for (const [x, y] of [[-175, bough - 10], [-140, bough - 22], [170, bough - 12], [140, bough - 24], [-195, bough + 25], [200, bough + 20]] as const) {
+      clusters.push({ x, y, r: 20, z: 30, c: leaves[(x & 3) % leaves.length]!, shade: -0.28 });
     }
     clusters.sort((a, b) => b.z - a.z);
     for (const c of clusters) {
-      const [cx, cy] = this.at(c.x, c.y, c.z);
-      const f = 1500 / (1500 + c.z * this.scale);
-      sphere(ctx, e, cx, cy, c.r * this.scale * f, c.r * this.scale * f * 0.9, tone(c.c, -c.z / 300));
+      const [sx, sy] = at(c.x, c.y, c.z);
+      const f = 1500 / (1500 + c.z * scale);
+      const r = c.r * scale * f;
+      sphere(ctx, e, sx, sy, r, r * 0.88, tone(c.c, c.shade - c.z / 400));
+    }
+    // A few small sunlit clusters on top, on the sun side.
+    for (let i = 0; i < 7; i++) {
+      const x = cx0 + light * (40 + i * 22) - light * 60;
+      const y = cy0 + ry * (0.75 - Math.abs(i - 3) * 0.08);
+      const [sx, sy] = at(x, y, 0);
+      sphere(ctx, e, sx, sy, 14 * scale, 12 * scale, tone(leaves[(i + 2) % leaves.length]!, 0.18));
+    }
+  }
+
+  /**
+   * The Harvest Farm's ground, seen from above: grass rows running back to the hills, a dirt lane where the fighters
+   * stand, and a plowed pumpkin patch running toward you off the bottom of the screen.
+   */
+  private drawFarmField(p: Platform): void {
+    const ctx = this.ctx;
+    const s = this.scale;
+    const e = this.eye();
+    const purple = this.purple;
+    const F = FARM_FIELD;
+    const hazeHex = rgbHex(rgbOf(purple ? PALETTE.purpleHorizon : FALL.skyHorizon));
+    const gy = this.sy(p.y);
+    const yAt = (z: number) => this.at(0, p.y, z)[1];
+    // The grass field, hazier toward the hills, with crop rows that get thinner with distance.
+    const grass = purple ? '#6c4aa8' : '#8f9a3a';
+    const backY = yAt(F.back);
+    const laneBack = yAt(F.lane);
+    const g = ctx.createLinearGradient(0, backY, 0, laneBack);
+    g.addColorStop(0, blend(grass, hazeHex, 0.55));
+    g.addColorStop(1, tone(grass, 0.04));
+    ctx.fillStyle = g;
+    ctx.fillRect(-40, backY, this.w + 80, laneBack - backY + 1);
+    for (let z = F.lane, i = 0; z < F.back; z += 24 + i * 5, i++) {
+      const y1 = yAt(z);
+      const y2 = yAt(z + 10 + i * 2);
+      ctx.fillStyle = i % 2 ? 'rgba(80,60,20,0.14)' : 'rgba(255,230,140,0.1)';
+      ctx.fillRect(-40, y2, this.w + 80, y1 - y2);
+    }
+    if (gy - e.vy < 8) {
+      // Looking along the ground (should not happen with this camera): just soil below.
+      ctx.fillStyle = purple ? '#3e2a66' : '#5e3c22';
+      ctx.fillRect(-40, laneBack, this.w + 80, this.h + 40 - laneBack);
+      return;
+    }
+    // How far toward you the ground has to run to reach the bottom of the screen.
+    const near = Math.min(F.maxNear, (this.h + 30 - e.vy) / (gy - e.vy));
+    const zNear = (FOCAL / near - FOCAL) / s;
+    // The pumpkin patch: soil, darker toward you, plowed in rows that run to the horizon.
+    const laneFront = yAt(-F.lane);
+    const soil = purple ? '#4a3578' : '#7a5232';
+    const sg = ctx.createLinearGradient(0, laneFront, 0, this.h);
+    sg.addColorStop(0, tone(soil, 0.06));
+    sg.addColorStop(1, tone(soil, -0.3));
+    ctx.fillStyle = sg;
+    ctx.fillRect(-40, laneFront, this.w + 80, this.h + 40 - laneFront);
+    const lit = e.light;
+    for (let x = p.x1; x < p.x2; x += F.furrow) {
+      const [a1x, a1y] = this.at(x, p.y, -F.lane);
+      const [b1x] = this.at(x + F.furrow * 0.5, p.y, -F.lane);
+      const [c1x] = this.at(x + F.furrow, p.y, -F.lane);
+      const [a2x, a2y] = this.at(x, p.y, zNear);
+      const [b2x] = this.at(x + F.furrow * 0.5, p.y, zNear);
+      const [c2x] = this.at(x + F.furrow, p.y, zNear);
+      if (Math.max(a1x, a2x) < -50 && Math.max(c1x, c2x) < -50) continue;
+      if (Math.min(a1x, a2x) > this.w + 50 && Math.min(c1x, c2x) > this.w + 50) continue;
+      // Each ridge: one slope facing the sun, one in shadow.
+      ctx.fillStyle = lit > 0 ? 'rgba(40,20,8,0.22)' : 'rgba(255,214,150,0.13)';
+      ctx.beginPath(); ctx.moveTo(a1x, a1y); ctx.lineTo(b1x, a1y); ctx.lineTo(b2x, a2y); ctx.lineTo(a2x, a2y); ctx.fill();
+      ctx.fillStyle = lit > 0 ? 'rgba(255,214,150,0.13)' : 'rgba(40,20,8,0.22)';
+      ctx.beginPath(); ctx.moveTo(b1x, a1y); ctx.lineTo(c1x, a1y); ctx.lineTo(c2x, a2y); ctx.lineTo(b2x, a2y); ctx.fill();
+    }
+    // Pumpkins and their vines on the rows, bigger the nearer they are.
+    for (const [px, pz, pr] of [[-520, -90, 15], [-250, -150, 18], [-60, -70, 12], [190, -120, 17], [430, -80, 14], [640, -170, 16], [-700, -200, 18], [40, -230, 20]] as const) {
+      if (pz < zNear * 0.85) continue;
+      const v = this.viewAt(pz);
+      const vx = v.sx(px);
+      if (vx < -60 || vx > this.w + 60) continue;
+      ctx.strokeStyle = purple ? '#5a3a90' : '#4f7a2a';
+      ctx.lineWidth = Math.max(1, 2 * v.s);
+      ctx.beginPath();
+      ctx.moveTo(v.sx(px - 50), v.sy(p.y));
+      ctx.bezierCurveTo(v.sx(px - 30), v.sy(p.y + 8), v.sx(px - 15), v.sy(p.y - 6), vx, v.sy(p.y + 2));
+      ctx.stroke();
+      ctx.fillStyle = purple ? '#5a3a90' : '#5f8a30';
+      for (const lx of [-42, -24]) {
+        ctx.beginPath();
+        ctx.ellipse(v.sx(px + lx), v.sy(p.y + 4), 7 * v.s, 4 * v.s, lx * 0.02, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      this.drawPumpkin(v, px, p.y, pr);
+    }
+    // The dirt lane, with wheel ruts and grass along its edges.
+    const dirt = purple ? '#5a4a8a' : '#b08458';
+    const lg = ctx.createLinearGradient(0, laneBack, 0, laneFront);
+    lg.addColorStop(0, tone(dirt, -0.06));
+    lg.addColorStop(1, tone(dirt, 0.1));
+    ctx.fillStyle = lg;
+    ctx.fillRect(-40, laneBack, this.w + 80, laneFront - laneBack);
+    ctx.fillStyle = 'rgba(70,40,18,0.22)';
+    for (const z of [-15, 15]) ctx.fillRect(-40, yAt(z) - s, this.w + 80, Math.max(1, 2.5 * s));
+    ctx.strokeStyle = purple ? '#8a63c9' : '#7a8a2a';
+    ctx.lineWidth = Math.max(1, 1.5 * s);
+    ctx.beginPath();
+    for (const z of [F.lane, -F.lane]) {
+      for (let x = -1400 + (z > 0 ? 0 : 23); x < 1400; x += 47) {
+        const [tx, ty] = this.at(x, p.y, z);
+        if (tx < -10 || tx > this.w + 10) continue;
+        const k = 1500 / (1500 + z * s);
+        ctx.moveTo(tx, ty); ctx.lineTo(tx - 3 * s * k, ty - 8 * s * k);
+        ctx.moveTo(tx, ty); ctx.lineTo(tx + 2 * s * k, ty - 10 * s * k);
+        ctx.moveTo(tx, ty); ctx.lineTo(tx + 5 * s * k, ty - 6 * s * k);
+      }
+    }
+    ctx.stroke();
+    // Corn stalks right in front of you at the corners, dark against the light, to frame the field.
+    for (const [cx, ch, lean] of [[-235, 70, -0.1], [-210, 58, 0.05], [-188, 46, -0.04], [205, 50, 0.06], [228, 66, -0.05], [252, 74, 0.1]] as const) {
+      const v = this.viewAt(zNear * 0.92);
+      const bx = v.sx(cx);
+      const by = this.h + 10;
+      if (bx < -80 || bx > this.w + 80) continue;
+      const k = v.s;
+      const tx = bx + lean * ch * k;
+      const ty = by - ch * k;
+      const stalk = purple ? '#2e1f4a' : '#4a3a1c';
+      ctx.strokeStyle = stalk;
+      ctx.lineWidth = Math.max(2, 2.4 * k);
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.quadraticCurveTo(bx, by - ch * k * 0.5, tx, ty);
+      ctx.stroke();
+      ctx.fillStyle = stalk;
+      for (let q = 1; q <= 3; q++) {
+        const ly = by - ch * k * (0.25 * q);
+        const side = q % 2 ? 1 : -1;
+        ctx.beginPath();
+        ctx.moveTo(bx + lean * (by - ly) * 0.9, ly);
+        ctx.quadraticCurveTo(bx + side * 14 * k, ly - 10 * k, bx + side * 24 * k, ly + 6 * k);
+        ctx.quadraticCurveTo(bx + side * 12 * k, ly - 4 * k, bx + lean * (by - ly) * 0.9, ly + 3 * k);
+        ctx.fill();
+      }
+      ctx.fillStyle = purple ? '#5a3a90' : '#9a7a2a';
+      ctx.beginPath();
+      ctx.ellipse(tx, ty, 2.2 * k, 7 * k, lean, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 
@@ -1525,42 +1752,38 @@ export class Renderer {
     const s = this.scale;
     const e = this.eye();
     if (p.solid) {
-      // The field: soil in front, grass running back to the hills in rows that shrink with distance.
-      const zf = -40;
-      const zb = 420;
-      const f = this.block(p.x1, p.x2, p.y, p.y - p.depth, zf, zb, { color: '#5e3c22', top: this.purple ? '#6c4aa8' : '#8f9a3a' });
-      if (e.vy < f.y) {
-        for (let z = zf, i = 0; z < zb; z += 30 + i * 4, i++) {
-          const [, y1] = this.at(0, p.y, z);
-          const [, y2] = this.at(0, p.y, z + 15 + i * 2);
-          ctx.fillStyle = i % 2 ? 'rgba(80,60,20,0.16)' : 'rgba(255,230,140,0.08)';
-          ctx.fillRect(0, y2, this.w, y1 - y2);
-        }
-        const [, backY] = this.at(0, p.y, zb);
-        haze(ctx, this.w, f.y, backY, rgbOf(this.purple ? PALETTE.purpleHorizon : FALL.skyHorizon), 0.5);
-      }
-      // Soil strata on the cut.
-      ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      for (const k of [0.35, 0.6, 0.82]) ctx.fillRect(f.x, f.y + f.h * k, f.w, Math.max(1, 3 * s));
-      const lip = ctx.createLinearGradient(0, f.y, 0, f.y + 16 * s);
-      lip.addColorStop(0, this.purple ? '#8a63c9' : '#a7b04a');
-      lip.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = lip;
-      ctx.fillRect(f.x, f.y, f.w, 16 * s);
+      this.drawFarmField(p);
       return;
     }
     if (p.y > 200) {
-      // The oak bough, a round branch with leaves sitting on it.
-      this.block(p.x1, p.x2, p.y, p.y - 10, -12, 12, { color: '#5a3a24' });
-      for (let lx = p.x1 - 20, i = 0; lx < p.x2 + 20; lx += 36, i++) {
-        const [cx, cy] = this.at(lx, p.y + 8, 6);
-        sphere(ctx, e, cx, cy, 22 * s, 18 * s, FALL.leaves[i % FALL.leaves.length]!);
+      // The oak bough: leaves tucked behind it, then the branch itself, round and lit, tapering out to its ends.
+      for (let lx = p.x1 - 10, i = 0; lx < p.x2 + 10; lx += 30, i++) {
+        const [cx, cy] = this.at(lx + ((i * 17) % 12), p.y + 6 + ((i * 23) % 14), 18);
+        const r = (14 + ((i * 7) % 9)) * s;
+        sphere(ctx, e, cx, cy, r, r * 0.85, tone(FALL.leaves[i % FALL.leaves.length]!, -0.12));
       }
+      const [lx0, ly0] = this.at(p.x1 - 6, p.y - 2, 0);
+      const [lx1, ly1] = this.at(p.x2 + 6, p.y - 2, 0);
+      const [mx, my] = this.at((p.x1 + p.x2) / 2, p.y - 6, 0);
+      const bark = ctx.createLinearGradient(0, my - 8 * s, 0, my + 8 * s);
+      bark.addColorStop(0, '#8a6040');
+      bark.addColorStop(0.45, '#5a3a24');
+      bark.addColorStop(1, '#2e1c10');
+      ctx.fillStyle = bark;
+      ctx.beginPath();
+      ctx.moveTo(lx0, ly0 - 3 * s);
+      ctx.quadraticCurveTo(mx, my - 11 * s, lx1, ly1 - 3 * s);
+      ctx.lineTo(lx1, ly1 + 2 * s);
+      ctx.quadraticCurveTo(mx, my + 10 * s, lx0, ly0 + 2 * s);
+      ctx.closePath();
+      ctx.fill();
       return;
     }
     if (p.x1 < 0) {
       // Hay bales stacked from the ground up to the top, each a block with straw on its face.
       const bale = 34;
+      const [shx, shy] = this.at((p.x1 + p.x2) / 2, 0, 0);
+      contactShadow(ctx, shx, shy, (p.x2 - p.x1) * 0.62 * s, 12 * s, 0.4);
       for (let row = 0; row * bale < p.y; row++) {
         const y0 = row * bale;
         const y1 = Math.min(p.y, y0 + bale);
@@ -1614,8 +1837,24 @@ export class Renderer {
     const bed = this.block(p.x1, p.x2, p.y, p.y - 12, -28, 28, { color: '#8a5a2b', rim: true });
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     for (let k = 1; k < 6; k++) ctx.fillRect(bed.x + (bed.w * k) / 6, bed.y, Math.max(1, s), bed.h);
-    const [hx, hy] = this.at((p.x1 + p.x2) / 2, p.y + 2, 8);
-    sphere(ctx, e, hx, hy, (p.x2 - p.x1) * 0.42 * s, 12 * s, '#e2bd5a');
+    // Side boards along the back, then a loose heap of hay: mounds set back in depth, straw sticking out.
+    const back = this.block(p.x1 + 4, p.x2 - 4, p.y + 16, p.y, 22, 28, { color: '#7a4e26' });
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(back.x, back.y + back.h * 0.5, back.w, Math.max(1, s));
+    const span = p.x2 - p.x1;
+    for (const [fx, fy, fz, fr] of [[0.2, 6, 14, 0.2], [0.5, 12, 16, 0.26], [0.8, 6, 14, 0.2], [0.33, 2, 2, 0.2], [0.68, 3, 0, 0.21]] as const) {
+      const [hx, hy] = this.at(p.x1 + span * fx, p.y + fy, fz);
+      sphere(ctx, e, hx, hy, span * fr * s, span * fr * 0.42 * s, this.purple ? '#c9a0ff' : '#e2bd5a');
+    }
+    ctx.strokeStyle = this.purple ? '#a78ad8' : '#c99a3a';
+    ctx.lineWidth = Math.max(1, s);
+    ctx.beginPath();
+    for (let i = 0; i < 14; i++) {
+      const [tx, ty] = this.at(p.x1 + 20 + ((i * 53) % (span - 40)), p.y + 4 + ((i * 29) % 16), 4);
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(tx + ((i % 3) - 1) * 5 * s, ty - 6 * s);
+    }
+    ctx.stroke();
     for (const wx of [p.x1 + 40, p.x2 - 40]) wheel(wx, -30, 0.05);
   }
 

@@ -439,8 +439,8 @@ export function drawFarmBack(v: View, ground: number): void {
   }
 }
 
-/** The front of the farm: a pitchfork in the hay bales, stones in the soil cut, grass tufts on the edge. */
-export function drawFarmFront(v: View, ground: number, depth: number): void {
+/** The front of the farm: a pitchfork stuck in the hay bales. */
+export function drawFarmFront(v: View, ground: number): void {
   const ctx = v.ctx;
   const s = v.s;
   // A pitchfork stuck in the hay bales.
@@ -454,32 +454,6 @@ export function drawFarmFront(v: View, ground: number, depth: number): void {
   ctx.beginPath();
   for (const dx of [-8, 0, 8]) line(v, -130 + dx * 0.9, ground + 150 + dx * 0.4, -122 + dx * 0.9, ground + 170 + dx * 0.4);
   line(v, -138, ground + 146, -122, ground + 154);
-  ctx.stroke();
-  // Stones in the soil cut.
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  for (let i = -20; i <= 20; i++) {
-    const x = i * 70 + ((i * 37) % 30);
-    const yy = ground - 50 - ((i * 53) & 63) * 2.2;
-    if (yy < ground - depth + 10) continue;
-    ctx.beginPath();
-    ctx.ellipse(v.sx(x), v.sy(yy), (6 + (i & 3) * 3) * s, (4 + (i & 1) * 2) * s, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Grass tufts on the field.
-  ctx.strokeStyle = v.purple ? '#8a63c9' : '#7a8a2a';
-  ctx.lineWidth = Math.max(1, 1.5 * s);
-  ctx.beginPath();
-  for (let x = -1400; x < 1400; x += 47) {
-    const px = v.sx(x);
-    if (px < -10 || px > v.w + 10) continue;
-    const gy = v.sy(ground);
-    ctx.moveTo(px, gy);
-    ctx.lineTo(px - 3 * s, gy - 8 * s);
-    ctx.moveTo(px, gy);
-    ctx.lineTo(px + 2 * s, gy - 10 * s);
-    ctx.moveTo(px, gy);
-    ctx.lineTo(px + 5 * s, gy - 6 * s);
-  }
   ctx.stroke();
 }
 
